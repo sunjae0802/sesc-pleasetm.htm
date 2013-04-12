@@ -1,0 +1,12 @@
+Import('*')
+
+if env['PROTOCOL'] == 'None':
+    Return()
+
+Source('smp.cpp', main=True, skip_lib=True)
+Source('SMPCache.cpp')
+Source('SMPSystemBus.cpp')
+Source('SMemorySystem.cpp')
+Source('MESIProtocol.cpp')
+Source('SMPProtocol.cpp')
+Source('SMPMemRequest.cpp')

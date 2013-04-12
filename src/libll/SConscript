@@ -1,0 +1,6 @@
+Import('*')
+
+Source('Instruction.cpp')
+Source('GFlow.cpp')
+Source('ExecutionFlow.cpp')
+Source('ThreadContext.cpp')

@@ -1,0 +1,9 @@
+import os
+
+Import('*')
+
+all_protocols.extend([
+		'SMP'
+		])
+
+#protocol_dirs.append(Dir('.').abspath)
