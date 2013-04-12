@@ -339,7 +339,7 @@ for bdir in [ base_dir ]:
 
 
 sticky_vars.AddVariables(
-    BoolVariable('CP_ANNOTATE', 'Enable critical path annotation capability', False),
+    #BoolVariable('CP_ANNOTATE', 'Enable critical path annotation capability', False),
     EnumVariable('PROTOCOL', 'Coherence protocol for Ruby', 'None',
                   all_protocols),
     )

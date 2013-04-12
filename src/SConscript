@@ -108,7 +108,7 @@ class SourceFile(object):
 
 class Source(SourceFile):
     '''Add a c/c++ source file to the build'''
-    def __init__(self, source, Werror=True, swig=False, **guards):
+    def __init__(self, source, Werror=False, swig=False, **guards):
         '''specify the source file, and any guards'''
         super(Source, self).__init__(source, **guards)
 
@@ -356,7 +356,11 @@ needed_envs = [identifyTarget(target) for target in BUILD_TARGETS]
 if 'all' in needed_envs:
     needed_envs += target_types
 
-env.Append(CPPDEFINES = ['LINUX', 'POSIX_MEMALIGN', 'MIPS_EMUL']) #'SIMICS', 
+env.Append(CPPDEFINES = ['LINUX', 'POSIX_MEMALIGN', 'MIPS_EMUL']) 
+
+if env['PROTOCOL'] == 'SMP':
+    env.Append(CPPDEFINES = ['SESC_SMP']) 
+
 env.Append(CPPPATH=['libsuc'])
 
 # Debug binary
