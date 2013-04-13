@@ -86,7 +86,7 @@ if not 'SWIG' in main_dict_keys:
     print "swig is not installed (package swig on Ubuntu and RedHat)"
     Exit(1)
 
-#Default(environ.get('SESC_DEFAULT_BINARY', 'build/release/sesc.smp'))
+Default(environ.get('SESC_DEFAULT_BINARY', 'build/SMP/sesc.opt'))
 
 def rfind(l, elt, offs = -1):
     for i in range(len(l)+offs, 0, -1):
