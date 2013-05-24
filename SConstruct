@@ -69,7 +69,7 @@ for key,val in os.environ.iteritems():
     if key in use_vars:
         use_env[key] = val
 
-main = Environment(ENV=use_env)
+main = Environment(**use_env)
 main.Decider('MD5-timestamp')
 main.root = Dir(".")      
 main.srcdir = Dir("src")  
