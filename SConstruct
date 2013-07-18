@@ -239,7 +239,7 @@ Export('MakeAction')
 CXX_version = readCommand([main['CXX'],'--version'], exception=False)
 CXX_V = readCommand([main['CXX'],'-V'], exception=False)
 
-main['GCC'] = CXX_version and CXX_version.find('g++') >= 0
+main['GCC'] = CXX_version and CXX_version.find('GCC') >= 0
 if main['GCC']:
     #main.Append(CCFLAGS=['-pipe'])
     main.Append(CCFLAGS=['-fno-strict-aliasing'])
