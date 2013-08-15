@@ -86,7 +86,7 @@ if not 'SWIG' in main_dict_keys:
     print "swig is not installed (package swig on Ubuntu and RedHat)"
     Exit(1)
 
-Default(environ.get('SESC_DEFAULT_BINARY', 'build/SMP/sesc.opt'))
+Default(environ.get('SESC_DEFAULT_BINARY', 'build/SMP_BUS/sesc.opt'))
 
 def rfind(l, elt, offs = -1):
     for i in range(len(l)+offs, 0, -1):
@@ -318,10 +318,21 @@ Export('export_vars')
 # For Ruby
 all_protocols = []
 Export('all_protocols')
+all_systems = []
+Export('all_systems')
+all_networks = []
+Export('all_networks')
+all_memory = []
+Export('all_memory')
 protocol_dirs = []
 Export('protocol_dirs')
 slicc_includes = []
 Export('slicc_includes')
+
+all_libs = []
+Export('all_libs')
+all_libs_cpppath = dict()
+Export('all_libs_cpppath')
 
 # Walk the tree and execute all SConsopts scripts that wil add to the
 # above variables
@@ -339,13 +350,16 @@ for bdir in [ base_dir ]:
 
 
 sticky_vars.AddVariables(
-    #BoolVariable('CP_ANNOTATE', 'Enable critical path annotation capability', False),
-    EnumVariable('PROTOCOL', 'Coherence protocol for Ruby', 'None',
-                  all_protocols),
+    #EnumVariable('PROTOCOL', 'Coherence protocol', 'None',
+    #              all_protocols),
+    EnumVariable('SYSTEM', 'System', 'None',
+                  all_systems),
+    EnumVariable('NETWORK', 'Network', 'None',
+                  all_networks),
     )
 
 # These variables get exported to #defines in config/*.hh (see src/SConscript).
-export_vars += [ 'PROTOCOL', ]
+export_vars += [ 'SYSTEM', 'NETWORK' ]
 
 
 
@@ -365,41 +379,25 @@ for variant_path in variant_paths:
     # Variables for $BUILD_ROOT/$VARIANT_DIR are stored in
     # $BUILD_ROOT/variables/$VARIANT_DIR so you can nuke
     # $BUILD_ROOT/$VARIANT_DIR without losing your variables settings.
-    current_vars_file = joinpath(build_root, 'variables', variant_dir)
-    if isfile(current_vars_file):
-        sticky_vars.files.append(current_vars_file)
-        print "Using saved variables file %s" % current_vars_file
+
+    opts_dir = joinpath(main.root.abspath, 'build_opts')
+    default_vars_files = [joinpath(opts_dir, variant_dir)]
+    existing_files = filter(isfile, default_vars_files)
+    if existing_files:
+        default_vars_file = existing_files[0]
+        sticky_vars.files.append(default_vars_file)
+        print "Using variable in %s" \
+              % (default_vars_file)
     else:
-        # Build dir-specific variables file doesn't exist.
-
-        # Make sure the directory is there so we can create it later
-        opt_dir = dirname(current_vars_file)
-        if not isdir(opt_dir):
-            mkdir(opt_dir)
-
-        opts_dir = joinpath(main.root.abspath, 'build_opts')
-        default_vars_files = [joinpath(opts_dir, variant_dir)]
-        existing_files = filter(isfile, default_vars_files)
-        if existing_files:
-            default_vars_file = existing_files[0]
-            sticky_vars.files.append(default_vars_file)
-            print "Variables file %s not found,\n  using defaults in %s" \
-                  % (current_vars_file, default_vars_file)
-        else:
-            print "Error: cannot find variables file %s or " \
-                  "default file(s) %s" \
-                  % (current_vars_file, ' or '.join(default_vars_files))
-            Exit(1)
-
+        print "Error: cannot find variables file %s" \
+              % (default_vars_files)
+        Exit(1)
     # Apply current variable settings to env
     sticky_vars.Update(env)
 
     help_texts["local_vars"] += \
         "Build variables for %s:\n" % variant_dir \
                  + sticky_vars.GenerateHelpText(env)
-
-    # Save sticky variable settings back to current variables file
-    sticky_vars.Save(current_vars_file, env)
 
     # The src/SConscript file sets up the build rules in 'env' according
     # to the configured variables.  It returns a list of environments,

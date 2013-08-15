@@ -43,7 +43,6 @@ class SourceMeta(type):
             else:
                 yield src
 
-
 class SourceFile(object):
     '''Base object that encapsulates the notion of a source file.
     This includes, the source node, target node, various manipulations
@@ -115,12 +114,12 @@ class Source(SourceFile):
         self.Werror = Werror
         self.swig = swig
 
-class FlexSource(SourceFile):
+class LexSource(SourceFile):
     '''Add a Protocol Buffer to build'''
 
     def __init__(self, source, **guards):
         '''Specify the source file, and any guards'''
-        super(FlexSource, self).__init__(source, **guards)
+        super(LexSource, self).__init__(source, **guards)
 
         # Get the file name and the extension
         modname,ext = self.extname
@@ -128,13 +127,17 @@ class FlexSource(SourceFile):
         # Currently, we stick to generating the C++ headers, so we
         # only need to track the source and header.
         self.flex_file = File(joinpath(self.dirname, modname + 'lex.cpp'))
+        if 'opt' in guards:
+            self.flex_option = guards['opt']
+        else:
+            self.flex_option = ''
 
-class BisonSource(SourceFile):
+class YaccSource(SourceFile):
     '''Add a Protocol Buffer to build'''
 
     def __init__(self, source, **guards):
         '''Specify the source file, and any guards'''
-        super(BisonSource, self).__init__(source, **guards)
+        super(YaccSource, self).__init__(source, **guards)
 
         # Get the file name and the extension
         modname,ext = self.extname
@@ -143,6 +146,10 @@ class BisonSource(SourceFile):
         # only need to track the source and header.
         self.bison_file = File(joinpath(self.dirname, modname + '.tab.cpp'))
         self.bison_header = File(joinpath(self.dirname, modname + '.tab.hpp'))
+        if 'opt' in guards:
+            self.bison_option = guards['opt']
+        else:
+            self.bison_option = ''
 
 
 
@@ -154,8 +161,8 @@ class BisonSource(SourceFile):
 
 # Children should have access
 Export('Source')
-Export('BisonSource')
-Export('FlexSource')
+Export('YaccSource')
+Export('LexSource')
 
 
 
@@ -192,17 +199,17 @@ for root, dirs, files in os.walk(base_dir, topdown=True):
 
 
 
-for bison in BisonSource.all:
+for bison in YaccSource.all:
     env.Command([bison.bison_file, bison.bison_header], bison.tnode,
-                    MakeAction('$YACC -p yyConf -o$TARGET -d $SOURCE',
+                    MakeAction('$YACC '+bison.bison_option+' -o$TARGET -d $SOURCE',
                                Transform("YACC")))
 
     # Add the C++ source file
     Source(bison.bison_file, **bison.guards)
 
-for flex in FlexSource.all:
+for flex in LexSource.all:
     env.Command(flex.flex_file, flex.tnode,
-                    MakeAction('$LEX -Cemr -o$TARGET $SOURCE',
+                    MakeAction('$LEX '+flex.flex_option+' -o$TARGET $SOURCE',
                                Transform("LEX")))
 
     # Add the C++ source file
@@ -267,6 +274,13 @@ def makeEnv(label, objsfx, strip = False, **kwargs):
         else:
             env = new_env
 
+        if 'lib' in source.guards:
+            l_env = env.Clone()
+            for ll in source.guards['lib'].split():
+                if ll in all_libs_cpppath:
+                    l_env.Append(CPPPATH=all_libs_cpppath[ll])
+            env = l_env
+
         if static:
             obj = env.StaticObject(source.tnode)
         else:
@@ -294,7 +308,7 @@ def makeEnv(label, objsfx, strip = False, **kwargs):
     if strip:
         progname += '.unstripped'
 
-    targets = new_env.Program(progname, main_objs + static_objs)
+    targets = new_env.Program(progname, main_objs + static_lib)
 
     if strip:
         cmd = 'strip $SOURCE -o $TARGET'
@@ -358,7 +372,7 @@ if 'all' in needed_envs:
 
 env.Append(CPPDEFINES = ['LINUX', 'POSIX_MEMALIGN', 'MIPS_EMUL']) 
 
-if env['PROTOCOL'] == 'SMP':
+if env['SYSTEM'] == 'SMP':
     env.Append(CPPDEFINES = ['SESC_SMP']) 
 
 env.Append(CPPPATH=['libsuc'])
