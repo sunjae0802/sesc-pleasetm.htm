@@ -386,9 +386,16 @@ if 'debug' in needed_envs:
 
 # Optimized binary
 if 'opt' in needed_envs:
-    makeEnv('opt', '.o',
+    makeEnv('opt', '.o', strip=True,
             CCFLAGS = Split(ccflags['opt']),
             CPPDEFINES = [],
             LINKFLAGS = Split(ldflags['opt']))
+
+# Profile binary
+if 'prof' in needed_envs:
+    makeEnv('prof', '.po', 
+            CCFLAGS = Split(ccflags['prof']),
+            CPPDEFINES = [],
+            LINKFLAGS = Split(ldflags['prof']))
 
 Return('envList')
