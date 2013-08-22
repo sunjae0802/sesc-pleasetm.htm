@@ -57,6 +57,8 @@ typedef intptr_t Address;
 
 short  log2i(uint32_t n);
 
+int32_t bitSelect(int64_t val, int start, int len);
+
 //x, y are integers and x,y > 0
 #define CEILDiv(x,y)            ((x)-1)/(y)+1
 

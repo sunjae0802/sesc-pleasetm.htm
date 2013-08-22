@@ -47,6 +47,8 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // (Remove this when ThreadContext stays in one place on thread switching)
 #include "libcore/OSSim.h"
 
+#include "libLime/LimeData.h"
+
 template<size_t siz>
 struct TypesBySize {
 };
@@ -724,7 +726,7 @@ class DecodeInst {
             : std::vector<OpData>(src), mask(mask) {
         }
         OpEntry &operator<<(const OpData &datum) {
-            this->push_back(datum);
+            push_back(datum);
             return *this;
         }
     };
@@ -735,7 +737,7 @@ class DecodeInst {
     public:
         OpMap(void);
         const OpEntry &operator[](RawInst raw) const {
-            typename OpMapBase::const_iterator it=this->find(OpKey(0,0));
+            typename OpMapBase::const_iterator it=find(OpKey(0,0));
             while(true) {
                 const OpEntry &curEntry=it->second;
                 if(!curEntry.mask)
@@ -1501,13 +1503,14 @@ public:
                 //ThreadContext::ff = true;
                 ThreadContext::simDone = true;
             } else if(type == 15) {
-                printf("[SESC] Rest Simulation Stats at %lld\n", globalClock);
+                printf("[SESC] Reset Simulation Stats at %lld\n", globalClock);
                 fflush(stdout);
                 ThreadContext::resetTS = globalClock;
 
                 GStats::reset();
 
             } else if(type == 18) {
+				/*
                 int procId = addr;
                 int pid = context->getPid();
                 printf("[SESC] Pinning Thread (%3d) to Proc (%3d)\n", pid, procId);
@@ -1518,6 +1521,9 @@ public:
                     return 0;
                 }
                 proc->pin(procId);
+				*/
+				printf("[SESC] Pinning disabled\n");
+				fflush(stdout);
             }
 
             return nextInst<NTyp>(inst,context);
@@ -1998,6 +2004,44 @@ void handlePTCreateCall(InstDesc *inst, ThreadContext *context) {
 void handlePTCreateRet(InstDesc *inst, ThreadContext *context) {
 }
 
+
+// ------------------------------------------------------------------------------------------------------------
+void handleBarrierWaitCall(InstDesc *inst, ThreadContext *context) {
+
+	VAddr ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+	VAddr a0 = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+	context->callInfo = LIME_BAR_CALL;
+	context->barRA = ra;
+	context->barA0 = a0;
+
+	context->parallel = false;
+}
+
+void handleBarrierWaitRet(InstDesc *inst, ThreadContext *context) {
+
+	context->callInfo = LIME_BAR_RET;
+	
+	context->parallel = true;
+}
+
+void handleJoinCall(InstDesc *inst, ThreadContext *context) {
+
+	context->callInfo = LIME_JOIN_CALL;
+	
+	context->parallel = false;
+}
+
+void handleJoinRet(InstDesc *inst, ThreadContext *context) {
+
+	context->callInfo = LIME_JOIN_RET;
+	
+	context->parallel = true;
+}
+
+// ------------------------------------------------------------------------------------------------------------
+
+
 template<ExecMode mode>
 bool decodeInstSize(ThreadContext *context, VAddr funcAddr, VAddr &curAddr, VAddr endAddr, size_t &tsize, bool domap) {
     switch(mode&ExecModeArchMask) {
@@ -2064,6 +2108,11 @@ void decodeTrace(ThreadContext *context, VAddr addr, size_t len) {
         // JJO begin
         AddressSpace::addCallHandler("pthread_create",WrapHandler<handlePTCreateCall>);
         AddressSpace::addRetHandler("pthread_create",WrapHandler<handlePTCreateRet>);
+
+		AddressSpace::addCallHandler("pthread_barrier_wait", WrapHandler<handleBarrierWaitCall>);
+		AddressSpace::addRetHandler("pthread_barrier_wait", WrapHandler<handleBarrierWaitRet>);
+		AddressSpace::addCallHandler("pthread_join", WrapHandler<handleJoinCall>);
+		AddressSpace::addRetHandler("pthread_join", WrapHandler<handleJoinRet>);
 
         didThis=true;
     }

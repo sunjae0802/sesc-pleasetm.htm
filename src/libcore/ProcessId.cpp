@@ -225,6 +225,11 @@ ProcessId *ProcessId::create(Pid_t ppid, Pid_t id, int32_t flags)
 
     proc->sysconf(flags);
 
+	if(!proc->isMigrable()) {
+		size_t numCPU = osSim->getNumCPUs();
+		proc->pin(id%numCPU);
+	}
+
     return proc;
 }
 

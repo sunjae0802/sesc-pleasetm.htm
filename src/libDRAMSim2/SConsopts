@@ -1,0 +1,4 @@
+Import('*')
+all_libs.append('DRAMSim2')
+
+all_memory.append('DRAMSIM2')

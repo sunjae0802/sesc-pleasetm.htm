@@ -28,6 +28,10 @@ namespace Mips {
 void handlePTCreateCall(InstDesc *inst, ThreadContext *context);
 void handlePTCreateRet(InstDesc *inst, ThreadContext *context);
 
+void handleBarrierWaitCall(InstDesc *inst, ThreadContext *context);
+void handleBarrierWaitRet(InstDesc *inst, ThreadContext *context);
+void handleJoinCall(InstDesc *inst, ThreadContext *context);
+void handleJoinRet(InstDesc *inst, ThreadContext *context);
 
 enum InstTypInfoEnum {
     // Main instruction opcode

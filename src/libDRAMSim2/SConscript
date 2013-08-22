@@ -1,0 +1,22 @@
+Import('*')
+
+if env['MEMORY'] != 'DRAMSIM2':
+    Return()
+
+Source('DRAM.cpp', lib='DRAMSim2')
+
+Source('AddressMapping.cpp', lib='DRAMSim2')
+Source('Bank.cpp', lib='DRAMSim2')
+Source('BankState.cpp', lib='DRAMSim2')
+Source('BusPacket.cpp', lib='DRAMSim2')
+Source('ClockDomain.cpp', lib='DRAMSim2')
+Source('CommandQueue.cpp', lib='DRAMSim2')
+Source('IniReader.cpp', lib='DRAMSim2')
+Source('MemoryController.cpp', lib='DRAMSim2')
+Source('MemorySystem.cpp', lib='DRAMSim2')
+Source('MultiChannelMemorySystem.cpp', lib='DRAMSim2')
+Source('Rank.cpp', lib='DRAMSim2')
+Source('SimulatorObject.cpp', lib='DRAMSim2')
+Source('Transaction.cpp', lib='DRAMSim2')
+
+#Source('TraceBasedSim.cpp', lib='DRAMSim2')

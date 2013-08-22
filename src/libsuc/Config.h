@@ -266,6 +266,9 @@ public:
 
     void notCorrect();
 
+#if (defined SESC_CMP) 
+	string getConfDir();
+#endif
     void addRecord(const char *block,
                    const char *name,
                    const char *val);

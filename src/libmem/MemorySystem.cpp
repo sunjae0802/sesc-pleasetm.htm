@@ -33,6 +33,11 @@
 #define k_SV           "SV"
 #define k_procsPerNode "procsPerNode"
 
+#if (defined DRAMSIM2)
+#include "libDRAMSim2/DRAM.h"
+#define k_dramsim2	   "DRAMSim2"
+#endif
+
 
 /* MemorySystem CLASS */
 
@@ -124,6 +129,13 @@ MemObj *MemorySystem::buildMemoryObj(const char *device_type,
     } else if (!strcasecmp(device_type, k_memctrl)) {
 
         new_memory_device = new MemCtrl(this, device_descr_section, device_name);
+
+#if (defined DRAMSIM2)
+    } else if (!strcasecmp(device_type, k_dramsim2)) {
+
+        new_memory_device = new DRAM(this, device_descr_section, device_name);
+
+#endif
 
     } else if (!strcasecmp(device_type, k_void)) {      // For testing purposes
 

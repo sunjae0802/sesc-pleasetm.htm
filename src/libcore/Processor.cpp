@@ -33,6 +33,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "libll/ExecutionFlow.h"
 #include "OSSim.h"
 
+#if (defined CHECK_STALL)
+extern unsigned long long lastFin;
+#endif
+
 Processor::Processor(GMemorySystem *gm, CPU_t i)
     :GProcessor(gm, i, 1)
     ,IFID(i, i, gm, this)
@@ -103,6 +107,14 @@ void Processor::goRabbitMode(long long n2Skip)
 
 void Processor::advanceClock()
 {
+#if (defined CHECK_STALL)
+    if((globalClock-lastFin)>100000000 && !ThreadContext::ff) {
+        printf("Cache access stalled at %lld (last %lld)\n", globalClock, lastFin);
+        fflush(stdout);
+        lastFin = globalClock;
+    }   
+#endif
+
     clockTicks++;
 
     //  GMSG(!ROB.empty(),"robTop %d Ul %d Us %d Ub %d",ROB.getIdFromTop(0)

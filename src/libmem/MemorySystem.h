@@ -45,6 +45,14 @@ public:
     // old Intf. MemorySystem(const char *descr_section = "memHierarchy");
     MemorySystem(int32_t processorId);
 
+#if (defined SESC_CMP)
+    uint32_t getPID() {
+        return pID;
+    }
+    uint32_t getPPN() {
+        return procsPerNode;
+    }
+#endif
 };
 
 #define k_lowerLevel "lowerLevel"

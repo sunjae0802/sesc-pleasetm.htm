@@ -21,6 +21,13 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "callback.h"
 
+#if (defined SESC_CMP)
+#include "libcmp/SMPNOC.h"
+#endif
+#if (defined DRAMSIM2)
+#include "libDRAMSim2/DRAM.h"
+#endif
+
 EventScheduler::TimedCallbacksQueue EventScheduler::cbQ(32);
 
 Time_t globalClock=0;
@@ -33,4 +40,19 @@ void EventScheduler::dump() const
 #else
     MSG("No caller recorded. Compile in DEBUG mode");
 #endif
+}
+    
+void EventScheduler::advanceClock() {
+	EventScheduler *cb;
+
+	while ((cb = cbQ.nextJob(globalClock)) ) {
+		cb->call();
+	}
+#if (defined SESC_CMP)
+	SMPNOC::doAdvanceNOCCycle();
+#endif
+#if (defined DRAMSIM2)
+	DRAM::update();
+#endif
+	globalClock++;
 }

@@ -12,6 +12,8 @@
 #include "libemul/InstDesc.h"
 #include "libemul/LinuxSys.h"
 
+#include "libLime/LimeType.h"
+
 // Use this define to debug the simulated application
 // It enables call stack tracking
 //#define DEBUG_BENCH
@@ -21,9 +23,11 @@ public:
     typedef SmartPtr<ThreadContext> pointer;
     static bool ff;
     static bool simDone;
+	static int64_t finalSkip;
     static Time_t resetTS;
 private:
-    void initVar();
+    void initialize(bool child);
+	void cleanup();
     typedef std::vector<pointer> ContextVector;
     // Static variables
     static ContextVector pid2context;
@@ -72,7 +76,6 @@ public:
     void clearRegs(void) {
         memset(regs,0,sizeof(regs));
     }
-    void save(ChkWriter &out) const;
 
     // Returns the pid of the context
     Pid_t getPid(void) const {
@@ -98,7 +101,6 @@ public:
                   bool cloneFiles, bool cloneSighand,
                   bool cloneVm, bool cloneThread,
                   SignalID sig, VAddr clearChildTid);
-    ThreadContext(ChkReader &in);
     ~ThreadContext();
 
     ThreadContext *createChild(bool shareAddrSpace, bool shareSigTable, bool shareOpenFiles, SignalID sig);
@@ -436,18 +438,22 @@ public:
     int numThreads;
     int maxThreads;
 
-    void incParallel() {
-        std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" Create"<<std::endl<<std::flush;
+    void incParallel(Pid_t wpid) {
+        std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Create"<<std::endl<<std::flush;
         numThreads++;
         maxThreads = numThreads;
     }
 
-    void decParallel() {
+    void decParallel(Pid_t wpid) {
         numThreads--;
-        std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" Exit"<<std::endl<<std::flush;
+        std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Exit"<<std::endl<<std::flush;
         //std::cout<<"\t[ Thread dec "<<numThreads<<" ]"<<std::endl<<std::flush;
     }
 
+	LIMEINST callInfo;
+	VAddr barRA;
+	VAddr barA0;
+	bool parallel;
 };
 
 #endif // THREADCONTEXT_H

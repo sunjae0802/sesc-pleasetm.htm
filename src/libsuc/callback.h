@@ -111,6 +111,7 @@ public:
         cbQ.insert(cb,tim);
     }
 
+	/*
     static void advanceClock() {
         EventScheduler *cb;
 
@@ -119,6 +120,8 @@ public:
         }
         globalClock++;
     }
+	*/
+	static void advanceClock();
 
     static bool empty() {
         return cbQ.empty();
@@ -133,7 +136,6 @@ public:
         cbQ.reset();
         globalClock = 0;
     }
-
 };
 
 class DInst;

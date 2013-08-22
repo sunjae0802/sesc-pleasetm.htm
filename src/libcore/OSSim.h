@@ -57,6 +57,7 @@ class GProcessor;
 class OSSim {
 private:
     static char *benchName;
+    static char *benchFullName;
     char *reportFile;
     char *traceFile;
 
@@ -273,6 +274,10 @@ public:
 
     static const char *getBenchName() {
         return benchName;
+    }
+    
+	static const char *getBenchFullName() {
+        return benchFullName;
     }
 
     const char *getReportFileName() {

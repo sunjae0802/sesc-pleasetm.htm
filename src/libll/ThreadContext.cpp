@@ -22,14 +22,47 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "ThreadContext.h"
 #include "libemul/FileSys.h"
 
+#include "libLime/LimeData.h"
+#include "SescConf.h"
+
+#include "libcore/OSSim.h"
+
 ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
 bool ThreadContext::simDone = false;
+int64_t ThreadContext::finalSkip = 0;
 
-void ThreadContext::initVar() {
+void ThreadContext::initialize(bool child) {
     numThreads = 0;
-    getMainThreadContext()->incParallel();
+    getMainThreadContext()->incParallel(pid);
+
+	if(limeData==NULL) {
+		const char *outfilename;
+		if(SescConf->checkCharPtr("LIME", "output")) {
+			outfilename = SescConf->getCharPtr("LIME", "output");
+		} else {
+			outfilename = "data.out";
+		}
+		limeData = new LimeData(outfilename, OSSim::getBenchFullName());
+	}
+
+	limeData->threadBegin(getPid());
+
+	callInfo = LIME_NORM;
+		
+	parallel = child;
+	if(child) {
+		getMainThreadContext()->parallel = true;
+	}
+}
+
+void ThreadContext::cleanup() {
+    getMainThreadContext()->decParallel(pid);
+	limeData->threadEnd(getPid());
+	if(getMainThreadContext()->numThreads==1) {
+		getMainThreadContext()->parallel = false;
+	}
 }
 
 ThreadContext *ThreadContext::getContext(Pid_t pid)
@@ -44,135 +77,6 @@ void ThreadContext::setMode(ExecMode mode) {
     if(mySystem)
         delete mySystem;
     mySystem=LinuxSys::create(execMode);
-}
-
-void ThreadContext::save(ChkWriter &out) const {
-    out << "ThreadContext pid " << pid;
-    out << "Mode " << execMode << " exited " << exited << endl;
-    out << "AddressSpace ";
-    out.writeobj(getAddressSpace());
-    out << "Parent " << parentID << " exitSig " << exitSig << " clear_child_tid " << clear_child_tid << endl;
-    out << "robust_list " << robust_list << endl;
-    if(exited) {
-        I(!iDesc);
-        I(!getSignalTable());
-        out << "Exit " << exitCode << endl;
-        return;
-    }
-    I(getSignalTable());
-    out << "SignalTable ";
-    out.writeobj(getSignalTable());
-    I(getOpenFiles());
-    out << "OpenFiles ";
-    out.writeobj(getOpenFiles());
-    out << "SigMask " << sigMask << endl;
-    out << "ReadySig " << readySig.size() << endl;
-    for(size_t i=0; i<readySig.size(); i++)
-        out << *(readySig[i]) << endl;
-    out << "MaskedSig " << maskedSig.size() << endl;
-    for(size_t i=0; i<maskedSig.size(); i++)
-        out << *(maskedSig[i]) << endl;
-    out << "SuspSig " << (suspSig?'+':'-') << endl;
-    I(iDesc);
-    out << "Children " << childIDs.size() << ":";
-    for(IntSet::iterator childIt=childIDs.begin(); childIt!=childIDs.end(); childIt++)
-        out << " " << *childIt;
-    out << endl;
-    out << "Stack " << hex << myStackAddrLb << " to " << myStackAddrUb << endl;
-    out << "Regs" << endl;
-    for(size_t r=0; r<NumOfRegs; r++) {
-        if(r%4==0)
-            out << r << ":";
-        out << " ";
-        out.writehex(regs[r]);
-        if(r%4==3)
-            out << endl;
-    }
-    out << "PC " << getIAddr() << " / " << getIDesc()-getAddressSpace()->virtToInst(getIAddr()) << dec << endl;
-}
-
-ThreadContext::ThreadContext(ChkReader &in) : nDInsts(0) {
-    initVar();
-    in >> "ThreadContext pid " >> pid;
-    pid2context[pid]=this;
-    size_t _execMode;
-    in >> "Mode " >> _execMode >> " exited " >> exited >> endl;
-    setMode(static_cast<ExecMode>(_execMode));
-    size_t _addressSpace;
-    in >> "AddressSpace ";
-    setAddressSpace(in.readobj<AddressSpace>());
-    size_t _exitSig;
-    in >> "Parent " >> parentID >> " exitSig " >> _exitSig >> " clear_child_tid " >> clear_child_tid >> endl;
-    exitSig=static_cast<SignalID>(_exitSig);
-    in >> "robust_list " >> robust_list >> endl;
-    if(exited) {
-        setIAddr(0);
-        in >> "Exit " >> exitCode >> endl;
-        return;
-    }
-    size_t _signalTable;
-    in >> "SignalTable " >> _signalTable >> endl;
-    if(!in.hasObject(_signalTable)) {
-        sigTable=new SignalTable();
-        in.newObject(getSignalTable(),_signalTable);
-        in >> *(getSignalTable());
-    } else {
-        sigTable=static_cast<SignalTable *>(in.getObject(_signalTable));
-    }
-    I(getSignalTable());
-    size_t _openFiles;
-    in >> "OpenFiles " >> _openFiles >> endl;
-    if(!in.hasObject(_openFiles)) {
-        in.newObject(_openFiles);
-        openFiles=new FileSys::OpenFiles(in);
-        in.setObject(_openFiles,openFiles);
-    } else {
-        openFiles=static_cast<FileSys::OpenFiles *>(in.getObject(_openFiles));
-    }
-    I(getOpenFiles());
-    in >> "SigMask " >> sigMask >> endl;
-    size_t _ready;
-    in >> "ReadySig " >> _ready >> endl;
-    for(size_t i=0; i<_ready; i++) {
-        readySig.push_back(new SigInfo());
-        in >> *(readySig[i]) >> endl;
-    }
-    size_t _masked;
-    in >> "MaskedSig " >> _masked >> endl;
-    for(size_t i=0; i<_masked; i++) {
-        maskedSig.push_back(new SigInfo());
-        in >> *(maskedSig[i]) >> endl;
-    }
-    char _susp;
-    in >> "SuspSig " >> _susp >> endl;
-    suspSig=(_susp=='+');
-
-    size_t childCnt;
-    in >> "Children " >> childCnt >> ":";
-    while(childCnt) {
-        size_t childNum;
-        in >> " " >> childNum;
-        childIDs.insert(childNum);
-        childCnt--;
-    }
-    in >> endl;
-    in >> "Stack " >> hex >> myStackAddrLb >> " to " >> myStackAddrUb >> endl;
-    in >> "Regs" >> endl;
-    for(size_t r=0; r<NumOfRegs; r++) {
-        if(r%4==0) {
-            size_t tmp;
-            in >> tmp >> ":";
-        }
-        in >> " ";
-        in.readhex(regs[r]);
-        if(r%4==3)
-            in >> endl;
-    }
-    VAddr pc;
-    ssize_t upc;
-    in >> "PC " >> pc >> " / " >> upc >> dec >> endl;
-    setIAddr(pc);
-    updIDesc(upc);
 }
 
 ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
@@ -212,7 +116,7 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
 
     memset(regs,0,sizeof(regs));
     setAddressSpace(new AddressSpace());
-    initVar();
+    initialize(false);
 }
 
 ThreadContext::ThreadContext(ThreadContext &parent,
@@ -274,7 +178,8 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     }
     // This must be after setAddressSpace (it resets clear_child_tid)
     clear_child_tid=clearChildTid;
-    initVar();
+
+    initialize(true);
 }
 
 ThreadContext::~ThreadContext(void) {
@@ -337,7 +242,7 @@ void ThreadContext::resume(void) {
 }
 
 bool ThreadContext::exit(int32_t code) {
-    getMainThreadContext()->decParallel();
+	cleanup();
     I(!isExited());
     I(!isKilled());
     I(!isSuspended());
@@ -397,6 +302,10 @@ inline bool ThreadContext::skipInst(void) {
     iDesc->debug();
 #endif
     (*iDesc)(this);
+	if(callInfo!=LIME_NORM) {
+		limeData->processFFInst(this);
+		callInfo = LIME_NORM;
+	}
     return true;
 }
 
@@ -413,10 +322,11 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());
-            while(ThreadContext::ff&&context->skipInst()) {
+			int nowSkip = 500;
+            while(nowSkip&&ThreadContext::ff&&context->skipInst()) {
+				nowSkip--;
                 skipped++;
             }
-
             nowPid++;
         }
     } else {

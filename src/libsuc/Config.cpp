@@ -196,6 +196,21 @@ Config::Config(const char *name,
     fclose(fp);
 }
 
+#if (defined SESC_CMP)
+string Config::getConfDir() 
+{
+	size_t found;
+	string s_fpname(fpname);
+	found = s_fpname.find_last_of("/");
+	//return s_fpname.substr(0, found);
+	string ret("");
+	if((int)found>=0) {
+		ret = s_fpname.substr(0, found);
+	}
+	return ret;
+}
+#endif
+
 Config::~Config(void)
 {
     hashRecord_t::iterator hiter = hashRecord.begin();

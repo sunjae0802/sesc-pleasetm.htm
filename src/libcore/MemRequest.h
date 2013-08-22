@@ -31,6 +31,14 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "Resource.h"
 #include "Cluster.h"
 #include "DInst.h"
+#if (defined SESC_CMP)
+#define stringify( name ) # name 
+enum MemReqSrc {
+    reqICache	= 0,
+    reqD1Cache,
+    reqL2S
+};
+#endif
 
 // Additional cache coherence state should not be
 // added here, but in a derived class
@@ -251,6 +259,20 @@ public:
         return memStack.empty();
     }
 
+#if (defined SESC_CMP) 
+    void stitchMemObj(MemObj *obj) {
+        MemObj *t = memStack.top();
+        memStack.pop();
+        memStack.push(obj);
+    }
+
+	MemObj* getMemStackTop() {
+		if(memStack.empty()) {
+			return NULL;
+		}
+		return memStack.top();
+	}
+#endif
     void goUp(TimeDelta_t lat) {
 
         if (memStack.empty()) {

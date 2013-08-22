@@ -264,6 +264,28 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->pend[1].preg = 0;
 #endif
 
+
+	i->callInfo = context->callInfo;
+	context->callInfo = LIME_NORM;
+
+	i->instInfo = LIME_NORM;
+	i->barRA = 0;
+	i->barA0 = 0;
+
+	if( (i->callInfo & LIME_BAR) ) {
+		i->barRA = context->barRA;
+		i->barA0 = context->barA0;
+	} 
+
+	if(context->parallel && inst->isBranch()) {
+		i->instInfo = LIME_BR;
+	} else if(context->parallel && (inst->isLoad() || inst->isStore())) {
+		i->instInfo = LIME_MEM;
+	}
+
+	i->l1miss = false;
+	i->l2miss = false;
+
     return i;
 }
 

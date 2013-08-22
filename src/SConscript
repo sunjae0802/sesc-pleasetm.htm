@@ -252,7 +252,7 @@ def makeEnv(label, objsfx, strip = False, **kwargs):
     # Add additional warnings here that should not be applied to
     # the SWIG generated code
     new_env.Append(CXXFLAGS='-Wmissing-declarations')
-
+            
     if env['GCC']:
         # If gcc supports it, also warn for deletion of derived
         # classes with non-virtual desctructors. For gcc >= 4.7 we
@@ -309,6 +309,7 @@ def makeEnv(label, objsfx, strip = False, **kwargs):
         progname += '.unstripped'
 
     targets = new_env.Program(progname, main_objs + static_lib)
+    #targets = new_env.Program(progname, main_objs + static_objs)
 
     if strip:
         cmd = 'strip $SOURCE -o $TARGET'
@@ -374,6 +375,12 @@ env.Append(CPPDEFINES = ['LINUX', 'POSIX_MEMALIGN', 'MIPS_EMUL'])
 
 if env['SYSTEM'] == 'SMP':
     env.Append(CPPDEFINES = ['SESC_SMP']) 
+
+if env['NETWORK'] == 'BOOKSIM':
+    env.Append(CPPDEFINES = ['SESC_CMP', 'CHECK_STALL']) 
+
+if env['MEMORY'] == 'DRAMSIM2':
+    env.Append(CPPDEFINES = ['DRAMSIM2', 'NO_STORAGE', 'LOG_OUTPUT'])
 
 env.Append(CPPPATH=['libsuc'])
 

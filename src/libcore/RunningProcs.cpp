@@ -126,6 +126,11 @@ void RunningProcs::run()
 
                 IS(currentCPU = 0);
                 EventScheduler::advanceClock();
+
+    			//if(ThreadContext::simDone) {
+				//	finishWorkNow();
+				//}
+				
             } while(stayInLoop);
 #ifdef SESC_THERM
             ReportTherm::stopCB();
@@ -133,7 +138,10 @@ void RunningProcs::run()
         }
     } while(!EventScheduler::empty());
 
-
+	if(ThreadContext::simDone) {
+		MSG("End skipping: skipped %lld\n",(long long int)ThreadContext::finalSkip);
+		fflush(stdout);
+	}
 }
 
 void RunningProcs::makeRunnable(ProcessId *proc)

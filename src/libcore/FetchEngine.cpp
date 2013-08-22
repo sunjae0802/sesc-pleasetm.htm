@@ -212,7 +212,7 @@ void FetchEngine::realFetch(IBucket *bucket, int32_t fetchMax)
 
     Pid_t myPid = flow.currentPid();
 
-    ThreadContext::simDone = false;
+    //ThreadContext::simDone = false;
 
     do {
         nGradInsts++; // Before executePC because it can trigger a context switch
@@ -246,11 +246,13 @@ void FetchEngine::realFetch(IBucket *bucket, int32_t fetchMax)
     totalnInst+=tmp;
     // JJ
     if(ThreadContext::simDone) {
-        MSG("stopSimulation at %lld\n",totalnInst);
-        fflush(stdout);
-		MSG("Begin fastforwarding: skipping instructions\n");
-		MSG("End skipping: skipped %lld\n",(long long int)ThreadContext::skipInsts(-1));
-        osSim->stopSimulation();
+		if(ThreadContext::finalSkip==0) {
+			MSG("stopSimulation at %lld\n",totalnInst);
+			MSG("Begin fastforwarding: skipping instructions\n");
+			fflush(stdout);
+		}
+		ThreadContext::finalSkip += ThreadContext::skipInsts(-1);
+        //osSim->stopSimulation();
     }
 
     if( totalnInst >= nInst2Sim ) {

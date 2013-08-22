@@ -39,6 +39,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #endif
 #endif
 
+#if (defined SESC_CMP)
+#define IJ(aC)    do{                 if(!(aC)) doassert(); }while(0)
+#endif
+
 class MemRequest;      // Memory Request (from processor to cache)
 
 class MemObj {
@@ -55,6 +59,25 @@ protected:
 
     const char *descrSection;
     const char *symbolicName;
+
+#if (defined SESC_CMP)
+    // JJO
+    int32_t nodeID;
+    // JJO
+    MemObj *sideLowerLevel;
+    MemObj *sideUpperLevel;
+
+    bool dataCache;
+
+    void addSideLowerLevel(MemObj *obj) {
+        I( obj );
+        sideLowerLevel = obj;
+        obj->addSideUpperLevel(this);
+    }
+    void addSideUpperLevel(MemObj *obj) {
+        sideUpperLevel = obj;
+	}
+#endif
 
     void addLowerLevel(MemObj *obj) {
         I( obj );
@@ -73,7 +96,6 @@ protected:
         for(uint32_t i=0; i<upperLevel.size(); i++)
             upperLevel[i]->invalidate(addr, size, oc);
     }
-
 
 public:
     MemObj(const char *section, const char *sName);
@@ -94,6 +116,22 @@ public:
     const char *getSymbolicName() const {
         return symbolicName;
     }
+
+#if (defined SESC_CMP)
+    // JJO
+    virtual int32_t getNodeID() {
+        IJ(0);
+        return 0;
+    }
+    virtual int32_t getMaxNodeID() {
+        IJ(0);
+        return 0;
+    }
+    virtual void goToMem(MemRequest *mreq) {
+        IJ(0);
+    }
+
+#endif
 
     const LevelType *getLowerLevel() const {
         return &lowerLevel;
@@ -142,6 +180,26 @@ public:
 
     // Print stats
     virtual void dump() const;
+#if (defined SESC_CMP)
+    // JJO
+    virtual uint32_t getPendingReqs() {
+        IJ(0);
+        return 0;
+    }
+    virtual uint32_t getPendingReqsProc(int32_t pID) {
+        IJ(0);
+        return 0;
+    }
+    virtual Time_t getPendingCycles() {
+        IJ(0);
+        return 0;
+    }
+    virtual int getOcc() {
+        IJ(0);
+        return 0;
+    }
+#endif
+
 };
 
 class DummyMemObj : public MemObj {

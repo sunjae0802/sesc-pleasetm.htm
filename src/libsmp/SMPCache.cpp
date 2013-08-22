@@ -236,6 +236,11 @@ void SMPCache::doRead(MemRequest *mreq)
 
     readMiss.inc();
 
+	DInst *dinst = mreq->getDInst();
+	if(dinst && mreq->isDataReq()) {
+		dinst->l1miss = true;
+	}
+
 #ifdef SESC_ENERGY
     rdEnergy[1]->inc();
 #endif
@@ -307,6 +312,11 @@ void SMPCache::doWrite(MemRequest *mreq)
     }
 
     writeMiss.inc();
+	
+	DInst *dinst = mreq->getDInst();
+	if(dinst && mreq->isDataReq()) {
+		dinst->l1miss = true;
+	}
 
 #ifdef SESC_ENERGY
     wrEnergy[1]->inc();
