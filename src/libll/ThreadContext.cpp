@@ -28,9 +28,14 @@ Time_t ThreadContext::resetTS = 0;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 
-void ThreadContext::initialize() {
+void ThreadContext::initialize(bool child) {
     numThreads = 0;
-    getMainThreadContext()->incParallel();
+    getMainThreadContext()->incParallel(pid);
+
+    parallel = child;
+    if(child) {
+        getMainThreadContext()->parallel = true;
+    }
 }
 
 void ThreadContext::cleanup() {

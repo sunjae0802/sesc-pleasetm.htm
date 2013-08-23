@@ -447,6 +447,7 @@ public:
         std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Exit"<<std::endl<<std::flush;
     }
 
+    bool parallel;
 };
 
 #endif // THREADCONTEXT_H
