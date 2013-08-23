@@ -22,47 +22,19 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "ThreadContext.h"
 #include "libemul/FileSys.h"
 
-#include "libLime/LimeData.h"
-#include "SescConf.h"
-
-#include "libcore/OSSim.h"
-
 ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 
-void ThreadContext::initialize(bool child) {
+void ThreadContext::initialize() {
     numThreads = 0;
-    getMainThreadContext()->incParallel(pid);
-
-	if(limeData==NULL) {
-		const char *outfilename;
-		if(SescConf->checkCharPtr("LIME", "output")) {
-			outfilename = SescConf->getCharPtr("LIME", "output");
-		} else {
-			outfilename = "data.out";
-		}
-		limeData = new LimeData(outfilename, OSSim::getBenchFullName());
-	}
-
-	limeData->threadBegin(getPid());
-
-	callInfo = LIME_NORM;
-		
-	parallel = child;
-	if(child) {
-		getMainThreadContext()->parallel = true;
-	}
+    getMainThreadContext()->incParallel();
 }
 
 void ThreadContext::cleanup() {
-    getMainThreadContext()->decParallel(pid);
-	limeData->threadEnd(getPid());
-	if(getMainThreadContext()->numThreads==1) {
-		getMainThreadContext()->parallel = false;
-	}
+	getMainThreadContext()->decParallel(pid);
 }
 
 ThreadContext *ThreadContext::getContext(Pid_t pid)
@@ -302,10 +274,6 @@ inline bool ThreadContext::skipInst(void) {
     iDesc->debug();
 #endif
     (*iDesc)(this);
-	if(callInfo!=LIME_NORM) {
-		limeData->processFFInst(this);
-		callInfo = LIME_NORM;
-	}
     return true;
 }
 
@@ -328,7 +296,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
                 skipped++;
             }
             nowPid++;
-        }
+		}
     } else {
         while(skipped<skipCount) {
             nowPid=nextReady(nowPid);

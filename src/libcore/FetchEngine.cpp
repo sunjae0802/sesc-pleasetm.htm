@@ -212,7 +212,7 @@ void FetchEngine::realFetch(IBucket *bucket, int32_t fetchMax)
 
     Pid_t myPid = flow.currentPid();
 
-    //ThreadContext::simDone = false;
+    ThreadContext::simDone = false;
 
     do {
         nGradInsts++; // Before executePC because it can trigger a context switch

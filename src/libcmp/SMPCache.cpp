@@ -465,13 +465,6 @@ void SMPCache::doRead(MemRequest *mreq)
     GI(l, !l->isLocked());
 
     readMiss.inc();
-	
-	DInst *dinst = mreq->getDInst();
-	if(dinst) {
-		if(mreq->isDataReq()) {
-			dinst->l1miss = true;
-		}
-	}
 
 #if (defined TRACK_MPKI)
     DInst *dinst = mreq->getDInst();
@@ -583,13 +576,6 @@ void SMPCache::doWrite(MemRequest *mreq)
     }
 
     writeMiss.inc();
-	
-	DInst *dinst = mreq->getDInst();
-	if(dinst) {
-		if(mreq->isDataReq()) {
-			dinst->l1miss = true;
-		}
-	}
 
 #ifdef SESC_ENERGY
     wrEnergy[1]->inc();

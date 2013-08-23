@@ -47,8 +47,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // (Remove this when ThreadContext stays in one place on thread switching)
 #include "libcore/OSSim.h"
 
-#include "libLime/LimeData.h"
-
 template<size_t siz>
 struct TypesBySize {
 };
@@ -2007,36 +2005,15 @@ void handlePTCreateRet(InstDesc *inst, ThreadContext *context) {
 
 // ------------------------------------------------------------------------------------------------------------
 void handleBarrierWaitCall(InstDesc *inst, ThreadContext *context) {
-
-	VAddr ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-	VAddr a0 = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-
-	context->callInfo = LIME_BAR_CALL;
-	context->barRA = ra;
-	context->barA0 = a0;
-
-	context->parallel = false;
 }
 
 void handleBarrierWaitRet(InstDesc *inst, ThreadContext *context) {
-
-	context->callInfo = LIME_BAR_RET;
-	
-	context->parallel = true;
 }
 
 void handleJoinCall(InstDesc *inst, ThreadContext *context) {
-
-	context->callInfo = LIME_JOIN_CALL;
-	
-	context->parallel = false;
 }
 
 void handleJoinRet(InstDesc *inst, ThreadContext *context) {
-
-	context->callInfo = LIME_JOIN_RET;
-	
-	context->parallel = true;
 }
 
 // ------------------------------------------------------------------------------------------------------------

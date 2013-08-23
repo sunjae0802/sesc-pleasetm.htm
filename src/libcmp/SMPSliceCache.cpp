@@ -1902,13 +1902,6 @@ void WBSMPSliceCache::sendMiss(MemRequest *mreq)
     SMPMemRequest *sreq = static_cast<SMPMemRequest *>(mreq);
 
     //printf("M\t%5d\t%10x\t%10x\t%lld\n", getNodeID(), mreq->getPAddr(), calcTag(mreq->getPAddr()), globalClock);
-	
-	if(sreq && sreq->getOriginalRequest()) {
-		DInst *dinst = sreq->getOriginalRequest()->getDInst();
-		if(dinst && sreq->isDataReq()) {
-			dinst->l2miss = true;
-		}    
-	}    
 
     SMPMemRequest *nsreq = SMPMemRequest::create(sreq, this, MeshMemAccess);
     //nsreq->saveMeshOp = sreq->meshOp;

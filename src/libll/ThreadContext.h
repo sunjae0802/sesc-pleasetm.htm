@@ -12,8 +12,6 @@
 #include "libemul/InstDesc.h"
 #include "libemul/LinuxSys.h"
 
-#include "libLime/LimeType.h"
-
 // Use this define to debug the simulated application
 // It enables call stack tracking
 //#define DEBUG_BENCH
@@ -447,13 +445,8 @@ public:
     void decParallel(Pid_t wpid) {
         numThreads--;
         std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Exit"<<std::endl<<std::flush;
-        //std::cout<<"\t[ Thread dec "<<numThreads<<" ]"<<std::endl<<std::flush;
     }
 
-	LIMEINST callInfo;
-	VAddr barRA;
-	VAddr barA0;
-	bool parallel;
 };
 
 #endif // THREADCONTEXT_H

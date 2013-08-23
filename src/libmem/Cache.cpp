@@ -781,14 +781,9 @@ void WBCache::pushLine(MemRequest *mreq)
 
 void WBCache::sendMiss(MemRequest *mreq)
 {
-	DInst *dinst = mreq->getDInst();
-	if(dinst && mreq->isDataReq()) {
-		dinst->l2miss = true;
-	} 
-
-	mreq->mutateWriteToRead();
-	mreq->goDown(missDelay + (nextMSHRSlot(mreq->getPAddr())-globalClock),
-			lowerLevel[0]);
+    mreq->mutateWriteToRead();
+    mreq->goDown(missDelay + (nextMSHRSlot(mreq->getPAddr())-globalClock),
+                 lowerLevel[0]);
 }
 
 void WBCache::doWriteBack(PAddr addr)

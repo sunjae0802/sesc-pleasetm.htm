@@ -34,7 +34,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "GMemorySystem.h"
 #include "LDSTBuffer.h"
 
-#include "libLime/LimeData.h"
 
 GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
     :Id(i)
@@ -476,14 +475,6 @@ void GProcessor::retire()
             addStatsNoRetire(i, dinst, NotExecuted);
             return;
         }
-
-		// JJ
-		if(dinst->callInfo!=LIME_NORM) {
-			limeData->processCall(dinst);
-		}
-		if(dinst->instInfo!=LIME_NORM) {
-			limeData->processInst(dinst);
-		}
 
         // save it now because retire can destroy DInst
         int32_t rp = dinst->getInst()->getDstPool();

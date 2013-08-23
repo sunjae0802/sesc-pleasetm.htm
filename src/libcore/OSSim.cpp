@@ -56,8 +56,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "libll/ThreadContext.h"
 #include "OSSim.h"
 
-#include "libLime/LimeData.h"
-
 OSSim   *osSim=0;
 
 /**********************
@@ -65,7 +63,6 @@ OSSim   *osSim=0;
  */
 
 char *OSSim::benchName=0;
-char *OSSim::benchFullName=0;
 
 static void sescConfSignal(int32_t sig)
 {
@@ -379,8 +376,6 @@ void OSSim::processParams(int32_t argc, char **argv, char **envp)
     }
 
     char *name = (i == argc) ? argv[0] : argv[i];
-    
-	benchFullName = strdup(name);
     {
         char *p = strrchr(name, '/');
         if (p)
@@ -466,7 +461,6 @@ OSSim::~OSSim()
 
     delete SescConf;
 
-    free(benchFullName);
     free(benchName);
     if (trace())
         free(traceFile);
@@ -871,8 +865,6 @@ void OSSim::simFinish()
 #if (defined DRAMSIM2)
 	DRAM::PrintStat();
 #endif
-
-	limeData->finalReport();
 
     // hein? what is this? merge problems?
     //  if(trace())

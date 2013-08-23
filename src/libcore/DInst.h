@@ -517,15 +517,6 @@ public:
         return ID;
     }
 #endif
-
-public:
-	LIMEINST instInfo;
-	LIMEINST callInfo;
-	VAddr barRA;
-	VAddr barA0;
-	VAddr getIAddr() { return inst->getAddr(); };
-	bool l1miss;
-	bool l2miss;
 };
 
 class Hash4DInst {

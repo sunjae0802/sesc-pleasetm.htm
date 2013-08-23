@@ -69,8 +69,6 @@ SMPMemRequest *SMPMemRequest::create(MemRequest *mreq,
 
     sreq->cb = 0;
 
-	sreq->dinst = mreq->getDInst();
-
     return sreq;
 }
 
@@ -112,8 +110,6 @@ SMPMemRequest *SMPMemRequest::create(MemObj *reqCache,
 
     sreq->found = false;
     sreq->nUses = 1;
-	
-	sreq->dinst = NULL;
 
     return sreq;
 }
