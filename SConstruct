@@ -69,7 +69,7 @@ for key,val in os.environ.iteritems():
     if key in use_vars:
         use_env[key] = val
 
-main = Environment(ENV=use_env)
+main = Environment(**use_env)
 main.Decider('MD5-timestamp')
 main.root = Dir(".")      
 main.srcdir = Dir("src")  
@@ -243,7 +243,7 @@ Export('MakeAction')
 CXX_version = readCommand([main['CXX'],'--version'], exception=False)
 CXX_V = readCommand([main['CXX'],'-V'], exception=False)
 
-main['GCC'] = CXX_version and CXX_version.find('g++') >= 0
+main['GCC'] = CXX_version and CXX_version.find('GCC') >= 0
 if main['GCC']:
     #main.Append(CCFLAGS=['-pipe'])
     main.Append(CCFLAGS=['-fno-strict-aliasing'])
@@ -255,7 +255,7 @@ if main['GCC']:
     main.Append(CCFLAGS=['-freg-struct-return'])
     # Enable -Wall and then disable the few warnings that we
     # consistently violate
-    main.Append(CCFLAGS=['-Wall', '-Wno-unused', '-Wno-sign-compare'])
+    main.Append(CCFLAGS=['-Wall', '-Wno-unused'])
     #main.Append(CCFLAGS=['-Wall', '-Wno-sign-compare', '-Wundef'])
     # We always compile using C++11, but only gcc >= 4.7 and clang 3.1
     # actually use that name, so we stick with c++0x
@@ -386,35 +386,6 @@ for variant_path in variant_paths:
     # $BUILD_ROOT/variables/$VARIANT_DIR so you can nuke
     # $BUILD_ROOT/$VARIANT_DIR without losing your variables settings.
 
-    '''
-    current_vars_file = joinpath(build_root, 'variables', variant_dir)
-    if isfile(current_vars_file):
-        sticky_vars.files.append(current_vars_file)
-        print "Using saved variables file %s" % current_vars_file
-    else:
-        # Build dir-specific variables file doesn't exist.
-
-        # Make sure the directory is there so we can create it later
-
-        opt_dir = dirname(current_vars_file)
-        if not isdir(opt_dir):
-            mkdir(opt_dir)
-
-        opts_dir = joinpath(main.root.abspath, 'build_opts')
-        default_vars_files = [joinpath(opts_dir, variant_dir)]
-        existing_files = filter(isfile, default_vars_files)
-        if existing_files:
-            default_vars_file = existing_files[0]
-            sticky_vars.files.append(default_vars_file)
-            print "Variables file %s not found,\n  using defaults in %s" \
-                  % (current_vars_file, default_vars_file)
-        else:
-            print "Error: cannot find variables file %s or " \
-                  "default file(s) %s" \
-                  % (current_vars_file, ' or '.join(default_vars_files))
-            Exit(1)
-    '''
-
     opts_dir = joinpath(main.root.abspath, 'build_opts')
     default_vars_files = [joinpath(opts_dir, variant_dir)]
     existing_files = filter(isfile, default_vars_files)
@@ -427,16 +398,12 @@ for variant_path in variant_paths:
         print "Error: cannot find variables file %s" \
               % (default_vars_files)
         Exit(1)
-
     # Apply current variable settings to env
     sticky_vars.Update(env)
 
     help_texts["local_vars"] += \
         "Build variables for %s:\n" % variant_dir \
                  + sticky_vars.GenerateHelpText(env)
-
-    # Save sticky variable settings back to current variables file
-    #sticky_vars.Save(current_vars_file, env)
 
     # The src/SConscript file sets up the build rules in 'env' according
     # to the configured variables.  It returns a list of environments,
