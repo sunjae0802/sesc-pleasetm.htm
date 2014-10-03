@@ -1,0 +1,9 @@
+build
+tags
+cscope.out
+cscope.files
+core.*
+.svn
+*.pyc
+*~
+.*.swp
