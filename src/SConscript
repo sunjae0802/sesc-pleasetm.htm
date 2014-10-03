@@ -252,14 +252,6 @@ def makeEnv(label, objsfx, strip = False, **kwargs):
     # Add additional warnings here that should not be applied to
     # the SWIG generated code
     new_env.Append(CXXFLAGS='-Wmissing-declarations')
-            
-    if env['GCC']:
-        # If gcc supports it, also warn for deletion of derived
-        # classes with non-virtual desctructors. For gcc >= 4.7 we
-        # also have to disable warnings about the SWIG code having
-        # potentially uninitialized variables.
-        if compareVersions(env['GCC_VERSION'], '4.7') >= 0:
-            new_env.Append(CXXFLAGS='-Wdelete-non-virtual-dtor')
 
     werror_env = new_env.Clone()
     werror_env.Append(CCFLAGS='-Werror')
@@ -308,8 +300,7 @@ def makeEnv(label, objsfx, strip = False, **kwargs):
     if strip:
         progname += '.unstripped'
 
-    targets = new_env.Program(progname, main_objs + static_lib)
-    #targets = new_env.Program(progname, main_objs + static_objs)
+    targets = new_env.Program(progname, main_objs + static_objs)
 
     if strip:
         cmd = 'strip $SOURCE -o $TARGET'
