@@ -86,11 +86,7 @@ if not 'SWIG' in main_dict_keys:
     print "swig is not installed (package swig on Ubuntu and RedHat)"
     Exit(1)
 
-#Default(environ.get('SESC_DEFAULT_BINARY', 'build/SMP_BUS/sesc.opt'))
-#Default(environ.get('SESC_DEFAULT_BINARY', 'build/SMP_BOOKSIM/sesc.opt'))
-Default(environ.get('SESC_DEFAULT_BINARY', ['build/SMP_BOOKSIM/sesc.opt',
-                                            'build/SMP_BOOKSIM_DRAMSIM2/sesc.opt',
-                                                'build/SMP_BUS/sesc.opt']))
+Default(environ.get('SESC_DEFAULT_BINARY', 'build/SMP_BOOKSIM/sesc.opt'))
 
 def rfind(l, elt, offs = -1):
     for i in range(len(l)+offs, 0, -1):
