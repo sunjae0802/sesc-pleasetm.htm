@@ -39,6 +39,17 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "estl.h"
 #include <map>
 
+enum HomeDirectoryType_e {
+    HDT_ERR,
+    HDT_STRIDE,
+    HDT_FIRST_TOUCH,
+    HDT_RANDOM,
+    HDT_PROFILE,
+    HDT_DYNAMIC,
+    HDT_N
+};
+
+
 class SMPCache : public MemObj {
 public:
     typedef CacheGeneric<SMPCacheState, PAddr, false>            CacheType;
@@ -46,6 +57,8 @@ public:
 
 private:
 	static const char *cohOutfile;
+    HomeDirectoryType_e homeDirType;
+    int homeDirBlockSize;   // In size of 2^(homeDirBlockSize) cache lines
 
     void processReply(MemRequest *mreq);
     //void resolveSituation(SMPMemRequest *sreq);
@@ -59,6 +72,7 @@ protected:
     TimeDelta_t hitDelay;
 
     MSHR<PAddr, SMPCache> *outsReq; // buffer for requests coming from upper levels
+    static std::map<PAddr, int> dirMap;
     //static MSHR<PAddr, SMPCache> *mutExclBuffer;
 
 
@@ -192,6 +206,11 @@ public:
     inline int32_t getNodeID() { return nodeID; }
     int32_t getHomeNodeID(PAddr addr);
     int32_t getL2NodeID(PAddr addr);
+    int32_t getL2NodeID_stride(int32_t blockIndex);
+    int32_t getL2NodeID_firstTouch(int32_t blockIndex);
+    int32_t getL2NodeID_random(int32_t blockIndex);
+    int32_t getL2NodeID_profile(int32_t blockIndex);
+    int32_t getL2NodeID_dynamic(int32_t blockIndex);
 
     //std::map<PAddr, bool> pendingWriteBackReq;
     std::map<PAddr, int32_t> pendingInvCounter;
