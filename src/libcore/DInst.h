@@ -25,6 +25,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "pool.h"
 #include "nanassert.h"
 
+#include "MemObj.h"
 #include "libll/ThreadContext.h"
 #include "libll/Instruction.h"
 #include "callback.h"
@@ -116,6 +117,9 @@ private:
     bool resolved; // For load/stores when the address is computer, for
     // the rest of instructions when it is executed
 
+    MemObj *hitIn; // For load/stores to check at which level we hit
+    bool localStackData;
+    bool tmOp;
 
 #ifdef SESC_MISPATH
     bool fake;
@@ -196,6 +200,11 @@ private:
     CallbackBase *pendEvent;
 
     char nDeps;              // 0, 1 or 2 for RISC processors
+
+public:
+    std::string outTrace;
+    std::string instTrace0;
+    std::string instTrace10;
 
 #ifdef DEBUG
 public:
@@ -399,6 +408,14 @@ public:
         return inst;
     }
 
+	InstType getOpcode() const {
+		return inst->getOpcode();
+	}
+
+    bool isTMOp() const {
+        return tmOp;
+    }
+
     VAddr getVaddr() const {
         return vaddr;
     }
@@ -473,6 +490,13 @@ public:
 
     bool isEarlyRecycled() const {
         return false;
+    }
+
+    void setHitIn(MemObj *where) {
+        hitIn = where;
+    }
+    MemObj *getHitIn() const {
+        return hitIn;
     }
 
 #ifdef SESC_MISPATH

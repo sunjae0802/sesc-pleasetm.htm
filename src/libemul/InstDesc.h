@@ -23,15 +23,43 @@ namespace Mips {
 	InstDesc *emulNop(InstDesc *inst, ThreadContext *context);
 	InstDesc *emulBreak(InstDesc *inst, ThreadContext *context);
 	InstDesc *emulSyscl(InstDesc *inst, ThreadContext *context);
+#if (defined TM)
+    InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context);
+    InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context);
+    InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context);
+    InstDesc *emulTMTest(InstDesc *inst, ThreadContext *context);
+#endif
 }
 
-void handlePTCreateCall(InstDesc *inst, ThreadContext *context);
-void handlePTCreateRet(InstDesc *inst, ThreadContext *context);
-
-void handleBarrierWaitCall(InstDesc *inst, ThreadContext *context);
-void handleBarrierWaitRet(InstDesc *inst, ThreadContext *context);
-void handleJoinCall(InstDesc *inst, ThreadContext *context);
-void handleJoinRet(InstDesc *inst, ThreadContext *context);
+// pthread_mutex call/return
+void handleLockCall(InstDesc *inst, ThreadContext *context);
+void handleLockRet(InstDesc *inst, ThreadContext *context);
+void handleUnlockCall(InstDesc *inst, ThreadContext *context);
+// pthread_spin call/return
+void handleSpinLockCall(InstDesc *inst, ThreadContext *context);
+void handleSpinLockRet(InstDesc *inst, ThreadContext *context);
+void handleSpinUnlockCall(InstDesc *inst, ThreadContext *context);
+// pthread_barrier call/return
+void handleBarrierCall(InstDesc *inst, ThreadContext *context);
+void handleBarrierRet(InstDesc *inst, ThreadContext *context);
+// main call/return
+void handleMainCall(InstDesc *inst, ThreadContext *context);
+void handleMainRet(InstDesc *inst, ThreadContext *context);
+// TM Lib call/return
+void handleTMBeginCall(InstDesc *inst, ThreadContext *context);
+void handleTMBeginFallbackCall(InstDesc *inst, ThreadContext *context);
+void handleTMBeginFallbackRet(InstDesc *inst, ThreadContext *context);
+void handleTMEndFallbackCall(InstDesc *inst, ThreadContext *context);
+void handleTMEndFallbackRet(InstDesc *inst, ThreadContext *context);
+void handleTMAcquireFlagCall(InstDesc *inst, ThreadContext *context);
+void handleTMAcquireFlagRet(InstDesc *inst, ThreadContext *context);
+void handleTMWaitCall(InstDesc *inst, ThreadContext *context);
+void handleTMWaitRet(InstDesc *inst, ThreadContext *context);
+void handleTMEndCall(InstDesc *inst, ThreadContext *context);
+void handleTMEndRet(InstDesc* inst, ThreadContext* context);
+// HTM call/return
+void handleHTMStartCall(InstDesc *inst, ThreadContext *context);
+void handleHTMCommitCall(InstDesc *inst, ThreadContext *context);
 
 enum InstTypInfoEnum {
     // Main instruction opcode
@@ -41,6 +69,13 @@ enum InstTypInfoEnum {
     TypFpOp     = 0x200,
     TypBrOp     = 0x300,
     TypMemOp    = 0x400,
+#if (defined TM)
+	TypTMOp		= 0x500,
+	TMOpBegin	= 0x00+TypTMOp,
+	TMOpAbort	= 0x10+TypTMOp,
+	TMOpCommit	= 0x20+TypTMOp,
+	TMOpTest	= 0x30+TypTMOp,
+#endif
 
     TypSubMask  = 0xFF0, // Mask for the subtype
     // Subtypes for integer opcodes

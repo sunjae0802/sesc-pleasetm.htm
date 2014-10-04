@@ -58,6 +58,9 @@ GProcessor::GProcessor(GMemorySystem *gm, CPU_t i, size_t numFlows)
     ,noFetch2("Processor(%d)_noFetch2", i)
     ,retired("ExeEngine(%d)_retired", i)
     ,notRetiredOtherCause("ExeEngine(%d):noRetOtherCause", i)
+#if (defined TM)
+	,tmInsts("Processor(%d):TMInsts", i)
+#endif
     ,nLocks("Processor(%d):nLocks", i)
     ,nLockContCycles("Processor(%d):nLockContCycles", i)
 {
@@ -495,6 +498,9 @@ void GProcessor::retire()
         ROB.pop();
 
         robEnergy->inc(); // read ROB entry (finished?, update retirement rat...)
+#if (defined TM)
+		tmInsts.inc();
+#endif
     }
 
     if(!ROB.empty() || i != 0)

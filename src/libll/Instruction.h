@@ -73,6 +73,9 @@ private:
     static InstHash instHash;
 
 public:
+#if (defined TM)
+	TMInstType tmcode;
+#endif
     InstType opcode;
     RegType src1;
     RegType src2;

@@ -37,6 +37,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "Port.h"
 #include "Resource.h"
 
+#if (defined TM)
+#include "libTM/TMCoherence.h"
+#include "libTM/TMContext.h"
+#endif
 
 Resource::Resource(Cluster *cls, PortGeneric *aGen)
     : cluster(cls)
@@ -63,6 +67,7 @@ void Resource::executed(DInst *dinst)
 
 RetOutcome Resource::retire(DInst *dinst)
 {
+    traceEvent(dinst);
     cluster->retire(dinst);
     dinst->destroy();
     return Retired;
@@ -165,15 +170,19 @@ RetOutcome FUMemory::retire(DInst *dinst)
             return WaitForFence;
         else
             r->storeSent();
+        traceEvent(dinst);
         DMemRequest::create(dinst, memorySystem, MemWrite);
     } else if( inst->getSubCode() == iMemFence ) {
         ((FUStore*)(getCluster()->getResource(iStore)))->doFence();
+        traceEvent(dinst);
         dinst->destroy();
     } else if( inst->getSubCode() == iAcquire ) {
+        traceEvent(dinst);
         // TODO: Consistency in LDST
         dinst->destroy();
     } else {
         I( inst->getSubCode() == iRelease );
+        traceEvent(dinst);
         // TODO: Consistency in LDST
         dinst->destroy();
     }
@@ -297,6 +306,7 @@ RetOutcome FULoad::retire(DInst *dinst)
     if (!dinst->isFake() && !dinst->isEarlyRecycled())
         freeLoads++;
 
+    traceEvent(dinst);
     dinst->destroy();
 
     // ldqRdWrEnergy->inc(); // Loads do not update fields at retire, just update pointers
@@ -428,6 +438,7 @@ RetOutcome FUStore::retire(DInst *dinst)
     else
         storeSent();
 
+    traceEvent(dinst);
     DMemRequest::create(dinst, memorySystem, MemWrite);
 
     doRetire(dinst);
@@ -548,6 +559,7 @@ RetOutcome FUBranch::retire(DInst *dinst)
 #endif
     }
 
+    traceEvent(dinst);
     cluster->retire(dinst);
     dinst->destroy();
 
@@ -586,4 +598,29 @@ void FUEvent::simTime(DInst *dinst)
     cluster->executed(dinst);
 }
 
+void Resource::traceEvent(DInst *dinst) {
+    const Instruction *inst = dinst->getInst();
+    ThreadContext *context = dinst->context;
+    std::ofstream& out = context->getDatafile();
+    // XXX
+    context->incNRetiredInsts();
+    if(dinst->isTMOp()) {
+        if(inst->tmcode == TMBegin) {
+            context->initTMMemOps();
+        } else {
+            context->retireTMMemOp(dinst->getVaddr(), inst->isStore());
+        }
+    }
+
+    if(!dinst->outTrace.empty()) {
+        out << dinst->outTrace << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+        out.flush();
+    }
+    if(!dinst->instTrace0.empty()) {
+        out << dinst->instTrace0 << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+    }
+    if(!dinst->instTrace10.empty()) {
+        out << dinst->instTrace10 << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+    }
+}
 

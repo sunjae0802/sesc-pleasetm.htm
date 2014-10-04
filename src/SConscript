@@ -373,6 +373,9 @@ if env['NETWORK'] == 'BOOKSIM':
 if env['MEMORY'] == 'DRAMSIM2':
     env.Append(CPPDEFINES = ['DRAMSIM2', 'NO_STORAGE', 'LOG_OUTPUT'])
 
+if env['ENABLE_TM']:
+    env.Append(CPPDEFINES = ['TM']) 
+
 env.Append(CPPPATH=['libsuc'])
 
 # Debug binary

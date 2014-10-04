@@ -120,13 +120,19 @@ void Processor::advanceClock()
     //  GMSG(!ROB.empty(),"robTop %d Ul %d Us %d Ub %d",ROB.getIdFromTop(0)
     //       ,unresolvedLoad, unresolvedStore, unresolvedBranch);
 
-    // Fetch Stage
-    if (IFID.hasWork() ) {
-        IBucket *bucket = pipeQ.pipeLine.newItem();
-        if( bucket ) {
-            IFID.fetch(bucket);
+#if (defined TM)
+	if(!tmCohManager->checkStall(IFID.getPid())) {
+#endif
+        // Fetch Stage
+        if (IFID.hasWork() ) {
+            IBucket *bucket = pipeQ.pipeLine.newItem();
+            if( bucket ) {
+                IFID.fetch(bucket);
+            }
         }
-    }
+#if (defined TM)
+	}
+#endif
 
     // ID Stage (insert to instQueue)
     if (spaceInInstQueue >= FetchWidth) {

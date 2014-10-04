@@ -221,6 +221,14 @@ void FetchEngine::realFetch(IBucket *bucket, int32_t fetchMax)
         if (dinst == 0)
             break;
 
+#if (defined TM)
+        if(tmCohManager->checkStall(myPid)) {
+            // If the dinst was aborted memop, or TM instructions that are backing off
+            dinst->scrap();
+            dinst = 0;
+            break;
+        }
+#endif
         const Instruction *inst = dinst->getInst();
 
         instFetched(dinst);

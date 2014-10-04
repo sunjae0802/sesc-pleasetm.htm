@@ -12,6 +12,10 @@
 #include "libemul/InstDesc.h"
 #include "libemul/LinuxSys.h"
 
+#if (defined TM)
+#include "libTM/TMContext.h"
+#endif
+
 // Use this define to debug the simulated application
 // It enables call stack tracking
 //#define DEBUG_BENCH
@@ -26,15 +30,47 @@ public:
 private:
     void initialize(bool child);
 	void cleanup();
+    void initTrace();
+    void closeTrace();
     typedef std::vector<pointer> ContextVector;
     // Static variables
     static ContextVector pid2context;
+
+
+	// TM
+#if (defined TM)
+    // Unique transaction identifier
+    uint64_t tmUtid;
+    // Transaction begin/commit flags
+    BCFlag  tmBCFlag;
+    // Saved thread context
+    TMContext *tmContext;
+    // Where user had called HTM "instructions"
+    VAddr tmCallsite;
+    // User-passed abort arg
+    uint32_t tmAbortArg;
+    // The IAddr when we found out TM has aborted
+    VAddr  tmAbortIAddr;
+    // Count how many cycles we're being nacked from tm.begin
+    size_t tmBeginNackCycles;
+
+    struct MemOp {
+        MemOp(VAddr a, bool store, Time_t t): addr(a), isStore(store), time(t) {}
+        VAddr   addr;
+        bool    isStore;
+        Time_t  time;
+    };
+
+
+    std::vector<MemOp> tmMemOps;
+#endif
 
     // Memory Mapping
 
     // Lower and upper bound for stack addresses in this thread
     VAddr myStackAddrLb;
     VAddr myStackAddrUb;
+    uint64_t nRetiredInsts;
 
     // Local Variables
 private:
@@ -54,9 +90,71 @@ private:
     VAddr     dAddr;
     size_t    nDInsts;
 
+    bool  traceMemOps;
+
+    // HACK to balance calls/returns
+    typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
+    std::vector<std::pair<VAddr, retHandler_t> > retHandlers;
 private:
 
 public:
+    int32_t userTid;
+
+    void addCall(VAddr ra, retHandler_t handler) {
+        retHandlers.push_back(std::make_pair(ra, handler));
+    }
+    void handleReturns(VAddr destIAddr, InstDesc *inst) {
+        while(!retHandlers.empty()) {
+            std::pair<VAddr, retHandler_t> handler_ra = retHandlers.back();
+            if(handler_ra.first == destIAddr) {
+                handler_ra.second(inst, this);
+                retHandlers.pop_back();
+            } else {
+                break;
+            }
+        }
+    }
+    bool retsEmpty() const { return retHandlers.empty(); }
+
+    void startMemopTrace()  { traceMemOps = true; }
+    void stopMemopTrace()   { traceMemOps = false; }
+    bool memopTrace() const { return traceMemOps; }
+#if (defined TM)
+    // Transactional Helper Methods
+    int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
+    bool isInTM()           const { return getTMdepth() > 0; }
+    bool isTMAborting()     const { return tmCohManager->checkAborting(pid); }
+    bool markedForAbort()   const { return tmCohManager->markedForAbort(pid); }
+    bool isTMNacking()      const { return tmCohManager->checkNacking(pid); }
+
+    void retireTMMemOp(VAddr addr, bool isStore) { tmMemOps.push_back(MemOp(addr, isStore, globalClock)); }
+    void initTMMemOps() { tmMemOps.clear(); }
+    VAddr tmEndRA;
+
+    TMContext* getTMContext() const { return tmContext; }
+    void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
+
+    void setTMCallsite(VAddr ra) { tmCallsite = ra; }
+    VAddr getTMCallsite() const { return tmCallsite; }
+
+    // Transactional Methods
+    uint32_t beginTransaction(InstDesc* inst);
+    void commitTransaction(InstDesc* inst);
+    void abortTransaction(uint32_t arg = 0);
+    uint32_t completeAbort(InstDesc* inst);
+    uint32_t getBeginArg();
+    uint32_t getAbortArg();
+    void completeFallback();
+#endif
+
+    void incNRetiredInsts() {
+        nRetiredInsts++;
+    }
+
+    uint64_t getNRetiredInsts() const {
+        return nRetiredInsts;
+    }
+
     static inline int32_t getPidUb(void) {
         return pid2context.size();
     }
@@ -75,6 +173,11 @@ public:
         memset(regs,0,sizeof(regs));
     }
 
+#if (defined TM)
+	void setReg(RegName name, RegVal val) {
+		regs[name] = val;
+	}
+#endif
     // Returns the pid of the context
     Pid_t getPid(void) const {
         return pid;
@@ -217,6 +320,19 @@ public:
 //    for(size_t i=0;i<(sizeof(T)+MemState::Granularity-1)/MemState::Granularity;i++)
 //      if(getState(addr+i*MemState::Granularity).st==0)
 //        fail("Uninitialized read found\n");
+
+#if (defined TM)
+        if(isInTM()) {
+            T val;
+            T oval = addressSpace->read<T>(addr);
+            tmContext->cacheAccess<T>(addr, oval, &val);
+
+            return val;
+        } else if(tmCohManager) {
+            tmCohManager->nonTMread(pid, addr);
+        }
+#endif
+
         return addressSpace->read<T>(addr);
     }
     template<class T>
@@ -240,6 +356,17 @@ public:
         }
 //    for(size_t i=0;i<(sizeof(T)+MemState::Granularity-1)/MemState::Granularity;i++)
 //      getState(addr+i*MemState::Granularity).st=1;
+
+#if (defined TM)
+        if(isInTM()) {
+            tmContext->cacheWrite<T>(addr, val);
+            // addressSpace->write done in cache flush
+            return;
+        } else if(tmCohManager) {
+            tmCohManager->nonTMwrite(pid, addr);
+        }
+#endif
+
         addressSpace->write<T>(addr,val);
     }
 #if (defined DEBUG_BENCH)
@@ -433,21 +560,48 @@ public:
     void clearCallStack(void);
 
 public:
-    int numThreads;
-    int maxThreads;
+    std::string outTrace;
+    std::string instTrace0;
+    std::string instTrace10;
+
+    int32_t lockDepth;
+    bool spinning;
+    uint32_t s_lockRA;
+    uint32_t s_lockArg;
+    uint32_t s_barrierRA;
+    uint32_t s_barrierArg;
+    static bool inMain;
+
+    static size_t numThreads;
+
+    std::ofstream datafile;
+    std::ofstream& getDatafile() {
+        return getMainThreadContext()->datafile;
+    }
 
     void incParallel(Pid_t wpid) {
         std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Create"<<std::endl<<std::flush;
-        numThreads++;
-        maxThreads = numThreads;
+        getDatafile()<<ThreadContext::numThreads<<" 0 "<<getNRetiredInsts()<<' '<<globalClock<<std::endl;
+        ThreadContext::numThreads++;
     }
 
     void decParallel(Pid_t wpid) {
-        numThreads--;
+        ThreadContext::numThreads--;
         std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Exit"<<std::endl<<std::flush;
+        getDatafile()<<ThreadContext::numThreads<<" 1 "<<getNRetiredInsts()<<' '<<globalClock<<std::endl;
     }
 
     bool parallel;
+
+    void incLockDepth() {
+        lockDepth++;
+    }
+    void decLockDepth() {
+        lockDepth--;
+    }
+    int32_t getLockDepth() const {
+        return lockDepth;
+    }
 };
 
 #endif // THREADCONTEXT_H

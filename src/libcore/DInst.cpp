@@ -263,6 +263,18 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->pend[0].preg = 0;
     i->pend[1].preg = 0;
 #endif
+    i->hitIn        = NULL;
+    i->localStackData= context->isLocalStackData(va);
+    i->tmOp         = context->isInTM();
+
+    i->outTrace = context->outTrace;
+    context->outTrace.clear();
+
+    i->instTrace10 = context->instTrace10;
+    context->instTrace10 = "";
+
+    i->instTrace0 = context->instTrace0;
+    context->instTrace0 = "";
 
     return i;
 }

@@ -109,6 +109,10 @@ protected:
     GStatsCntr  notRetiredOtherCause;
     GStatsCntr *notRetired[MaxNoRetResp][MaxInstType][MaxRetOutcome];
 
+#if (defined TM)
+	GStatsCntr  tmInsts;
+#endif
+
     // Construction
     void buildInstStats(GStatsCntr *nInstFake[MaxInstType], const char *txt);
 

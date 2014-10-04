@@ -3589,6 +3589,9 @@ void RealLinuxSys<mode>::sysFCntl(ThreadContext *context, InstDesc *inst, int ar
 }
 template<ExecMode mode>
 void RealLinuxSys<mode>::sysRead(ThreadContext *context, InstDesc *inst, int argPos) {
+#if (defined TM)
+	assert(!context->isInTM());
+#endif
     Tint       fd;
     Tpointer_t buf;
     Tsize_t    count;
@@ -3645,6 +3648,9 @@ void RealLinuxSys<mode>::sysRead(ThreadContext *context, InstDesc *inst, int arg
 }
 template<ExecMode mode>
 void RealLinuxSys<mode>::sysWrite(ThreadContext *context, InstDesc *inst, int argPos) {
+#if (defined TM)
+	assert(!context->isInTM());
+#endif
     Tint       fd;
     Tpointer_t buf;
     Tsize_t    count;

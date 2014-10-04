@@ -43,6 +43,12 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 unsigned long long lastFin = 0;
 #endif
 
+#if (defined TM)
+#include "libTM/TMCoherence.h"
+#endif
+
+void initTMCoherence(int32_t nProcs);
+
 #if (defined SIGDEBUG)
 #include <signal.h>
 #include "SMPCache.h"
@@ -128,8 +134,52 @@ void print_stat(int param) {
 }
 #endif
 
+void initTMCoherence(int32_t nProcs)
+{
+#if (defined TM)
+    string method = SescConf->getCharPtr("TransactionalMemory","method");
+    int cacheLineSize = SescConf->getInt("TransactionalMemory","cacheLineSize");
+    int numLines = SescConf->getInt("TransactionalMemory","numLines");
+	int hwHintType = SescConf->getInt("TransactionalMemory","hwHintType");
+	int returnArgType = SescConf->getInt("TransactionalMemory","returnArgType");
+    if(method == "EE") {
+        tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LL") {
+        tmCohManager = new TMLLCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE") {
+        tmCohManager = new TMLECoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-Hourglass") {
+        tmCohManager = new TMLEHourglassCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-SOK") {
+        tmCohManager = new TMLESOKCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-SOK-Queue") {
+        tmCohManager = new TMLESOKQueueCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-SOA-Original") {
+        tmCohManager = new TMLESOA0Coherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-SOA2") {
+        tmCohManager = new TMLESOA2Coherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-Lock") {
+        tmCohManager = new TMLELockCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-Lock0") {
+        tmCohManager = new TMLELock0Coherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-WAR") {
+        tmCohManager = new TMLEWARCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-ATS") {
+        tmCohManager = new TMLEATSCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-ASet") {
+        tmCohManager = new TMLEAsetCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "LE-Snoop") {
+        tmCohManager = new TMLESnoopCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else {
+        MSG("unknown TM method, using EE");
+        tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    }
+#endif
+}
+
 int32_t main(int32_t argc, char**argv, char **envp)
 {
+    srand(1);
 #if (defined SIGDEBUG)
     void (*prev_fn)(int);
     prev_fn = signal (SIGINT,print_stat);
@@ -139,6 +189,10 @@ int32_t main(int32_t argc, char**argv, char **envp)
     int32_t nProcs = SescConf->getRecordSize("","cpucore");
 
     GLOG(SMPDBG_CONSTR, "Number of Processors: %d", nProcs);
+
+#if (defined TM)
+    initTMCoherence(nProcs);
+#endif
 
     // processor and memory build
     std::vector<GProcessor *>    pr(nProcs);

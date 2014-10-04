@@ -29,6 +29,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <functional>
 // We need std::vector
 #include <vector>
+#include <sstream>
 
 #include "GStats.h"
 
@@ -46,6 +47,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // To get getContext(pid), needed to implement LL/SC
 // (Remove this when ThreadContext stays in one place on thread switching)
 #include "libcore/OSSim.h"
+
+#if (defined TM)
+#include "libTM/TMContext.h"
+#endif
 
 template<size_t siz>
 struct TypesBySize {
@@ -539,6 +544,12 @@ static inline void preExec(InstDesc *inst, ThreadContext *context) {
 #endif
 }
 
+#if (defined TM)
+static inline bool markedForAbort(InstDesc *inst, ThreadContext *context) {
+    return context->isInTM() && context->markedForAbort();
+}
+#endif
+
 InstDesc *emulCut(InstDesc *inst, ThreadContext *context) {
     context->setIAddr(context->getIAddr());
     I(context->getIDesc()!=inst);
@@ -549,6 +560,43 @@ InstDesc *emulNop(InstDesc *inst, ThreadContext *context) {
     context->updIAddr(inst->aupdate,1);
     return (*(inst+1))(context);
 }
+
+#if (defined TM)
+InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
+    Pid_t pid = context->getPid();
+    if(tmCohManager->checkAborting(pid)) {
+        uint32_t abortArg = context->completeAbort(inst);
+        ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, abortArg);
+    } else {
+        uint32_t beginArg = context->beginTransaction(inst);
+        ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, beginArg);
+    }
+
+    return inst;
+}
+
+InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
+    Pid_t pid = context->getPid();
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+    arg = arg << 8; // bottom 8 bits are reserved
+
+    context->abortTransaction(arg);
+    return inst;
+}
+
+InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context) {
+    context->commitTransaction(inst);
+    return inst;
+}
+
+InstDesc *emulTMTest(InstDesc *inst, ThreadContext *context) {
+    uint32_t isInTM = (uint32_t)context->isInTM();
+    ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, isInTM);
+    context->updIAddr(inst->aupdate,1);
+
+    return inst;
+}
+#endif
 
 template<class _V, class _Ts, class _Td>
 struct mips_fcvt : public fns::function2<_V,_Td,_Ts,uint8_t> {
@@ -578,6 +626,12 @@ InstDesc *emulBreak(InstDesc *inst, ThreadContext *context) {
 }
 
 InstDesc *emulSyscl(InstDesc *inst, ThreadContext *context) {
+#if (defined TM)
+	if(context->isInTM()) {
+        context->abortTransaction(2);
+		return inst;
+    }
+#endif
     return context->getSystem()->sysCall(context,inst);
 }
 
@@ -751,10 +805,16 @@ class DecodeInst {
 public:
     template<typename T>
     static inline T readMem(ThreadContext *context, Taddr_t addr) {
+        if(addr == 0) {
+            fail("Null pointer exception\n");
+        }
         return fixEndian(context->readMemRaw<T>(addr));
     }
     template<typename T>
     static inline void writeMem(ThreadContext *context, Taddr_t addr, const T &val) {
+        if(addr == 0) {
+            fail("Null pointer exception\n");
+        }
         context->writeMemRaw(addr,fixEndian(val));
         if(!linkset.empty()) {
             PidSet::iterator pidIt=linkset.begin();
@@ -1026,11 +1086,34 @@ public:
         InstType    iType    =iOpInvalid;
         InstSubType iSubType =iSubInvalid;
         MemDataSize iDataSize=0;
+#if (defined TM)
+        sescInst->tmcode = TMNT;
+#endif
         switch(typ&TypOpMask) {
         case TypNop:
             sescInst->opcode=iALU;
             sescInst->subCode=iNop;
             break;
+#if (defined TM)
+        case TypTMOp:
+            sescInst->opcode=iALU;
+            sescInst->subCode=iSubInvalid;
+            switch(typ&TypSubMask) {
+                case TMOpBegin:
+                    sescInst->tmcode=TMBegin;
+                    break;
+                case TMOpAbort:
+                    sescInst->tmcode=TMAbort;
+                    break;
+                case TMOpCommit:
+                    sescInst->tmcode=TMCommit;
+                    break;
+                case TMOpTest:
+                    sescInst->tmcode=TMTest;
+                    break;
+            }
+            break;
+#endif
         case TypIntOp:
             switch(typ&TypSubMask) {
             case IntOpALU:
@@ -1341,7 +1424,16 @@ public:
                 setReg<Tcond_t,RegTypeSpc>(context,inst->regDst,cond?1:0);
             // Update the PC and next instruction
             if(NxtTyp==NextBReg) {
-                context->setIAddr(getReg<Taddr_t,RegTypeGpr>(context,inst->regSrc1));
+                // Handle lost fallback calls
+                VAddr destIAddr = getReg<Taddr_t,RegTypeGpr>(context,inst->regSrc1);
+
+                // Try to handle tm_begin_fallback and tm_wait before tm_begin, tm_end
+                context->handleReturns(destIAddr, inst);
+
+                if(destIAddr == context->tmEndRA) {
+                    handleTMEndRet(inst, context);
+                }
+                context->setIAddr(destIAddr);
             } else if(NxtTyp==NextCont) {
                 context->updIDesc(1);
             } else if(NxtTyp==NextBImm) {
@@ -1399,6 +1491,12 @@ public:
         template<RegName DTyp,RegName S1Typ,RegName S2Typ,NextTyp NTyp>
         static InstDesc *emul(InstDesc *inst, ThreadContext *context) {
             preExec(inst,context);
+#if (defined TM)
+            if(markedForAbort(inst, context)) {
+                context->abortTransaction();
+                return inst;
+            }
+#endif
             Taddr_t addr=AFunc::eval(getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal1,typename AFunc::TArg1>(inst,context),
                                      getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal2,typename AFunc::TArg2>(inst,context));
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
@@ -1422,13 +1520,40 @@ public:
                     rval&=(MemT(-256)<<(8*offs));
                     rval|=((mval>>(8*(sizeof(MemT)-offs-1)))&(~(MemT(-256)<<(8*offs))));
                 }
-                setReg<Tregv_t,DTyp>(context,inst->regDst,Extend<MemT,Tregv_t>::ext(rval));
+#if (defined TM)
+                if((!markedForAbort(inst, context) && !context->isTMNacking())) {
+#endif
+                    setReg<Tregv_t,DTyp>(context,inst->regDst,Extend<MemT,Tregv_t>::ext(rval));
+#if (defined TM)
+                }
+#endif
             } else {
                 MemT  val=readMem<MemT>(context,addr);
-                if(kind&LdStNoExt)
-                    setReg<MemT,DTyp>(context,inst->regDst,val);
-                else
-                    setReg<Tregv_t,DTyp>(context,inst->regDst,Extend<MemT,Tregv_t>::ext(val));
+#if (defined TM)
+                if((!markedForAbort(inst, context) && !context->isTMNacking())) {
+#endif
+                    if(kind&LdStNoExt)
+                        setReg<MemT,DTyp>(context,inst->regDst,val);
+                    else
+                        setReg<Tregv_t,DTyp>(context,inst->regDst,Extend<MemT,Tregv_t>::ext(val));
+#if (defined TM)
+                }
+#endif
+            }
+#if (defined TM)
+            if(markedForAbort(inst, context)) {
+                context->abortTransaction();
+                return inst;
+            } else if(context->isTMNacking()) {
+                return inst;
+            }
+#endif
+            if (context->memopTrace() && context->isLocalStackData(addr) == false) {
+                std::ostringstream out;
+                out<<context->getPid()<<" R"
+                            <<" 0x"<<std::hex<<inst->getSescInst()->getAddr()<<std::dec
+                            <<" 0x"<<std::hex<<addr<<std::dec;
+                context->instTrace10 = out.str();
             }
             return nextInst<NTyp>(inst,context);
         }
@@ -1440,6 +1565,12 @@ public:
         template<RegName DTyp,RegName S1Typ,RegName S2Typ,NextTyp NTyp>
         static InstDesc *emul(InstDesc *inst, ThreadContext *context) {
             preExec(inst,context);
+#if (defined TM)
+            if(markedForAbort(inst, context)) {
+                context->abortTransaction();
+                return inst;
+            }
+#endif
             Taddr_t addr=AFunc::eval(getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal1,typename AFunc::TArg1>(inst,context),
                                      getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal2,typename AFunc::TArg2>(inst,context));
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
@@ -1465,6 +1596,22 @@ public:
                 if(kind==LdStLlSc)
                     setReg<Tregv_t,DTyp>(context,inst->regDst,1);
             }
+#if (defined TM)
+            if(markedForAbort(inst, context)) {
+                context->abortTransaction();
+                return inst;
+            } else if(context->isTMNacking()) {
+                return inst;
+            }
+#endif    
+
+            if (context->memopTrace() && context->isLocalStackData(addr) == false) {
+                std::ostringstream out;
+                out<<context->getPid()<<" W"
+                            <<" 0x"<<std::hex<<inst->getSescInst()->getAddr()<<std::dec
+                            <<" 0x"<<std::hex<<addr<<std::dec;
+                context->instTrace10 = out.str();
+            }
             return nextInst<NTyp>(inst,context);
         }
         DecodeRegs(emulSt);
@@ -1476,6 +1623,12 @@ public:
         template<RegName DTyp,RegName S1Typ,RegName S2Typ,NextTyp NTyp>
         static InstDesc *emul(InstDesc *inst, ThreadContext *context) {
             preExec(inst,context);
+#if (defined TM)
+            if(markedForAbort(inst, context)) {
+                context->abortTransaction();
+                return inst;
+            }
+#endif
 
             Taddr_t addr=AFunc::eval(getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal1,typename AFunc::TArg1>(inst,context),
                                      getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal2,typename AFunc::TArg2>(inst,context));
@@ -1931,6 +2084,12 @@ DecodeInst<mode>::OpMap::OpMap(void) {
     ops[OpKey(0xFFE0003F,0x46A00021)]<<OpData("cvt.d.l"   , CtlNorm , FpOpALU  , ArgFd  , ArgFs  , ArgRM  , ImmNo  , emulAlu<mips_fcvt<VR1R2,int64_t,  float64_t> >());
 
     ops[OpKey(0xFC00F83F,0x00000000)]<<OpData("nop"       , CtlNorm , TypNop   , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulNop);
+#if (defined TM)
+    ops[OpKey(0xFC000000,0x70000000)]<<OpData( "tm.begin"     , CtlNorm , TMOpBegin   , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMBegin);
+    ops[OpKey(0xFC000000,0x74000000)]<<OpData( "tm.abort"     , CtlNorm , TMOpAbort   , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMAbort);
+    ops[OpKey(0xFC000000,0x78000000)]<<OpData( "tm.commit"    , CtlNorm , TMOpCommit  , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMCommit);
+    ops[OpKey(0xFC000000,0x7C000000)]<<OpData( "tm.test"      , CtlNorm , TMOpTest    , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMTest);
+#endif
 
     build(ops,OpKey(0,0));
 }
@@ -1996,29 +2155,259 @@ void handleEveryRet(InstDesc *inst, ThreadContext *context) {
 }
 #endif
 
-void handlePTCreateCall(InstDesc *inst, ThreadContext *context) {
+// pthread_mutex call/return
+void handleLockCall(InstDesc *inst, ThreadContext *context) {
+    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+    if(context->isInTM()) { fail("calling lock in TM"); }
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        out << context->getPid() << " 2 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+
+        context->s_lockRA  = ra;
+        context->s_lockArg = arg;
+    }
 }
 
-void handlePTCreateRet(InstDesc *inst, ThreadContext *context) {
+void handleLockRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = context->s_lockRA;
+        uint32_t arg = context->s_lockArg;
+
+        out << context->getPid() << " 3 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+
+        context->s_lockRA  = 0;
+        context->s_lockArg = 0;
+    }
+    context->incLockDepth();
 }
 
+void handleUnlockCall(InstDesc *inst, ThreadContext *context) {
+    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
 
-// ------------------------------------------------------------------------------------------------------------
-void handleBarrierWaitCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        out << context->getPid() << " 4 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+    }
+    context->decLockDepth();
 }
 
-void handleBarrierWaitRet(InstDesc *inst, ThreadContext *context) {
+// pthread_spin call/return
+void handleSpinLockCall(InstDesc *inst, ThreadContext *context) {
+    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+    if(context->isInTM()) { fail("calling lock in TM"); }
+    if(ThreadContext::inMain && !context->spinning) {
+        std::ostringstream out;
+        out << context->getPid() << " 5 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+
+        context->s_lockRA  = ra;
+        context->s_lockArg = arg;
+    }
+    context->spinning = true;
 }
 
-void handleJoinCall(InstDesc *inst, ThreadContext *context) {
+void handleSpinLockRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = context->s_lockRA;
+        uint32_t arg = context->s_lockArg;
+
+        out << context->getPid() << " 6 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+
+        context->s_lockRA  = 0;
+        context->s_lockArg = 0;
+    }
+    context->incLockDepth();
 }
 
-void handleJoinRet(InstDesc *inst, ThreadContext *context) {
+void handleSpinUnlockCall(InstDesc *inst, ThreadContext *context) {
+    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        out << context->getPid() << " 7 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+    }
+    context->spinning = false;
+    context->decLockDepth();
+}
+// pthread_barrier call/return
+void handleBarrierCall(InstDesc *inst, ThreadContext *context) {
+    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        out << context->getPid() << " B 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+
+        context->s_barrierRA  = ra;
+        context->s_barrierArg = arg;
+    }
 }
 
-// ------------------------------------------------------------------------------------------------------------
+void handleBarrierRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = context->s_barrierRA;
+        uint32_t arg = context->s_barrierArg;
 
+        out << context->getPid() << " b 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
 
+        context->s_barrierRA  = 0;
+        context->s_barrierArg = 0;
+    }
+}
+// main call/return
+void handleMainCall(InstDesc *inst, ThreadContext *context) {
+    ThreadContext::inMain = true;
+}
+
+void handleMainRet(InstDesc *inst, ThreadContext *context) {
+    ThreadContext::inMain = false;
+}
+
+// TM Lib call/return
+void handleTMBeginCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+        if(context->userTid == -1) {
+            context->userTid = arg;
+        } else if(context->userTid != (int32_t)arg) {
+            fail("tm_begin tid arg changed?\n");
+        }
+        out << context->getPid() << " S 0x" << hex << ra << " 0x" << arg << dec;
+        context->outTrace = out.str();
+    }
+}
+
+void handleTMBeginFallbackCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+
+        out << context->getPid() << " F 0x" << hex << ra << dec;
+        context->outTrace = out.str();
+        context->addCall(ra, &handleTMBeginFallbackRet);
+    }
+}
+void handleTMBeginFallbackRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+
+        out << context->getPid() << " E 0x" << hex << ra << dec;
+
+        context->outTrace = out.str();
+    }
+}
+void handleTMEndFallbackCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        context->addCall(ra, &handleTMEndFallbackRet);
+    }
+}
+void handleTMEndFallbackRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+
+        out << context->getPid() << " f 0x" << hex << ra << dec;
+
+        context->outTrace = out.str();
+        context->completeFallback();
+    }
+}
+void handleTMAcquireFlagCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+
+        out << context->getPid() << " G 0x" << hex << ra << dec;
+        context->outTrace = out.str();
+        context->addCall(ra, &handleTMAcquireFlagRet);
+    }
+}
+void handleTMAcquireFlagRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        uint32_t rv = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0);
+
+        out << context->getPid() << " g 0x" << hex << ra << dec << ' ' << rv;
+
+        context->outTrace = out.str();
+    }
+}
+
+void handleTMWaitCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+        out << context->getPid() << " V 0x" << hex << ra << dec << ' ' << arg;
+        context->outTrace = out.str();
+        context->addCall(ra, &handleTMWaitRet);
+    }
+}
+void handleTMWaitRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+
+        out << context->getPid() << " v 0x" << hex << ra << dec;
+        context->outTrace = out.str();
+    }
+}
+
+// TM Lib End Tracing
+void handleTMEndCall(InstDesc *inst, ThreadContext *context) {
+    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    I(context->tmEndRA == 0);
+    context->tmEndRA = ra;
+}
+
+void handleTMEndRet(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        std::ostringstream out;
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+
+        out << context->getPid() << " s 0x" << hex << ra << dec;
+        context->outTrace = out.str();
+        context->tmEndRA = 0;
+    }
+}
+
+// HTM call/return
+void handleHTMStartCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        context->setTMCallsite(ra);
+    }
+}
+
+void handleHTMCommitCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        context->setTMCallsite(ra);
+    }
+}
 template<ExecMode mode>
 bool decodeInstSize(ThreadContext *context, VAddr funcAddr, VAddr &curAddr, VAddr endAddr, size_t &tsize, bool domap) {
     switch(mode&ExecModeArchMask) {
@@ -2082,14 +2471,31 @@ void decodeTrace(ThreadContext *context, VAddr addr, size_t len) {
         AddressSpace::addCallHandler("",WrapHandler<handleEveryCall>);
         AddressSpace::addRetHandler("",WrapHandler<handleEveryRet>);
 #endif
-        // JJO begin
-        AddressSpace::addCallHandler("pthread_create",WrapHandler<handlePTCreateCall>);
-        AddressSpace::addRetHandler("pthread_create",WrapHandler<handlePTCreateRet>);
+        // pthread_mutex call/return
+		AddressSpace::addCallHandler("pthread_mutex_lock",WrapHandler<handleLockCall>);
+		AddressSpace::addRetHandler("pthread_mutex_lock",WrapHandler<handleLockRet>);
+		AddressSpace::addCallHandler("pthread_mutex_unlock",WrapHandler<handleUnlockCall>);
+        // pthread_spin call/return
+		AddressSpace::addCallHandler("pthread_spin_lock",WrapHandler<handleSpinLockCall>);
+		AddressSpace::addRetHandler("pthread_spin_lock",WrapHandler<handleSpinLockRet>);
+		AddressSpace::addCallHandler("pthread_spin_unlock",WrapHandler<handleSpinUnlockCall>);
+        // pthread_barrier call/return
+		AddressSpace::addCallHandler("pthread_barrier_wait",WrapHandler<handleBarrierCall>);
+		AddressSpace::addRetHandler("pthread_barrier_wait",WrapHandler<handleBarrierRet>);
+        // main call/return
+        AddressSpace::addCallHandler("main",WrapHandler<handleMainCall>);
+        AddressSpace::addRetHandler("main",WrapHandler<handleMainRet>);
+        // TM call/return
+        AddressSpace::addCallHandler("tm_begin",WrapHandler<handleTMBeginCall>);
+        AddressSpace::addCallHandler("tm_begin_fallback",WrapHandler<handleTMBeginFallbackCall>);
+        AddressSpace::addCallHandler("tm_end_fallback",WrapHandler<handleTMEndFallbackCall>);
+        AddressSpace::addCallHandler("tm_acquire_flag",WrapHandler<handleTMAcquireFlagCall>);
+        AddressSpace::addCallHandler("tm_wait",WrapHandler<handleTMWaitCall>);
+        AddressSpace::addCallHandler("tm_end",WrapHandler<handleTMEndCall>);
 
-		AddressSpace::addCallHandler("pthread_barrier_wait", WrapHandler<handleBarrierWaitCall>);
-		AddressSpace::addRetHandler("pthread_barrier_wait", WrapHandler<handleBarrierWaitRet>);
-		AddressSpace::addCallHandler("pthread_join", WrapHandler<handleJoinCall>);
-		AddressSpace::addRetHandler("pthread_join", WrapHandler<handleJoinRet>);
+        // HTM call/return
+        AddressSpace::addCallHandler("htm_start",WrapHandler<handleHTMStartCall>);
+        AddressSpace::addCallHandler("htm_commit",WrapHandler<handleHTMCommitCall>);
 
         didThis=true;
     }

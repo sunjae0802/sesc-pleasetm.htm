@@ -19,29 +19,282 @@ SESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
+// For ostringstream
+#include <sstream>
 #include "ThreadContext.h"
 #include "libemul/FileSys.h"
+#include "libcore/ProcessId.h"
 
 ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
+bool ThreadContext::inMain = false;
+size_t ThreadContext::numThreads = 0;
 
 void ThreadContext::initialize(bool child) {
-    numThreads = 0;
+    initTrace();
+
     getMainThreadContext()->incParallel(pid);
 
     parallel = child;
     if(child) {
         getMainThreadContext()->parallel = true;
     }
+
+    lockDepth = 0;
+    s_lockRA = 0;
+    s_lockArg = 0;
+    s_barrierRA = 0;
+    s_barrierArg = 0;
+    spinning    = false;
+    traceMemOps = false;
+
+#if (defined TM)
+    tmBCFlag    = INVALID_TM;
+    tmAbortIAddr= 0;
+    tmEndRA     = 0;
+    tmContext   = NULL;
+    tmCallsite  = 0;
+    tmBeginNackCycles = 0;
+    userTid     = -1;
+#endif
 }
 
 void ThreadContext::cleanup() {
 	getMainThreadContext()->decParallel(pid);
+    closeTrace();
+}
+#if defined(TM)
+uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
+    TMBCStatus status = tmCohManager->begin(pid, inst);
+    if(status == TMBC_SUCCESS) {
+        const TransState& transState = tmCohManager->getTransState(pid);
+        tmBCFlag    = DEFAULT_TM;
+        tmAbortIAddr= 0;
+        if(tmBeginNackCycles > 0) {
+            // Trace NACK end
+            std::ostringstream out0;
+            out0 << pid << " n 0x0";
+            instTrace0 = out0.str();
+        }
+        tmBeginNackCycles = 0;
+
+        uint64_t utid = transState.getUtid();
+        tmContext   = new TMContext(this, inst, utid);
+        tmContext->saveContext();
+
+        // Trace this instruction
+        std::ostringstream out;
+        out<<pid<<" T"
+                    <<" 0x"<<std::hex<<tmCallsite<<std::dec
+                    <<" "<<utid;
+        instTrace10 = out.str();
+
+        // Move instruction pointer to next instruction
+        updIAddr(inst->aupdate,1);
+
+        return getBeginArg();
+    } else if(status == TMBC_IGNORE) {
+        fail("Nesting not tested yet");
+        tmBCFlag = SUBSUMED_TM;
+        updIAddr(inst->aupdate,1);
+
+        return getBeginArg();
+    } else if(status == TMBC_NACK) {
+        if(tmBeginNackCycles == 0) {
+            // Trace NACK begin
+            std::ostringstream out;
+            out << pid << " N 0x0 " << tmCohManager->getTMNackOwner(pid);
+            instTrace10 = out.str();
+        }
+        tmBeginNackCycles++;
+        tmBCFlag = NACKED_BEGIN;
+        // And "return" from TM Begin
+        updIAddr(inst->aupdate,1);
+
+        return getBeginArg();
+    } else {
+        fail("Unhanded TM begin");
+    }
+}
+void ThreadContext::commitTransaction(InstDesc* inst) {
+    assert(tmContext);
+
+    // Save UTID before committing
+    uint64_t utid = tmCohManager->getUtid(pid);
+
+    TMBCStatus status = tmCohManager->commit(pid, tmContext->getId());
+    if(status == TMBC_IGNORE) {
+        fail("Nesting not tested yet");
+        tmBCFlag = SUBSUMED_TM;
+        updIAddr(inst->aupdate,1);
+    } else if(status == TMBC_NACK) {
+        // In the case of a Lazy model that can not commit yet
+    } else if(status == TMBC_ABORT) {
+        // In the case of a Lazy model where we are forced to Abort
+        abortTransaction();
+        tmBCFlag = ABORTED_TM;
+    } else if(status == TMBC_SUCCESS) {
+        // If we have already delayed, go ahead and finalize commit in memory
+        tmContext->flushMemory();
+
+        tmBCFlag    = DEFAULT_TM;
+        tmAbortIAddr= 0;
+        tmAbortArg  = 0;
+        assert(tmBeginNackCycles == 0);
+
+        TMContext* oldTMContext = tmContext;
+        if(isInTM()) {
+            tmContext = oldTMContext->getParentContext();
+        } else {
+            tmContext = NULL;
+        }
+
+        // Trace this instruction
+        std::ostringstream out;
+        out<<pid<<" C"
+                <<" 0x"<<std::hex<<tmCallsite<<std::dec
+                <<" 0";
+        instTrace10 = out.str();
+
+        // Move instruction pointer to next instruction
+        updIAddr(inst->aupdate,1);
+
+        delete oldTMContext;
+    } else {
+        assert(0);
+    }
+}
+void ThreadContext::abortTransaction(uint32_t arg) {
+    assert(tmContext);
+
+    // Save UTID before aborting
+    uint64_t utid = tmCohManager->getUtid(pid);
+
+    TMBCStatus status = tmCohManager->abort(pid, tmContext->getId());
+    if(status == TMBC_SUCCESS) {
+        const TransState& transState = tmCohManager->getTransState(pid);
+
+        // Since we jump to the outer-most context, find it first
+        TMContext* rootTMContext = tmContext;
+        while(rootTMContext->getParentContext()) {
+            TMContext* oldTMContext = rootTMContext;
+            rootTMContext = rootTMContext->getParentContext();
+            delete oldTMContext;
+        }
+        rootTMContext->restoreContext();
+
+        tmAbortIAddr= iAddr;
+        tmAbortArg  = arg;
+
+        TimeDelta_t opActive = 0;
+        std::vector<MemOp>::iterator i_tmMemOp = tmMemOps.begin();
+        for(; i_tmMemOp != tmMemOps.end(); ++i_tmMemOp) {
+            if(i_tmMemOp->addr >= tmCohManager->getTransState(pid).getAbortBy() &&
+                    i_tmMemOp->addr < tmCohManager->getTransState(pid).getAbortBy() + 64) {
+                opActive = (globalClock - i_tmMemOp->time);
+            }
+        }
+
+        VAddr beginIAddr = rootTMContext->getBeginIAddr();
+
+        tmContext = NULL;
+        delete rootTMContext;
+
+        // Move instruction pointer to BEGIN
+        setIAddr(beginIAddr);
+    } else {
+        assert(0);
+    }
 }
 
+uint32_t ThreadContext::completeAbort(InstDesc* inst) {
+    tmCohManager->completeAbort(pid);
+    tmBCFlag = COMPLETING_ABORT;
+
+    uint32_t returnArg = getAbortArg();
+
+    // Trace this instruction
+    std::ostringstream out;
+    const TransState &transState = tmCohManager->getTransState(pid);
+    Pid_t aborter = transState.getAborterPid();
+    if(transState.getAbortBy() == 0) {
+        out<<pid<<" Z"
+                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
+                        <<" "<<(tmAbortArg>>8)
+                        <<" "<<pid;
+    } else {
+        out<<pid<<" A"
+                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
+                        <<" 0x"<<std::hex<<transState.getAbortBy()<<std::dec
+                        <<" "<<aborter
+//                                        <<" "<<(tmAbortArg>>8)
+                        <<" "<<transState.getAbortType();
+    }
+    instTrace10 = out.str();
+
+    // And "return" from TM Begin
+    updIAddr(inst->aupdate,1);
+
+    return returnArg;
+}
+
+uint32_t ThreadContext::getAbortArg() {
+    const TransState& transState = tmCohManager->getTransState(pid);
+
+    uint32_t abortArg = 1;
+    abortArg |= tmAbortArg;
+    switch(tmCohManager->getReturnArgType()) {
+        case 0:
+            abortArg |= (transState.getAborterPid()) << 12;
+            break;
+        case 1:
+            abortArg |= (transState.getAbortBy());
+            break;
+        case 2:
+            abortArg |= (transState.getAborterPid()) << 12;
+            break;
+        default:
+            fail("TM Abort return arg type not specified");
+    }
+    return abortArg;
+}
+
+uint32_t ThreadContext::getBeginArg() {
+    if(tmBCFlag == NACKED_BEGIN) {
+        return 4 | 1;
+    } else {
+        return 0;
+    }
+}
+
+void ThreadContext::completeFallback() {
+    tmCohManager->completeFallback(pid);
+
+    tmBCFlag    = DEFAULT_TM;
+    tmAbortIAddr= 0;
+    tmAbortArg  = 0;
+    tmBeginNackCycles = 0;
+}
+
+#endif
+
+void ThreadContext::initTrace() {
+    if(getPid()==getMainThreadContext()->getPid()) {
+        char filename[256];
+        sprintf(filename, "datafile.out");
+        datafile.open(filename);
+    }
+}
+void ThreadContext::closeTrace() {
+	if(getPid()==getMainThreadContext()->getPid()) {
+        if(datafile.is_open()) {
+            datafile.close();
+        }
+    }
+}
 ThreadContext *ThreadContext::getContext(Pid_t pid)
 {
     I(pid>=0);
@@ -60,6 +313,7 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
     :
     myStackAddrLb(0),
     myStackAddrUb(0),
+    nRetiredInsts(0),
     execMode(ExecModeNone),
     iAddr(0),
     iDesc(InvalidInstDesc),
@@ -104,6 +358,7 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     :
     myStackAddrLb(parent.myStackAddrLb),
     myStackAddrUb(parent.myStackAddrUb),
+    nRetiredInsts(0),
     dAddr(0),
     nDInsts(0),
     fileSys(cloneFileSys?((FileSys::FileSys *)(parent.fileSys)):(new FileSys::FileSys(*(parent.fileSys),newNameSpace))),
@@ -219,6 +474,9 @@ void ThreadContext::resume(void) {
 }
 
 bool ThreadContext::exit(int32_t code) {
+    if(!retsEmpty()) {
+        fail("TM lib call not balanced");
+    }
 	cleanup();
     I(!isExited());
     I(!isKilled());

@@ -86,7 +86,7 @@ if not 'SWIG' in main_dict_keys:
     print "swig is not installed (package swig on Ubuntu and RedHat)"
     Exit(1)
 
-Default(environ.get('SESC_DEFAULT_BINARY', 'build/SMP_BOOKSIM/sesc.opt'))
+Default(environ.get('SESC_DEFAULT_BINARY', 'build/CMP_HTM/sesc.opt'))
 
 def rfind(l, elt, offs = -1):
     for i in range(len(l)+offs, 0, -1):
@@ -358,10 +358,12 @@ sticky_vars.AddVariables(
                   all_networks),
     EnumVariable('MEMORY', 'Memory Model', 'None',
                   all_memory),
+    BoolVariable('ENABLE_TM', 'Enable Hardware TM',
+                  True),
     )
 
 # These variables get exported to #defines in config/*.hh (see src/SConscript).
-export_vars += [ 'SYSTEM', 'NETWORK', 'MEMORY'] #'PROTOCOL', 
+export_vars += [ 'SYSTEM', 'NETWORK', 'MEMORY', 'ENABLE_TM' ]
 
 
 
