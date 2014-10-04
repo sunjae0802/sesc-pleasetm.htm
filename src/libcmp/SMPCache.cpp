@@ -51,6 +51,7 @@ extern unsigned long long lastFin;
 extern char* MemOperationStr[];
 
 SMPMemRequest::MESHSTRMAP SMPMemRequest::SMPMemReqStrMap;
+std::map<PAddr, int> SMPCache::dirMap;
 
 const char* SMPCache::cohOutfile = NULL;
 	
@@ -194,6 +195,26 @@ SMPCache::SMPCache(SMemorySystem *dms, const char *section, const char *name)
     SescConf->isInt(section, "missDelay");
     missDelay = SescConf->getInt(section, "missDelay");
 
+    // Setup home directory mapping
+    if(SescConf->checkCharPtr(section, "homeDirType")) { 
+        const char *dirType = SescConf->getCharPtr(section,"homeDirType");
+        if (!strcasecmp(dirType, "firstTouch"))
+            homeDirType = HDT_FIRST_TOUCH;
+        else if (!strcasecmp(dirType, "stride"))
+            homeDirType = HDT_STRIDE;
+        else if (!strcasecmp(dirType, "random"))
+            homeDirType = HDT_RANDOM;
+        else if (!strcasecmp(dirType, "profile"))
+            homeDirType = HDT_PROFILE;
+        else if (!strcasecmp(dirType, "dynamic"))
+            homeDirType = HDT_DYNAMIC;
+        else
+            homeDirType = HDT_ERR;
+
+        homeDirBlockSize = 0;
+        homeDirBlockSize = SescConf->getInt(section, "homeDirBlockSize");
+    }
+ 
 #ifdef SESC_ENERGY
 
     myID = cacheID;
@@ -1912,16 +1933,60 @@ void SMPCache::invalidateLine(PAddr addr, CallbackBase *cb, bool writeBack)
 }
 
 int32_t SMPCache::getHomeNodeID(PAddr addr) {
-    //int32_t dst = calcTag(addr) % getMaxNodeID();
-    int32_t dst = getL2NodeID(addr);
-    //printf("%x %x %d %d\n", addr, calcTag(addr),  addr, dst);
-    return dst;
+    int32_t blockIndex = calcTag(addr)>>homeDirBlockSize;
+    switch (homeDirType) {
+        case HDT_FIRST_TOUCH:
+            return getL2NodeID_firstTouch (blockIndex);
+        case HDT_STRIDE:
+            return getL2NodeID_stride (blockIndex);
+        case HDT_RANDOM:
+            return getL2NodeID_random (blockIndex);
+        case HDT_PROFILE:
+            return getL2NodeID_profile (blockIndex);
+        case HDT_DYNAMIC:
+            return getL2NodeID_dynamic (blockIndex);
+        default: 
+            printf ("[SMPCache::%s] ERROR! Unknown homeDirType: %d\n @%llu", symbolicName, homeDirType, globalClock);
+            assert (0);
+    }
 }
 
 int32_t SMPCache::getL2NodeID(PAddr addr) {
-    //int32_t dst = calcTag(addr) % getMaxNodeID();
 	int32_t dst = bitSelect(calcTag(addr), nodeSelSht, getMaxNodeID_bit());
     return dst;
+}
+
+int32_t SMPCache::getL2NodeID_stride(int32_t blockIndex) {
+    return  blockIndex % getMaxNodeID();
+}
+
+int32_t SMPCache::getL2NodeID_firstTouch(int32_t blockIndex) {
+    std::map<PAddr,int>::iterator it = dirMap.find (blockIndex);
+    if (it==dirMap.end()) {
+        dirMap.insert( std::pair<PAddr, int>(blockIndex, getNodeID()) );
+        return getNodeID();
+    }
+    else
+        return it->second;
+}
+
+int32_t SMPCache::getL2NodeID_random(int32_t blockIndex) {
+    std::map<PAddr,int>::iterator it = dirMap.find (blockIndex);
+    if (it==dirMap.end()) {
+        int dst = rand() % getMaxNodeID();
+        dirMap.insert( std::pair<PAddr, int>(blockIndex, dst));
+        return dst;
+    }
+    else
+        return it->second;
+}
+
+int32_t SMPCache::getL2NodeID_profile(int32_t blockIndex) {
+    assert (0);
+}
+
+int32_t SMPCache::getL2NodeID_dynamic(int32_t blockIndex) {
+    assert (0);
 }
 
 #ifdef SESC_SMP_DEBUG
