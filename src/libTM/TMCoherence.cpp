@@ -1767,7 +1767,7 @@ TMRWStatus TMLESnoopCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
     // Abort writers once we try to read
     set<Pid_t> abortedSet;
-    cacheLine.abortReadersExcept(pid, abortedSet);
+    cacheLine.abortWritersExcept(pid, abortedSet);
 
     set<Pid_t>::iterator i_aborted;
     for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
