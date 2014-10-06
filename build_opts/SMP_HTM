@@ -1,0 +1,3 @@
+SYSTEM = 'SMP'
+NETWORK = 'BUS'
+ENABLE_TM = True
