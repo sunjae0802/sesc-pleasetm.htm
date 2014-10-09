@@ -336,9 +336,11 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
     callStack()
 {
     for(tid=0; (tid<int(pid2context.size()))&&pid2context[tid]; tid++);
-    if(tid==int(pid2context.size()))
-        pid2context.resize(pid2context.size()+1);
-    pid2context[tid]=this;
+    if(tid==int(pid2context.size())) {
+        pid2context.push_back(this);
+    } else {
+        pid2context[tid]=this;
+    }
     pid=tid;
     tgid=tid;
     pgid=tid;
@@ -380,9 +382,11 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     I((!newNameSpace)||(!cloneFileSys));
     setMode(parent.execMode);
     for(tid=0; (tid<int(pid2context.size()))&&pid2context[tid]; tid++);
-    if(tid==int(pid2context.size()))
-        pid2context.resize(pid2context.size()+1);
-    pid2context[tid]=this;
+    if(tid==int(pid2context.size())) {
+        pid2context.push_back(this);
+    } else {
+        pid2context[tid]=this;
+    }
     pid=tid;
     if(cloneThread) {
         tgid=parent.tgid;
@@ -547,7 +551,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext::pointer context=pid2context[nowPid];
+            ThreadContext* context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());
@@ -563,7 +567,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext::pointer context=pid2context[nowPid];
+            ThreadContext* context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());
