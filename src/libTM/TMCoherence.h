@@ -362,8 +362,6 @@ public:
     virtual void myCompleteAbort(Pid_t pid);
 private:
     bool inRunQueue(Pid_t pid);
-    void abortWriters2(Pid_t pid, VAddr caddr);
-    void abortReaders2(Pid_t pid, VAddr caddr);
 
     std::map<VAddr, std::list<Pid_t> > runQueues;
     std::map<Pid_t, std::set<VAddr> > lockList;
@@ -380,8 +378,6 @@ public:
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
     bool inRunQueue(Pid_t pid);
-    void abortWriters2(Pid_t pid, VAddr caddr);
-    void abortReaders2(Pid_t pid, VAddr caddr);
 
     std::map<VAddr, std::list<Pid_t> > runQueues;
     std::map<Pid_t, std::set<VAddr> > lockList;
@@ -503,6 +499,69 @@ private:
     std::map<Pid_t, std::set<VAddr> > readLines;
     std::map<Pid_t, std::set<VAddr> > wroteLines;
     std::map<Pid_t, Pid_t> aborters;
+};
+
+class TMFirstWinsCoherence: public TMCoherence {
+public:
+    TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    virtual ~TMFirstWinsCoherence() { }
+    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMBCStatus myAbort(Pid_t pid, int tid);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual void myCompleteAbort(Pid_t pid);
+private:
+    void markReaders(VAddr caddr, Pid_t pid);
+    void markWriters(VAddr caddr, Pid_t pid);
+    std::map<Pid_t, std::set<Pid_t> > marked;
+};
+
+class TMOlderCoherence: public TMCoherence {
+public:
+    TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    virtual ~TMOlderCoherence() { }
+    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMBCStatus myAbort(Pid_t pid, int tid);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+private:
+    void markReaders(VAddr caddr, Pid_t pid);
+    void markWriters(VAddr caddr, Pid_t pid);
+    std::map<Pid_t, std::set<Pid_t> > marked;
+};
+
+class TMOlderAllCoherence: public TMCoherence {
+public:
+    TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    virtual ~TMOlderAllCoherence() { }
+    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMBCStatus myAbort(Pid_t pid, int tid);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+private:
+    void markReaders(VAddr caddr, Pid_t pid);
+    void markWriters(VAddr caddr, Pid_t pid);
+    std::map<Pid_t, std::set<Pid_t> > marked;
+    std::map<Pid_t, Time_t> started;
+};
+
+class TMMoreCoherence: public TMCoherence {
+public:
+    TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    virtual ~TMMoreCoherence() { }
+    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMBCStatus myAbort(Pid_t pid, int tid);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+private:
+    void markReaders(VAddr caddr, Pid_t pid);
+    void markWriters(VAddr caddr, Pid_t pid);
+    std::map<Pid_t, std::set<Pid_t> > marked;
+    std::map<Pid_t, size_t> numWrites;
 };
 
 extern TMCoherence *tmCohManager;

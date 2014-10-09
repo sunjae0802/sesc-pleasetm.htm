@@ -170,6 +170,12 @@ void initTMCoherence(int32_t nProcs)
         tmCohManager = new TMLEAsetCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
     } else if(method == "LE-Snoop") {
         tmCohManager = new TMLESnoopCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "First") {
+        tmCohManager = new TMFirstWinsCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "Older") {
+        tmCohManager = new TMOlderCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+    } else if(method == "OlderAll") {
+        tmCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
     } else {
         MSG("unknown TM method, using EE");
         tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);

@@ -453,10 +453,16 @@ TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int hintTy
 }
 TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters(caddr, pid, transStates[pid].getUtid(), TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     readTrans(pid, tid, raddr, caddr);
@@ -469,11 +475,13 @@ TMRWStatus TMLECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
-    if(cacheLine.numReaders() > 0) {
-        abortReaders(caddr, pid, utid, TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+    cacheLine.abortReadersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     writeTrans(pid, tid, raddr, caddr);
@@ -515,10 +523,16 @@ TMLEHourglassCoherence::TMLEHourglassCoherence(int32_t nProcs, int lineSize, int
 
 TMRWStatus TMLEHourglassCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters(caddr, pid, transStates[pid].getUtid(), TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     readTrans(pid, tid, raddr, caddr);
@@ -531,11 +545,13 @@ TMRWStatus TMLEHourglassCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
-    if(cacheLine.numReaders() > 0) {
-        abortReaders(caddr, pid, utid, TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+    cacheLine.abortReadersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     writeTrans(pid, tid, raddr, caddr);
@@ -592,10 +608,16 @@ TMLESOKCoherence::TMLESOKCoherence(int32_t nProcs, int lineSize, int lines, int 
 
 TMRWStatus TMLESOKCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters(caddr, pid, transStates[pid].getUtid(), TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     readTrans(pid, tid, raddr, caddr);
@@ -608,11 +630,13 @@ TMRWStatus TMLESOKCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
-    if(cacheLine.numReaders() > 0) {
-        abortReaders(caddr, pid, utid, TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+    cacheLine.abortReadersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     writeTrans(pid, tid, raddr, caddr);
@@ -678,10 +702,16 @@ TMLESOKQueueCoherence::TMLESOKQueueCoherence(int32_t nProcs, int lineSize, int l
 
 TMRWStatus TMLESOKQueueCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters(caddr, pid, transStates[pid].getUtid(), TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     readTrans(pid, tid, raddr, caddr);
@@ -694,11 +724,13 @@ TMRWStatus TMLESOKQueueCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
-    if(cacheLine.numReaders() > 0) {
-        abortReaders(caddr, pid, utid, TM_ATYPE_DEFAULT);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+    cacheLine.abortReadersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     writeTrans(pid, tid, raddr, caddr);
@@ -784,59 +816,35 @@ TMLESOA0Coherence::TMLESOA0Coherence(int32_t nProcs, int lineSize, int lines, in
 }
 TMRWStatus TMLESOA0Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters2(pid, caddr);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
 }
 
-void TMLESOA0Coherence::abortWriters2(Pid_t pid, VAddr caddr) {
-    CacheLineState& cacheLine = cacheLineState[caddr];
-    uint64_t utid = transStates.at(pid).getUtid();
-    int abortType = TM_ATYPE_DEFAULT;
-
-	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
-    while(i_pid != cacheLine.writers.end()) {
-		if(*i_pid != pid) {
-            markTransAborted(*i_pid, pid, utid, caddr, abortType);
-            cacheLine.writers.erase(i_pid++);
-		} else {
-            // Skip ourself
-            ++i_pid;
-		}
-	}
-}
-void TMLESOA0Coherence::abortReaders2(Pid_t pid, VAddr caddr) {
-    CacheLineState& cacheLine = cacheLineState[caddr];
-    uint64_t utid = transStates.at(pid).getUtid();
-    int abortType = TM_ATYPE_DEFAULT;
-
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != pid) {
-            markTransAborted(*i_pid, pid, utid, caddr, abortType);
-            cacheLine.readers.erase(i_pid++);
-		} else {
-            // Skip ourself
-            ++i_pid;
-		}
-	}
-}
 TMRWStatus TMLESOA0Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numWriters() > 0) {
-        abortWriters2(pid, caddr);
-    }
-    if(cacheLine.numReaders() > 0) {
-        abortReaders2(pid, caddr);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+    cacheLine.abortReadersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     writeTrans(pid, tid, raddr, caddr);
@@ -907,63 +915,39 @@ TMLESOA2Coherence::TMLESOA2Coherence(int32_t nProcs, int lineSize, int lines, in
 }
 TMRWStatus TMLESOA2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters2(pid, caddr);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        runQueues[caddr].push_back(*i_aborted);
+        lockList[pid].insert(caddr);
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
 }
 
-void TMLESOA2Coherence::abortWriters2(Pid_t pid, VAddr caddr) {
-    CacheLineState& cacheLine = cacheLineState[caddr];
-    uint64_t utid = transStates.at(pid).getUtid();
-    int abortType = TM_ATYPE_DEFAULT;
-
-	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
-    while(i_pid != cacheLine.writers.end()) {
-		if(*i_pid != pid) {
-            markTransAborted(*i_pid, pid, utid, caddr, abortType);
-            runQueues[caddr].push_back(*i_pid);
-            lockList[pid].insert(caddr);
-            cacheLine.writers.erase(i_pid++);
-		} else {
-            // Skip ourself
-            ++i_pid;
-		}
-	}
-}
-void TMLESOA2Coherence::abortReaders2(Pid_t pid, VAddr caddr) {
-    CacheLineState& cacheLine = cacheLineState[caddr];
-    uint64_t utid = transStates.at(pid).getUtid();
-    int abortType = TM_ATYPE_DEFAULT;
-
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != pid) {
-            markTransAborted(*i_pid, pid, utid, caddr, abortType);
-            runQueues[caddr].push_back(*i_pid);
-            lockList[pid].insert(caddr);
-            cacheLine.readers.erase(i_pid++);
-		} else {
-            // Skip ourself
-            ++i_pid;
-		}
-	}
-}
 TMRWStatus TMLESOA2Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numWriters() > 0) {
-        abortWriters2(pid, caddr);
-    }
-    if(cacheLine.numReaders() > 0) {
-        abortReaders2(pid, caddr);
+    set<Pid_t> abortedSet;
+    cacheLine.abortWritersExcept(pid, abortedSet);
+    cacheLine.abortReadersExcept(pid, abortedSet);
+
+    set<Pid_t>::iterator i_aborted;
+    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+        runQueues[caddr].push_back(*i_aborted);
+        lockList[pid].insert(caddr);
+        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 
     writeTrans(pid, tid, raddr, caddr);
@@ -1849,6 +1833,455 @@ TMBCStatus TMLESnoopCoherence::myCommit(Pid_t pid, int tid) {
             ++i_aborter;
         }
     }
+
+    return TMBC_SUCCESS;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with first wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMFirstWinsCoherence::TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
+        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+	cout<<"[TM] Lazy/Eager with first wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+void TMFirstWinsCoherence::markWriters(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
+    while(i_pid != cacheLine.writers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+void TMFirstWinsCoherence::markReaders(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
+    while(i_pid != cacheLine.readers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+TMRWStatus TMFirstWinsCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+        }
+    }
+    marked[pid].clear();
+
+    // Abort writers once we try to read
+    markWriters(caddr, pid);
+
+    readTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMRWStatus TMFirstWinsCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+        }
+    }
+    marked[pid].clear();
+
+    // Abort everyone once we try to write
+    markReaders(caddr, pid);
+    markWriters(caddr, pid);
+
+    writeTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMBCStatus TMFirstWinsCoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMFirstWinsCoherence::myAbort(Pid_t pid, int tid) {
+	size_t writeSetSize = getWriteSetSize(pid);
+	Time_t stallLength = abortBaseStallCycles;
+    transStates[pid].startStalling(globalClock + stallLength);
+
+	abortTrans(pid);
+
+	return TMBC_SUCCESS;
+}
+void TMFirstWinsCoherence::myCompleteAbort(Pid_t pid) {
+}
+
+TMBCStatus TMFirstWinsCoherence::myCommit(Pid_t pid, int tid) {
+    std::map<Pid_t, std::set<Pid_t> >::iterator i_marked;
+    for(i_marked = marked.begin(); i_marked != marked.end(); ++i_marked) {
+        if(i_marked->second.find(pid) != i_marked->second.end()) {
+            markTransAborted(i_marked->first, pid, transStates[pid].getUtid(), 0, TM_ATYPE_DEFAULT);
+            i_marked->second.erase(pid);
+        }
+    }
+    marked[pid].clear();
+    commitTrans(pid);
+
+    return TMBC_SUCCESS;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with older wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMOlderCoherence::TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
+        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+	cout<<"[TM] Lazy/Eager with older wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+void TMOlderCoherence::markWriters(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
+    while(i_pid != cacheLine.writers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+void TMOlderCoherence::markReaders(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
+    while(i_pid != cacheLine.readers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+TMRWStatus TMOlderCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            if(transStates[*i_markers].getTimestamp() < transStates[pid].getTimestamp()) {
+                markTransAborted(pid, *i_markers, utid, caddr, TM_ATYPE_DEFAULT);
+                return TMRW_ABORT;
+            } else {
+                markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            }
+        }
+    }
+    marked[pid].clear();
+
+    // Abort writers once we try to read
+    markWriters(caddr, pid);
+
+    readTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMRWStatus TMOlderCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            if(transStates[*i_markers].getTimestamp() < transStates[pid].getTimestamp()) {
+                markTransAborted(pid, *i_markers, utid, caddr, TM_ATYPE_DEFAULT);
+                return TMRW_ABORT;
+            } else {
+                markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            }
+        }
+    }
+    marked[pid].clear();
+
+
+    // Abort everyone once we try to write
+    markReaders(caddr, pid);
+    markWriters(caddr, pid);
+
+    writeTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMBCStatus TMOlderCoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMOlderCoherence::myAbort(Pid_t pid, int tid) {
+	size_t writeSetSize = getWriteSetSize(pid);
+	Time_t stallLength = abortBaseStallCycles;
+    transStates[pid].startStalling(globalClock + stallLength);
+
+	abortTrans(pid);
+
+	return TMBC_SUCCESS;
+}
+
+TMBCStatus TMOlderCoherence::myCommit(Pid_t pid, int tid) {
+    std::map<Pid_t, std::set<Pid_t> >::iterator i_marked;
+    for(i_marked = marked.begin(); i_marked != marked.end(); ++i_marked) {
+        if(i_marked->second.find(pid) != i_marked->second.end()) {
+            markTransAborted(i_marked->first, pid, transStates[pid].getUtid(), 0, TM_ATYPE_DEFAULT);
+            i_marked->second.erase(pid);
+        }
+    }
+    marked[pid].clear();
+    commitTrans(pid);
+
+    return TMBC_SUCCESS;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with older instance wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMOlderAllCoherence::TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
+        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+	cout<<"[TM] Lazy/Eager with older instance wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+void TMOlderAllCoherence::markWriters(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
+    while(i_pid != cacheLine.writers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+void TMOlderAllCoherence::markReaders(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
+    while(i_pid != cacheLine.readers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+TMRWStatus TMOlderAllCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            if(started[*i_markers] < started[pid]) {
+                markTransAborted(pid, *i_markers, utid, caddr, TM_ATYPE_DEFAULT);
+                return TMRW_ABORT;
+            } else {
+                markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            }
+        }
+    }
+    marked[pid].clear();
+
+    // Abort writers once we try to read
+    markWriters(caddr, pid);
+
+    readTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMRWStatus TMOlderAllCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            if(started[*i_markers] < started[pid]) {
+                markTransAborted(pid, *i_markers, utid, caddr, TM_ATYPE_DEFAULT);
+                return TMRW_ABORT;
+            } else {
+                markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            }
+        }
+    }
+    marked[pid].clear();
+
+
+    // Abort everyone once we try to write
+    markReaders(caddr, pid);
+    markWriters(caddr, pid);
+
+    writeTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMBCStatus TMOlderAllCoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    beginTrans(pid, inst);
+    if(started[pid] == 0) {
+        started[pid] = globalClock;
+    }
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMOlderAllCoherence::myAbort(Pid_t pid, int tid) {
+	size_t writeSetSize = getWriteSetSize(pid);
+	Time_t stallLength = abortBaseStallCycles;
+    transStates[pid].startStalling(globalClock + stallLength);
+
+	abortTrans(pid);
+
+	return TMBC_SUCCESS;
+}
+
+TMBCStatus TMOlderAllCoherence::myCommit(Pid_t pid, int tid) {
+    std::map<Pid_t, std::set<Pid_t> >::iterator i_marked;
+    for(i_marked = marked.begin(); i_marked != marked.end(); ++i_marked) {
+        if(i_marked->second.find(pid) != i_marked->second.end()) {
+            markTransAborted(i_marked->first, pid, transStates[pid].getUtid(), 0, TM_ATYPE_DEFAULT);
+            i_marked->second.erase(pid);
+        }
+    }
+    marked[pid].clear();
+    started[pid] = 0;
+    commitTrans(pid);
+
+    return TMBC_SUCCESS;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more writes wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMMoreCoherence::TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
+        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+	cout<<"[TM] Lazy/Eager with more writes wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+void TMMoreCoherence::markWriters(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
+    while(i_pid != cacheLine.writers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+void TMMoreCoherence::markReaders(VAddr caddr, Pid_t pid) {
+	CacheLineState& cacheLine = cacheLineState[caddr];
+
+	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
+    while(i_pid != cacheLine.readers.end()) {
+		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
+            marked[*i_pid].insert(pid);
+        }
+        ++i_pid;
+	}
+}
+TMRWStatus TMMoreCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            if(numWrites[*i_markers] > numWrites[pid]) {
+                markTransAborted(pid, *i_markers, utid, caddr, TM_ATYPE_DEFAULT);
+                return TMRW_ABORT;
+            } else {
+                markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            }
+        }
+    }
+    marked[pid].clear();
+
+    // Abort writers once we try to read
+    markWriters(caddr, pid);
+
+    readTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMRWStatus TMMoreCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
+    std::set<Pid_t>::iterator i_markers = marked[pid].begin();
+    for(i_markers = marked[pid].begin(); i_markers != marked[pid].end(); ++i_markers) {
+        if(transStates[*i_markers].getState() == TM_RUNNING) {
+            if(numWrites[*i_markers] > numWrites[pid]) {
+                markTransAborted(pid, *i_markers, utid, caddr, TM_ATYPE_DEFAULT);
+                return TMRW_ABORT;
+            } else {
+                markTransAborted(*i_markers, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            }
+        }
+    }
+    marked[pid].clear();
+
+
+    // Abort everyone once we try to write
+    markReaders(caddr, pid);
+    markWriters(caddr, pid);
+
+    numWrites[pid]++;
+    writeTrans(pid, tid, raddr, caddr);
+    return TMRW_SUCCESS;
+}
+
+TMBCStatus TMMoreCoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    numWrites[pid] = 0;
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMMoreCoherence::myAbort(Pid_t pid, int tid) {
+	size_t writeSetSize = getWriteSetSize(pid);
+	Time_t stallLength = abortBaseStallCycles;
+    transStates[pid].startStalling(globalClock + stallLength);
+
+	abortTrans(pid);
+
+	return TMBC_SUCCESS;
+}
+
+TMBCStatus TMMoreCoherence::myCommit(Pid_t pid, int tid) {
+    std::map<Pid_t, std::set<Pid_t> >::iterator i_marked;
+    for(i_marked = marked.begin(); i_marked != marked.end(); ++i_marked) {
+        if(i_marked->second.find(pid) != i_marked->second.end()) {
+            markTransAborted(i_marked->first, pid, transStates[pid].getUtid(), 0, TM_ATYPE_DEFAULT);
+            i_marked->second.erase(pid);
+        }
+    }
+    marked[pid].clear();
+    commitTrans(pid);
 
     return TMBC_SUCCESS;
 }
