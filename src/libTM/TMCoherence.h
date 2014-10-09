@@ -19,7 +19,7 @@ typedef unsigned long long INSTCOUNT;
 enum TMState_e { TM_INVALID, TM_RUNNING, TM_NACKED, TM_ABORTING, TM_MARKABORT };
 enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT, TMBC_IGNORE };
 enum TMRWStatus { TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
-enum TMAbortType_e { TM_ATYPE_NONTM = 255, TM_ATYPE_DEFAULT = 0 };
+enum TMAbortType_e { TM_ATYPE_NONTM = 255, TM_ATYPE_DEFAULT = 0, TM_ATYPE_USER = 1, TM_ATYPE_CAPACITY = 2, TM_ATYPE_SYSCALL = 3 };
 
 static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
 static const uint64_t INVALID_UTID = -1;
@@ -183,7 +183,7 @@ public:
 
     TMRWStatus read(Pid_t pid, int tid, VAddr raddr);
     TMRWStatus write(Pid_t pid, int tid, VAddr raddr);
-    TMBCStatus abort(Pid_t pid, int tid);
+    TMBCStatus abort(Pid_t pid, int tid, uint32_t abortType);
     TMBCStatus commit(Pid_t pid, int tid);
     TMBCStatus begin(Pid_t pid, InstDesc *inst);
 

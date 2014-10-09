@@ -578,9 +578,8 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
 InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
     Pid_t pid = context->getPid();
     uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-    arg = arg << 8; // bottom 8 bits are reserved
 
-    context->abortTransaction(arg);
+    context->userAbort(arg);
     return inst;
 }
 
@@ -628,7 +627,7 @@ InstDesc *emulBreak(InstDesc *inst, ThreadContext *context) {
 InstDesc *emulSyscl(InstDesc *inst, ThreadContext *context) {
 #if (defined TM)
 	if(context->isInTM()) {
-        context->abortTransaction(2);
+        context->abortTransaction(TM_ATYPE_SYSCALL);
 		return inst;
     }
 #endif

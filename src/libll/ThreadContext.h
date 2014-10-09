@@ -140,7 +140,11 @@ public:
     // Transactional Methods
     uint32_t beginTransaction(InstDesc* inst);
     void commitTransaction(InstDesc* inst);
-    void abortTransaction(uint32_t arg = 0);
+    void userAbort(uint32_t arg) {
+        tmAbortArg = arg;
+        abortTransaction(TM_ATYPE_USER);
+    }
+    void abortTransaction(uint32_t abortType = TM_ATYPE_DEFAULT);
     uint32_t completeAbort(InstDesc* inst);
     uint32_t getBeginArg();
     uint32_t getAbortArg();

@@ -167,13 +167,13 @@ void ThreadContext::commitTransaction(InstDesc* inst) {
         assert(0);
     }
 }
-void ThreadContext::abortTransaction(uint32_t arg) {
+void ThreadContext::abortTransaction(uint32_t abortType) {
     assert(tmContext);
 
     // Save UTID before aborting
     uint64_t utid = tmCohManager->getUtid(pid);
 
-    TMBCStatus status = tmCohManager->abort(pid, tmContext->getId());
+    TMBCStatus status = tmCohManager->abort(pid, tmContext->getId(), abortType);
     if(status == TMBC_SUCCESS) {
         const TransState& transState = tmCohManager->getTransState(pid);
 
@@ -187,7 +187,6 @@ void ThreadContext::abortTransaction(uint32_t arg) {
         rootTMContext->restoreContext();
 
         tmAbortIAddr= iAddr;
-        tmAbortArg  = arg;
 
         TimeDelta_t opActive = 0;
         std::vector<MemOp>::iterator i_tmMemOp = tmMemOps.begin();
@@ -230,7 +229,6 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
                         <<" 0x"<<std::hex<<transState.getAbortBy()<<std::dec
                         <<" "<<aborter
-//                                        <<" "<<(tmAbortArg>>8)
                         <<" "<<transState.getAbortType();
     }
     instTrace10 = out.str();
@@ -245,7 +243,7 @@ uint32_t ThreadContext::getAbortArg() {
     const TransState& transState = tmCohManager->getTransState(pid);
 
     uint32_t abortArg = 1;
-    abortArg |= tmAbortArg;
+    abortArg |= tmAbortArg << 8; // bottom 8 bits are reserved
     switch(tmCohManager->getReturnArgType()) {
         case 0:
             abortArg |= (transState.getAborterPid()) << 12;

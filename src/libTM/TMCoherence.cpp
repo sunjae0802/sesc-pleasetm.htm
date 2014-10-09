@@ -76,7 +76,13 @@ TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
 	}
 }
 
-TMBCStatus TMCoherence::abort(Pid_t pid, int tid) {
+TMBCStatus TMCoherence::abort(Pid_t pid, int tid, uint32_t abortType) {
+    if(abortType == TM_ATYPE_SYSCALL || abortType == TM_ATYPE_USER) {
+        transStates[pid].markAbort(pid, transStates[pid].getUtid(), 0, abortType);
+    } else if(abortType != 0) {
+        // Abort type internal, so should not be set
+        fail("Unknown abort type");
+    }
     return myAbort(pid, tid);
 }
 
@@ -160,7 +166,7 @@ TMRWStatus TMCoherence::read(Pid_t pid, int tid, VAddr raddr) {
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
 	} else if(cacheOverflowed(pid, caddr)) {
-		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, 2);
+		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
 		std::cout << "Overflow " << pid << ": " << cacheLines[pid].size() << '\n';
 		fail("Overflow\n");
 		return TMRW_ABORT;
@@ -173,7 +179,7 @@ TMRWStatus TMCoherence::write(Pid_t pid, int tid, VAddr raddr) {
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
 	} else if(cacheOverflowed(pid, caddr)) {
-		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, 2);
+		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
 		std::cout << "Overflow " << pid << ": " << cacheLines[pid].size() << '\n';
 		fail("Overflow\n");
 		return TMRW_ABORT;
@@ -1744,7 +1750,7 @@ TMRWStatus TMLESnoopCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     CacheLineState& cacheLine = cacheLineState[caddr];
     for(Pid_t oPid = 0; oPid < nProcs; ++oPid) {
         if(oPid != pid && wroteLines.at(oPid).find(caddr) != wroteLines.at(oPid).end()) {
-            markTransAborted(pid, oPid, utid, caddr, 3);
+            markTransAborted(pid, oPid, utid, caddr, TM_ATYPE_DEFAULT);
             return TMRW_ABORT;
         }
     }
@@ -1767,7 +1773,7 @@ TMRWStatus TMLESnoopCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     for(Pid_t oPid = 0; oPid < nProcs; ++oPid) {
         if(oPid != pid && wroteLines.at(oPid).find(caddr) != wroteLines.at(oPid).end()) {
-            markTransAborted(pid, oPid, utid, caddr, 3);
+            markTransAborted(pid, oPid, utid, caddr, TM_ATYPE_DEFAULT);
             return TMRW_ABORT;
         }
     }
