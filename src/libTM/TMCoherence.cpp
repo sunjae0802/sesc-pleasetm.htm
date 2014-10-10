@@ -8,13 +8,14 @@
 using namespace std;
 
 TMCoherence *tmCohManager = 0;
+uint64_t TMCoherence::nextUtid = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Abstract super-class of all TM policies. Contains the external interface and common
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
 TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int hintType, int argType):
-        nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType), utid(0) {
+        nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType) {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
         cacheLines[pid].clear();        // Initialize map to enable at() use
@@ -26,7 +27,7 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
         // This is a new transaction instance
     } // Else a restarted transaction
 	cacheLines[pid].clear();
-	transStates[pid].begin(TMCoherence::utid++);
+	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 void TMCoherence::commitTrans(Pid_t pid) {
     transStates[pid].commit();
@@ -1017,6 +1018,8 @@ TMLEWARCoherence::TMLEWARCoherence(int32_t nProcs, int lineSize, int lines, int 
 TMRWStatus TMLEWARCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
     if(warChest[pid].find(caddr) != warChest[pid].end()) {
         markTransAborted(pid, pid, utid, caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
@@ -1748,6 +1751,8 @@ TMLESnoopCoherence::TMLESnoopCoherence(int32_t nProcs, int lineSize, int lines, 
 TMRWStatus TMLESnoopCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
     for(Pid_t oPid = 0; oPid < nProcs; ++oPid) {
         if(oPid != pid && wroteLines.at(oPid).find(caddr) != wroteLines.at(oPid).end()) {
             markTransAborted(pid, oPid, utid, caddr, TM_ATYPE_DEFAULT);
@@ -1771,15 +1776,15 @@ TMRWStatus TMLESnoopCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLESnoopCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
+
     for(Pid_t oPid = 0; oPid < nProcs; ++oPid) {
         if(oPid != pid && wroteLines.at(oPid).find(caddr) != wroteLines.at(oPid).end()) {
             markTransAborted(pid, oPid, utid, caddr, TM_ATYPE_DEFAULT);
             return TMRW_ABORT;
         }
     }
-
-    CacheLineState& cacheLine = cacheLineState[caddr];
-    uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
     set<Pid_t> abortedSet;

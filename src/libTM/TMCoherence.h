@@ -245,7 +245,7 @@ protected:
     int abortBaseStallCycles;
     int commitBaseStallCycles;
 
-    uint64_t utid;                            //!< Unique Global Transaction ID. Only valid for outermost tranasactions
+    static uint64_t nextUtid;
 
     std::map<VAddr, CacheLineState> cacheLineState; //!< The cache ownership
     std::vector<struct TransState>  transStates;
