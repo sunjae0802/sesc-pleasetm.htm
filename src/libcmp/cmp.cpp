@@ -140,45 +140,44 @@ void initTMCoherence(int32_t nProcs)
     string method = SescConf->getCharPtr("TransactionalMemory","method");
     int cacheLineSize = SescConf->getInt("TransactionalMemory","cacheLineSize");
     int numLines = SescConf->getInt("TransactionalMemory","numLines");
-	int hwHintType = SescConf->getInt("TransactionalMemory","hwHintType");
 	int returnArgType = SescConf->getInt("TransactionalMemory","returnArgType");
     if(method == "EE") {
-        tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LL") {
-        tmCohManager = new TMLLCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLLCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE") {
-        tmCohManager = new TMLECoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLECoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-Hourglass") {
-        tmCohManager = new TMLEHourglassCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLEHourglassCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-SOK") {
-        tmCohManager = new TMLESOKCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLESOKCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-SOK-Queue") {
-        tmCohManager = new TMLESOKQueueCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLESOKQueueCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-SOA-Original") {
-        tmCohManager = new TMLESOA0Coherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLESOA0Coherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-SOA2") {
-        tmCohManager = new TMLESOA2Coherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLESOA2Coherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-Lock") {
-        tmCohManager = new TMLELockCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLELockCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-Lock0") {
-        tmCohManager = new TMLELock0Coherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLELock0Coherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-WAR") {
-        tmCohManager = new TMLEWARCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLEWARCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-ATS") {
-        tmCohManager = new TMLEATSCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLEATSCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-ASet") {
-        tmCohManager = new TMLEAsetCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLEAsetCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "LE-Snoop") {
-        tmCohManager = new TMLESnoopCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMLESnoopCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "First") {
-        tmCohManager = new TMFirstWinsCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMFirstWinsCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "Older") {
-        tmCohManager = new TMOlderCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMOlderCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "OlderAll") {
-        tmCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else {
         MSG("unknown TM method, using EE");
-        tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, hwHintType, returnArgType);
+        tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);
     }
 #endif
 }

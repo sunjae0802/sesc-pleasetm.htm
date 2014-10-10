@@ -178,7 +178,7 @@ private:
 
 class TMCoherence {
 public:
-    TMCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMCoherence() {}
 
     TMRWStatus read(Pid_t pid, int tid, VAddr raddr);
@@ -255,7 +255,7 @@ protected:
 
 class TMEECoherence: public TMCoherence {
 public:
-    TMEECoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMEECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMEECoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -271,7 +271,7 @@ private:
 
 class TMLLCoherence: public TMCoherence {
 public:
-    TMLLCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLLCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLLCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -287,7 +287,7 @@ private:
 
 class TMLECoherence: public TMCoherence {
 public:
-    TMLECoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLECoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -299,7 +299,7 @@ private:
 
 class TMLEHourglassCoherence: public TMCoherence {
 public:
-    TMLEHourglassCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLEHourglassCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLEHourglassCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -316,7 +316,7 @@ private:
 
 class TMLESOKCoherence: public TMCoherence {
 public:
-    TMLESOKCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLESOKCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLESOKCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -334,7 +334,7 @@ private:
 
 class TMLESOKQueueCoherence: public TMCoherence {
 public:
-    TMLESOKQueueCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLESOKQueueCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLESOKQueueCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -352,7 +352,7 @@ private:
 
 class TMLESOA0Coherence: public TMCoherence {
 public:
-    TMLESOA0Coherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLESOA0Coherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLESOA0Coherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -369,7 +369,7 @@ private:
 
 class TMLESOA2Coherence: public TMCoherence {
 public:
-    TMLESOA2Coherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLESOA2Coherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLESOA2Coherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -385,7 +385,7 @@ private:
 
 class TMLEWARCoherence: public TMCoherence {
 public:
-    TMLEWARCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLEWARCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLEWARCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -400,7 +400,7 @@ private:
 
 class TMLEATSCoherence: public TMCoherence {
 public:
-    TMLEATSCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLEATSCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLEATSCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -416,7 +416,7 @@ private:
 
 class TMLELockCoherence: public TMCoherence {
 public:
-    TMLELockCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLELockCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLELockCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -442,7 +442,7 @@ private:
 
 class TMLELock0Coherence: public TMCoherence {
 public:
-    TMLELock0Coherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLELock0Coherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLELock0Coherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -468,7 +468,7 @@ private:
 
 class TMLEAsetCoherence: public TMCoherence {
 public:
-    TMLEAsetCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLEAsetCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLEAsetCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -487,7 +487,7 @@ private:
 
 class TMLESnoopCoherence: public TMCoherence {
 public:
-    TMLESnoopCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMLESnoopCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLESnoopCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -503,7 +503,7 @@ private:
 
 class TMFirstWinsCoherence: public TMCoherence {
 public:
-    TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMFirstWinsCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -519,7 +519,7 @@ private:
 
 class TMOlderCoherence: public TMCoherence {
 public:
-    TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMOlderCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -534,7 +534,7 @@ private:
 
 class TMOlderAllCoherence: public TMCoherence {
 public:
-    TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMOlderAllCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
@@ -550,7 +550,7 @@ private:
 
 class TMMoreCoherence: public TMCoherence {
 public:
-    TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int returnArgType);
+    TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMMoreCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);

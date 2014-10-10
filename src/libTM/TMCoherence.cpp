@@ -14,7 +14,7 @@ uint64_t TMCoherence::nextUtid = 0;
 // Abstract super-class of all TM policies. Contains the external interface and common
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
-TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int hintType, int argType):
+TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType) {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
@@ -233,8 +233,8 @@ TMRWStatus TMCoherence::nonTMwrite(Pid_t pid, VAddr raddr) {
 // on conflict do they try to roll back any updates that the transaction had made.
 // Follows LogTM TM policy.
 /////////////////////////////////////////////////////////////////////////////////////////
-TMEECoherence::TMEECoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType), cycleFlags(nProcs) {
+TMEECoherence::TMEECoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType), cycleFlags(nProcs) {
 	cout<<"[TM] Eager/Eager Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
@@ -378,8 +378,8 @@ TMBCStatus TMEECoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-lazy coherence. TMs are allowed to run until commit, which then they are checked
 // for any memory conflicts. Follows Josep's group's TM policy
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLLCoherence::TMLLCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLLCoherence::TMLLCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Lazy Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -451,8 +451,8 @@ TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -520,8 +520,8 @@ TMBCStatus TMLECoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with Hourglass. If a transaction gets aborted more than a
 // threshold number of times, the hourglass is triggered.
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLEHourglassCoherence::TMLEHourglassCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType), abortThreshold(2), hourglassOwner(INVALID_HOURGLASS) {
+TMLEHourglassCoherence::TMLEHourglassCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType), abortThreshold(2), hourglassOwner(INVALID_HOURGLASS) {
 	cout<<"[TM] Lazy/Eager with Hourglass Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -605,8 +605,8 @@ TMBCStatus TMLEHourglassCoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with Serialize-on-Killer. Each aborted transaction will block
 // until the killer transaction commits.
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLESOKCoherence::TMLESOKCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLESOKCoherence::TMLESOKCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with SOK Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -699,8 +699,8 @@ TMBCStatus TMLESOKCoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with Serialize-on-Killer. Each aborted transaction will block
 // until the killer transaction commits.
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLESOKQueueCoherence::TMLESOKQueueCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLESOKQueueCoherence::TMLESOKQueueCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with SOK with Queue Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -814,8 +814,8 @@ TMBCStatus TMLESOKQueueCoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with Serialize-on-Address. Each cache line which was "hot" will
 // act as a reader-writer lock
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLESOA0Coherence::TMLESOA0Coherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLESOA0Coherence::TMLESOA0Coherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with SOA Original Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -913,8 +913,8 @@ TMBCStatus TMLESOA0Coherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with Serialize-on-Address. Each cache line which was "hot" will
 // act as a reader-writer lock
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLESOA2Coherence::TMLESOA2Coherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLESOA2Coherence::TMLESOA2Coherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with SOA 2 Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1007,8 +1007,8 @@ TMBCStatus TMLESOA2Coherence::myCommit(Pid_t pid, int tid) {
 // aborted (written) by someone else, so that if we don't ever touch it any more we
 // avoid getting aborted (NEED PROOF).
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLEWARCoherence::TMLEWARCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLEWARCoherence::TMLEWARCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with WAR chest Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1110,8 +1110,8 @@ TMBCStatus TMLEWARCoherence::myCommit(Pid_t pid, int tid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with Adaptive Transaction Scheduling.
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLEATSCoherence::TMLEATSCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType), alpha(0.3) {
+TMLEATSCoherence::TMLEATSCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType), alpha(0.3) {
 	cout<<"[TM] Lazy/Eager with ATS Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1188,8 +1188,8 @@ TMBCStatus TMLEATSCoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with locked cache lines. Each cache line which was "hot" will
 // act as a reader-writer lock
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLELockCoherence::TMLELockCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLELockCoherence::TMLELockCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with Locked Lines Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1450,8 +1450,8 @@ TMBCStatus TMLELockCoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with locked cache lines. Each cache line which was "hot" will
 // act as a reader-writer lock
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLELock0Coherence::TMLELock0Coherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLELock0Coherence::TMLELock0Coherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with Locked Lines 0 Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1624,8 +1624,8 @@ TMBCStatus TMLELock0Coherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence with accessed sets. Threads will be organized into a runqueue,
 // which is then checked one by one to determine which to let proceed afterwards.
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLEAsetCoherence::TMLEAsetCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLEAsetCoherence::TMLEAsetCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with Accessed Sets Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1737,8 +1737,8 @@ TMBCStatus TMLEAsetCoherence::myCommit(Pid_t pid, int tid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with activity snooping
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLESnoopCoherence::TMLESnoopCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMLESnoopCoherence::TMLESnoopCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with Snooping Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1851,8 +1851,8 @@ TMBCStatus TMLESnoopCoherence::myCommit(Pid_t pid, int tid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with first wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMFirstWinsCoherence::TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMFirstWinsCoherence::TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with first wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1955,8 +1955,8 @@ TMBCStatus TMFirstWinsCoherence::myCommit(Pid_t pid, int tid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with older wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMOlderCoherence::TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMOlderCoherence::TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with older wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -2068,8 +2068,8 @@ TMBCStatus TMOlderCoherence::myCommit(Pid_t pid, int tid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with older instance wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMOlderAllCoherence::TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMOlderAllCoherence::TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with older instance wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -2185,8 +2185,8 @@ TMBCStatus TMOlderAllCoherence::myCommit(Pid_t pid, int tid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with more writes wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMMoreCoherence::TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int hintType, int argType):
-        TMCoherence(nProcs, lineSize, lines, hintType, argType) {
+TMMoreCoherence::TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with more writes wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
