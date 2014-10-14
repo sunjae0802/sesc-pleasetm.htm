@@ -551,7 +551,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext* context=pid2context[nowPid];
+            ThreadContext::pointer context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());
@@ -567,7 +567,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext* context=pid2context[nowPid];
+            ThreadContext::pointer context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());

@@ -213,7 +213,7 @@ public:
     // DInst may not be a valid ID because the instruction gets recycled
 #endif
 public:
-    ThreadContext* context;
+    ThreadContext::pointer context;
 protected:
 public:
     DInst();
