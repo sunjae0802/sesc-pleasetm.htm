@@ -257,6 +257,7 @@ uint32_t ThreadContext::getAbortArg() {
         default:
             fail("TM Abort return arg type not specified");
     }
+    tmAbortArg  = 0;
     return abortArg;
 }
 
