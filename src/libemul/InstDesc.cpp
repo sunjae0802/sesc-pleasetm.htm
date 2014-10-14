@@ -1540,10 +1540,10 @@ public:
 #endif
             }
 #if (defined TM)
-            if(markedForAbort(inst, context)) {
-                context->abortTransaction();
-                return inst;
-            } else if(context->isTMNacking()) {
+//            if(markedForAbort(inst, context)) {
+//                context->abortTransaction();
+//                return inst;
+            if(context->isTMNacking()) {
                 return inst;
             }
 #endif
@@ -1596,10 +1596,10 @@ public:
                     setReg<Tregv_t,DTyp>(context,inst->regDst,1);
             }
 #if (defined TM)
-            if(markedForAbort(inst, context)) {
-                context->abortTransaction();
-                return inst;
-            } else if(context->isTMNacking()) {
+//            if(markedForAbort(inst, context)) {
+//                context->abortTransaction();
+//                return inst;
+            if(context->isTMNacking()) {
                 return inst;
             }
 #endif    
