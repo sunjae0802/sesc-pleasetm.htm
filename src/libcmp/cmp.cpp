@@ -175,6 +175,8 @@ void initTMCoherence(int32_t nProcs)
         tmCohManager = new TMOlderCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "OlderAll") {
         tmCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "More") {
+        tmCohManager = new TMMoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else {
         MSG("unknown TM method, using EE");
         tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);

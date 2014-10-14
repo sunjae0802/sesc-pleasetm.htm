@@ -225,9 +225,9 @@ protected:
 
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr) = 0;
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr) = 0;
-    virtual TMBCStatus myAbort(Pid_t pid, int tid) = 0;
-    virtual TMBCStatus myCommit(Pid_t pid, int tid) = 0;
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst) = 0;
+    virtual TMBCStatus myAbort(Pid_t pid, int tid);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid) {}
 
     bool cacheOverflowed(Pid_t pid, VAddr caddr) const {
@@ -517,13 +517,8 @@ public:
     virtual ~TMFirstWinsCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
-    virtual void myCompleteAbort(Pid_t pid);
 private:
-    void markTrans(Pid_t pid, std::set<Pid_t>& m);
-    std::map<Pid_t, std::set<Pid_t> > marked;
+    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
 };
 
 class TMOlderCoherence: public TMCoherence {
@@ -532,12 +527,10 @@ public:
     virtual ~TMOlderCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    void markTrans(Pid_t pid, std::set<Pid_t>& m);
-    std::map<Pid_t, std::set<Pid_t> > marked;
+    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
+    std::map<Pid_t, Time_t> started;
 };
 
 class TMOlderAllCoherence: public TMCoherence {
@@ -546,12 +539,9 @@ public:
     virtual ~TMOlderAllCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    void markTrans(Pid_t pid, std::set<Pid_t>& m);
-    std::map<Pid_t, std::set<Pid_t> > marked;
+    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
     std::map<Pid_t, Time_t> started;
 };
 
@@ -561,13 +551,8 @@ public:
     virtual ~TMMoreCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    void markTrans(Pid_t pid, std::set<Pid_t>& m);
-    std::map<Pid_t, std::set<Pid_t> > marked;
-    std::map<Pid_t, size_t> numWrites;
+    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
 };
 
 extern TMCoherence *tmCohManager;

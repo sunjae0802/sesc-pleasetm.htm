@@ -40,6 +40,7 @@ typedef int32_t CPU_t;
 // Only the lower 16 bits are valid (at most 64K threads), but
 // negative values may have special meaning (invalid == -1)
 typedef int32_t         Pid_t;
+static const Pid_t      INVALID_PID = -1;
 
 //**************************************************
 // Types used for time (move to callback?)
