@@ -221,10 +221,7 @@ protected:
     void readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType);
-    size_t getWriteSetSize(Pid_t pid);
-    void clearFromRWLists(Pid_t pid);
-    void abortReaders(VAddr caddr, Pid_t aborterPid, uint64_t aborterUtid, int abortType);
-    void abortWriters(VAddr caddr, Pid_t aborterPid, uint64_t aborterUtid, int abortType);
+    void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType);
 
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr) = 0;
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr) = 0;
@@ -251,6 +248,19 @@ protected:
     std::vector<struct TransState>  transStates;
     static const int MAX_EXP_BACKOFF = 10;
     std::map<Pid_t, std::set<VAddr> > cacheLines;
+
+    void addWrite(VAddr caddr, Pid_t pid);
+    void addRead(VAddr caddr, Pid_t pid);
+    void removeTransaction(Pid_t pid);
+    void removeFromList(std::list<Pid_t>& list, Pid_t pid);
+    bool hadWrote(VAddr caddr, Pid_t pid);
+    bool hadRead(VAddr caddr, Pid_t pid);
+    void getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w);
+    void getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r);
+    std::map<Pid_t, std::set<VAddr> > linesRead;
+    std::map<Pid_t, std::set<VAddr> > linesWritten;
+    std::map<VAddr, std::list<Pid_t> > writers2;
+    std::map<VAddr, std::list<Pid_t> > readers2;
 };
 
 class TMEECoherence: public TMCoherence {
@@ -512,8 +522,7 @@ public:
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
 private:
-    void markReaders(VAddr caddr, Pid_t pid);
-    void markWriters(VAddr caddr, Pid_t pid);
+    void markTrans(Pid_t pid, std::set<Pid_t>& m);
     std::map<Pid_t, std::set<Pid_t> > marked;
 };
 
@@ -527,8 +536,7 @@ public:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    void markReaders(VAddr caddr, Pid_t pid);
-    void markWriters(VAddr caddr, Pid_t pid);
+    void markTrans(Pid_t pid, std::set<Pid_t>& m);
     std::map<Pid_t, std::set<Pid_t> > marked;
 };
 
@@ -542,8 +550,7 @@ public:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    void markReaders(VAddr caddr, Pid_t pid);
-    void markWriters(VAddr caddr, Pid_t pid);
+    void markTrans(Pid_t pid, std::set<Pid_t>& m);
     std::map<Pid_t, std::set<Pid_t> > marked;
     std::map<Pid_t, Time_t> started;
 };
@@ -558,8 +565,7 @@ public:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    void markReaders(VAddr caddr, Pid_t pid);
-    void markWriters(VAddr caddr, Pid_t pid);
+    void markTrans(Pid_t pid, std::set<Pid_t>& m);
     std::map<Pid_t, std::set<Pid_t> > marked;
     std::map<Pid_t, size_t> numWrites;
 };

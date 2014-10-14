@@ -22,6 +22,96 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
     }
 }
 
+void TMCoherence::addWrite(VAddr caddr, Pid_t pid) {
+    if(!hadWrote(caddr, pid)) {
+        linesWritten[pid].insert(caddr);
+        writers2[caddr].push_back(pid);
+    } else {
+        if(find(writers2[caddr].begin(), writers2[caddr].end(), pid)
+                == writers2[caddr].end()) {
+            fail("writers2 and linesWritten mistmatch in add\n");
+        }
+    }
+}
+void TMCoherence::addRead(VAddr caddr, Pid_t pid) {
+    if(!hadRead(caddr, pid)) {
+        linesRead[pid].insert(caddr);
+        readers2[caddr].push_back(pid);
+    } else {
+        if(find(readers2[caddr].begin(), readers2[caddr].end(), pid)
+                == readers2[caddr].end()) {
+            fail("readers2 and linesRead mistmatch in add\n");
+        }
+    }
+}
+bool TMCoherence::hadWrote(VAddr caddr, Pid_t pid) {
+    return linesWritten[pid].find(caddr) != linesWritten[pid].end();
+}
+
+bool TMCoherence::hadRead(VAddr caddr, Pid_t pid) {
+    return linesRead[pid].find(caddr) != linesRead[pid].end();
+}
+void TMCoherence::getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w) {
+    std::map<VAddr, std::list<Pid_t> >::iterator i_line;
+    i_line = writers2.find(caddr);
+    if(i_line != writers2.end()) {
+        w.insert(i_line->second.begin(), i_line->second.end());
+        w.erase(pid);
+    }
+}
+void TMCoherence::getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r) {
+    std::map<VAddr, std::list<Pid_t> >::iterator i_line;
+    i_line = readers2.find(caddr);
+    if(i_line != readers2.end()) {
+        r.insert(i_line->second.begin(), i_line->second.end());
+        r.erase(pid);
+    }
+}
+void TMCoherence::removeFromList(std::list<Pid_t>& list, Pid_t pid) {
+    std::list<Pid_t>::iterator i_list = list.begin();
+    while(i_list != list.end()) {
+        if(*i_list == pid) {
+            list.erase(i_list++);
+        } else {
+            ++i_list;
+        }
+    }
+}
+
+void TMCoherence::removeTransaction(Pid_t pid) {
+    std::map<VAddr, std::list<Pid_t> >::iterator i_line;
+    std::set<VAddr>::iterator i_wroteTo;
+    for(i_wroteTo = linesWritten[pid].begin(); i_wroteTo != linesWritten[pid].end(); ++i_wroteTo) {
+        i_line = writers2.find(*i_wroteTo);
+        if(i_line == writers2.end()) {
+            fail("linesWritten and writers2 mismatch\n");
+        }
+        removeFromList(i_line->second, pid);
+        if(i_line->second.empty()) {
+            writers2.erase(i_line);
+        }
+        if(std::find(i_line->second.begin(), i_line->second.end(), pid) != i_line->second.end()) {
+            fail("Remove fail?");
+        }
+    }
+    std::set<VAddr>::iterator i_readFrom;
+    for(i_readFrom = linesRead[pid].begin(); i_readFrom != linesRead[pid].end(); ++i_readFrom) {
+        i_line = readers2.find(*i_readFrom);
+        if(i_line == readers2.end()) {
+            fail("linesRead and readers2 mismatch\n");
+        }
+        removeFromList(i_line->second, pid);
+        if(i_line->second.empty()) {
+            readers2.erase(i_line);
+        }
+        if(std::find(i_line->second.begin(), i_line->second.end(), pid) != i_line->second.end()) {
+            fail("Remove fail?");
+        }
+    }
+    linesRead[pid].clear();
+    linesWritten[pid].clear();
+}
+
 void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 	if(!transStates[pid].getRestartPending()) {
         // This is a new transaction instance
@@ -31,7 +121,7 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 }
 void TMCoherence::commitTrans(Pid_t pid) {
     transStates[pid].commit();
-    clearFromRWLists(pid);
+    removeTransaction(pid);
 }
 void TMCoherence::abortTrans(Pid_t pid) {
     // No need to update aborts, victims since this is done by user
@@ -42,13 +132,27 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t a
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
     } // Else victim is already aborting, so leave it alone
 }
+
+void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType) {
+	set<Pid_t>::iterator i_aborted;
+    for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
+		if(*i_aborted == aborterPid) {
+            fail("Aborter is also the aborted?");
+        }
+        markTransAborted(*i_aborted, aborterPid, aborterUtid, caddr, abortType);
+        removeTransaction(*i_aborted);
+	}
+}
 void TMCoherence::readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
     cacheLines[pid].insert(caddr);
+    addRead(caddr, pid);
 	I(transStates[pid].getState() == TM_RUNNING);
 	cacheLineState[caddr].addReader(pid);
 }
 void TMCoherence::writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
     cacheLines[pid].insert(caddr);
+    addWrite(caddr, pid);
+
 	I(transStates[pid].getState() == TM_RUNNING);
 	cacheLineState[caddr].addWriter(pid);
 }
@@ -90,7 +194,7 @@ TMBCStatus TMCoherence::abort(Pid_t pid, int tid, uint32_t abortType) {
 TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
     if(transStates[pid].getState() == TM_ABORTING) {
         transStates[pid].completeAbort();
-        clearFromRWLists(pid);
+        removeTransaction(pid);
 
         Pid_t aborter = transStates[pid].getAborterPid();
         myCompleteAbort(pid);
@@ -99,69 +203,9 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
 }
 void TMCoherence::completeFallback(Pid_t pid) {
     transStates[pid].completeFallback();
-    clearFromRWLists(pid);
+    removeTransaction(pid);
 }
 
-///
-// A helper function that returns the write set of the current Pid.
-size_t TMCoherence::getWriteSetSize(Pid_t pid) {
-	size_t size = 0;
-	std::map<VAddr, CacheLineState>::const_iterator i_line;
-	for(i_line = cacheLineState.begin(); i_line != cacheLineState.end(); ++i_line) {
-		if(i_line->second.hadWrote(pid)) {
-			size++;
-		}
-	}
-	return size;
-}
-
-///
-// A helper function that clears the current Pid from all cache line RW lists.
-void TMCoherence::clearFromRWLists(Pid_t pid) {
-	map<VAddr, CacheLineState>::iterator i_line;
-	for(i_line = cacheLineState.begin(); i_line != cacheLineState.end(); ++i_line) {
-		i_line->second.writers.remove(pid);
-		i_line->second.readers.remove(pid);
-	}
-}
-
-///
-// A helper function that walks through a list of readers from a specified cache line, and
-// mark those "other" than the aborter as "aborted." It also clears them from the readers list,
-// although the aborter is left alone.
-void TMCoherence::abortReaders(VAddr caddr, Pid_t aborterPid, uint64_t aborterUtid, int abortType) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
-
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != aborterPid) {
-            markTransAborted(*i_pid, aborterPid, aborterUtid, caddr, abortType);
-            cacheLine.readers.erase(i_pid++);
-		} else {
-            // Skip ourself
-            ++i_pid;
-        }
-	}
-}
-
-///
-// A helper function that walks through a list of writers from a specified cache line, and
-// mark those "other" than the aborter as "aborted." It also clears them from the writers list,
-// although the aborter is left alone.
-void TMCoherence::abortWriters(VAddr caddr, Pid_t aborterPid, uint64_t aborterUtid, int abortType) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
-
-	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
-    while(i_pid != cacheLine.writers.end()) {
-		if(*i_pid != aborterPid) {
-            markTransAborted(*i_pid, aborterPid, aborterUtid, caddr, abortType);
-            cacheLine.writers.erase(i_pid++);
-		} else {
-            // Skip ourself
-            ++i_pid;
-		}
-	}
-}
 TMRWStatus TMCoherence::read(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
@@ -194,15 +238,14 @@ TMRWStatus TMCoherence::write(Pid_t pid, int tid, VAddr raddr) {
 //  a transaction, abort the transaction.
 TMRWStatus TMCoherence::nonTMread(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
 
-    I(!cacheLine.hadRead(pid));
-    I(!cacheLine.hadWrote(pid));
+    I(!hadRead(caddr, pid));
+    I(!hadWrote(caddr, pid));
 
     // Abort writers once we try to read
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, INVALID_UTID, TM_ATYPE_NONTM);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
     return TMRW_SUCCESS;
 }
@@ -212,18 +255,15 @@ TMRWStatus TMCoherence::nonTMread(Pid_t pid, VAddr raddr) {
 //  a transaction, abort the transaction.
 TMRWStatus TMCoherence::nonTMwrite(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
 
-    I(!cacheLine.hadRead(pid));
-    I(!cacheLine.hadWrote(pid));
+    I(!hadRead(caddr, pid));
+    I(!hadWrote(caddr, pid));
 
     // Abort everyone once we try to write
-    if(cacheLine.numReaders() > 0) {
-        abortReaders(caddr, pid, INVALID_UTID, TM_ATYPE_NONTM);
-    }
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, INVALID_UTID, TM_ATYPE_NONTM);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
     return TMRW_SUCCESS;
 }
@@ -245,15 +285,14 @@ TMEECoherence::TMEECoherence(int32_t nProcs, int lineSize, int lines, int argTyp
 }
 TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-	CacheLineState& cacheLine = cacheLineState[caddr];
 
 	// If we had been NACKed, we can now be released
 	if(transStates[pid].getState() == TM_NACKED) {
 		transStates[pid].resumeAfterNack();
 	}
 
-    if(cacheLine.numWriters() >= 1 && !cacheLine.hadWrote(pid)) {
-        list<Pid_t>::iterator i_writer = cacheLine.writers.begin();
+    if(writers2[caddr].size() >= 1 && !hadWrote(caddr, pid)) {
+        list<Pid_t>::iterator i_writer = writers2[caddr].begin();
         Pid_t aborterPid = *i_writer;
 
         if(aborterPid == pid) {
@@ -285,16 +324,15 @@ TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-	CacheLineState& cacheLine = cacheLineState[caddr];
 
 	// If we had been NACKed, we can now be released
 	if(transStates[pid].getState() == TM_NACKED) {
 		transStates[pid].resumeAfterNack();
 	}
 
-    if(cacheLine.numReaders() > 1 || ((cacheLine.numReaders() == 1) && !cacheLineState[caddr].hadRead(pid))) {
+    if(readers2[caddr].size() > 1 || ((readers2[caddr].size() == 1) && !hadRead(caddr, pid))) {
         // If there is more than one reader, or there is a single reader who happens not to be us
-        list<Pid_t>::iterator i_reader = cacheLine.readers.begin();
+        list<Pid_t>::iterator i_reader = readers2[caddr].begin();
         Pid_t aborterPid = *i_reader;
 
         if(aborterPid == pid) {
@@ -318,8 +356,8 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
             nackTrans(pid, nackStallCycles);
             return TMRW_NACKED;
         }
-    } else if((cacheLine.numWriters() > 1) || ((cacheLine.numWriters() == 1) && !cacheLine.hadWrote(pid))) {
-        list<Pid_t>::iterator i_writer = cacheLine.writers.begin();
+    } else if(writers2[caddr].size() > 1 || ((writers2[caddr].size() == 1) && !hadWrote(caddr, pid))) {
+        list<Pid_t>::iterator i_writer = writers2[caddr].begin();
         Pid_t aborterPid = *i_writer;
 
         if(aborterPid == pid) {
@@ -358,7 +396,7 @@ TMBCStatus TMEECoherence::myBegin(Pid_t pid, InstDesc* inst) {
 TMBCStatus TMEECoherence::myAbort(Pid_t pid, int tid) {
 	cycleFlags[pid] = false;
 
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles + (abortVarStallCycles * writeSetSize);
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -422,17 +460,15 @@ TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
 
         // "Lazily" check the read and write sets and abort anyone who conflicts with me
         uint64_t utid = transStates[pid].getUtid();
-        map<VAddr, CacheLineState>::iterator i_line;
-        for(i_line = cacheLineState.begin(); i_line != cacheLineState.end(); ++i_line) {
-            CacheLineState& cacheLine = i_line->second;
-            if(cacheLine.hadWrote(pid)) {
-                // If we have written to this address, we must abort everyone who read/wrote to it
-                abortReaders(i_line->first, pid, utid, TM_ATYPE_DEFAULT);
-                abortWriters(i_line->first, pid, utid, TM_ATYPE_DEFAULT);
-            } else {
-                // Remove ourself from the readers list
-                cacheLine.readers.remove(pid);
-            }
+        set<VAddr>::iterator i_line;
+        set<Pid_t> aborted;
+        for(i_line = linesWritten[pid].begin(); i_line != linesWritten[pid].end(); ++i_line) {
+            VAddr caddr = *i_line;
+
+            aborted.clear();
+            getReadersExcept(caddr, pid, aborted);
+            getWritersExcept(caddr, pid, aborted);
+            markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
         }
 
         // Now do the "commit"
@@ -460,17 +496,12 @@ TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argTyp
 }
 TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -478,18 +509,13 @@ TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    cacheLine.abortReadersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -501,7 +527,7 @@ TMBCStatus TMLECoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLECoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -530,17 +556,12 @@ TMLEHourglassCoherence::TMLEHourglassCoherence(int32_t nProcs, int lineSize, int
 
 TMRWStatus TMLEHourglassCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -548,18 +569,13 @@ TMRWStatus TMLEHourglassCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLEHourglassCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    cacheLine.abortReadersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -575,7 +591,7 @@ TMBCStatus TMLEHourglassCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLEHourglassCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -615,17 +631,12 @@ TMLESOKCoherence::TMLESOKCoherence(int32_t nProcs, int lineSize, int lines, int 
 
 TMRWStatus TMLESOKCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -633,18 +644,13 @@ TMRWStatus TMLESOKCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLESOKCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    cacheLine.abortReadersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -671,7 +677,7 @@ TMBCStatus TMLESOKCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLESOKCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -709,17 +715,12 @@ TMLESOKQueueCoherence::TMLESOKQueueCoherence(int32_t nProcs, int lineSize, int l
 
 TMRWStatus TMLESOKQueueCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -727,18 +728,13 @@ TMRWStatus TMLESOKQueueCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLESOKQueueCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    cacheLine.abortReadersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -765,7 +761,7 @@ TMBCStatus TMLESOKQueueCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLESOKQueueCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -823,17 +819,12 @@ TMLESOA0Coherence::TMLESOA0Coherence(int32_t nProcs, int lineSize, int lines, in
 }
 TMRWStatus TMLESOA0Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -841,18 +832,13 @@ TMRWStatus TMLESOA0Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLESOA0Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    cacheLine.abortReadersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -879,7 +865,7 @@ TMBCStatus TMLESOA0Coherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLESOA0Coherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -922,15 +908,14 @@ TMLESOA2Coherence::TMLESOA2Coherence(int32_t nProcs, int lineSize, int lines, in
 }
 TMRWStatus TMLESOA2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
 
     set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+    for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
         runQueues[caddr].push_back(*i_aborted);
         lockList[pid].insert(caddr);
         markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
@@ -942,16 +927,15 @@ TMRWStatus TMLESOA2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLESOA2Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    cacheLine.abortReadersExcept(pid, abortedSet);
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
 
     set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+    for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
         runQueues[caddr].push_back(*i_aborted);
         lockList[pid].insert(caddr);
         markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
@@ -982,7 +966,7 @@ TMBCStatus TMLESOA2Coherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLESOA2Coherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1017,22 +1001,21 @@ TMLEWARCoherence::TMLEWARCoherence(int32_t nProcs, int lineSize, int lines, int 
 
 TMRWStatus TMLEWARCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     if(warChest[pid].find(caddr) != warChest[pid].end()) {
         markTransAborted(pid, pid, utid, caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
     }
-    if(warChest[pid].size() > 0 && cacheLine.hadRead(pid) == false) {
+    if(warChest[pid].size() > 0 && hadRead(caddr, pid) == false) {
         markTransAborted(pid, pid, utid, caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
     }
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters(caddr, pid, transStates[pid].getUtid(), TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -1040,7 +1023,6 @@ TMRWStatus TMLEWARCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLEWARCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     if(warChest[pid].find(caddr) != warChest[pid].end()) {
@@ -1053,34 +1035,25 @@ TMRWStatus TMLEWARCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
 
     // Abort everyone once we try to write
-    if(cacheLine.numReaders() > 0) {
-        markReaders(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
+
+    set<Pid_t> readers;
+    getReadersExcept(caddr, pid, readers);
+    set<Pid_t>::iterator i_reader;
+    for(i_reader = readers.begin(); i_reader != readers.end(); ++i_reader) {
+        if(hadWrote(caddr, *i_reader)) {
+            markTransAborted(*i_reader, pid, utid, caddr, TM_ATYPE_DEFAULT);
+        } else {
+            warChest[*i_reader].insert(caddr);
+            std::remove(readers2[caddr].begin(), readers2[caddr].end(), pid);
+            linesRead[pid].erase(caddr);
+        }
+	}
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
-}
-void TMLEWARCoherence::markReaders(VAddr caddr, Pid_t aborterPid, uint64_t aborterUtid, int abortType) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
-
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != aborterPid) {
-            if(cacheLine.hadWrote(*i_pid)) {
-                markTransAborted(*i_pid, aborterPid, aborterUtid, caddr, abortType);
-                cacheLine.readers.erase(i_pid++);
-            } else {
-                warChest[*i_pid].insert(caddr);
-                cacheLine.readers.erase(i_pid++);
-            }
-		} else {
-            // Skip ourself
-            ++i_pid;
-        }
-	}
 }
 
 TMBCStatus TMLEWARCoherence::myBegin(Pid_t pid, InstDesc* inst) {
@@ -1090,7 +1063,7 @@ TMBCStatus TMLEWARCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLEWARCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1120,12 +1093,12 @@ TMLEATSCoherence::TMLEATSCoherence(int32_t nProcs, int lineSize, int lines, int 
 
 TMRWStatus TMLEATSCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters(caddr, pid, transStates[pid].getUtid(), TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -1133,16 +1106,13 @@ TMRWStatus TMLEATSCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLEATSCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numReaders() > 0) {
-        abortReaders(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -1164,7 +1134,7 @@ void TMLEATSCoherence::myCompleteAbort(Pid_t pid) {
 }
 
 TMBCStatus TMLEATSCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1242,7 +1212,6 @@ void TMLELockCoherence::markAbort(VAddr caddr, Pid_t pid, HWGate& gate, int abor
 
 TMRWStatus TMLELockCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
 
     if(getAbortAddrCount(caddr) > 0) {
         // This is a HOT address
@@ -1269,14 +1238,14 @@ TMRWStatus TMLELockCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
         }
     } else {
         // An idle address, so handle like LE-coherence
-        set<Pid_t> abortedSet;
-        cacheLine.abortWritersExcept(pid, abortedSet);
+        set<Pid_t> aborted;
+        getWritersExcept(caddr, pid, aborted);
 
-        if(abortedSet.size() > 0) {
+        if(aborted.size() > 0) {
             HWGate& gate = newGate(pid, caddr, true);
             set<Pid_t>::iterator i_aborted;
-            for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-                markAbort(caddr, *i_aborted, gate, 1);
+            for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
+                markAbort(caddr, *i_aborted, gate, TM_ATYPE_DEFAULT);
             }
         }
     }
@@ -1289,7 +1258,6 @@ TMRWStatus TMLELockCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLELockCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
 
     if(getAbortAddrCount(caddr) > 0) {
         // This is a HOT address
@@ -1300,12 +1268,12 @@ TMRWStatus TMLELockCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
             if(ownerPid == pid) {
                 // I'm the owner, check if this was a read-only lock and abort others.
                 if(gate.getReadOnly()) {
-                    set<Pid_t> abortedSet;
-                    cacheLine.abortReadersExcept(pid, abortedSet);
+                    set<Pid_t> aborted;
+                    getWritersExcept(caddr, pid, aborted);
 
-                    if(abortedSet.size() > 0) {
+                    if(aborted.size() > 0) {
                         set<Pid_t>::iterator i_aborted;
-                        for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
+                        for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
                             markAbort(caddr, *i_aborted, gate, TM_ATYPE_DEFAULT);
                         }
                     }
@@ -1322,15 +1290,15 @@ TMRWStatus TMLELockCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
         }
     } else {
         // An idle address, so handle like LE-coherence
-        set<Pid_t> abortedSet;
-        cacheLine.abortReadersExcept(pid, abortedSet);
-        cacheLine.abortWritersExcept(pid, abortedSet);
+        set<Pid_t> aborted;
+        getReadersExcept(caddr, pid, aborted);
+        getWritersExcept(caddr, pid, aborted);
 
-        if(abortedSet.size() > 0) {
+        if(aborted.size() > 0) {
             HWGate& gate = newGate(pid, caddr, false);
             set<Pid_t>::iterator i_aborted;
-            for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-                markAbort(caddr, *i_aborted, gate, 1);
+            for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
+                markAbort(caddr, *i_aborted, gate, TM_ATYPE_DEFAULT);
             }
         }
     }
@@ -1359,7 +1327,7 @@ TMBCStatus TMLELockCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLELockCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1503,12 +1471,13 @@ void TMLELock0Coherence::markAbort(VAddr caddr, Pid_t pid, HWGate& gate, int abo
 
 TMRWStatus TMLELock0Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    if(abortedSet.size() > 0) {
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+
+    if(aborted.size() > 0) {
         std::map<VAddr, HWGate>::iterator i_gate = gates.find(caddr);
         if(i_gate != gates.end() && i_gate->second.getOwner() != pid) {
             Pid_t oldOwner = i_gate->second.getOwner();
@@ -1519,8 +1488,8 @@ TMRWStatus TMLELock0Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
             i_gate = gates.find(caddr);
         }
         set<Pid_t>::iterator i_aborted;
-        for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-            markAbort(caddr, *i_aborted, i_gate->second, 1);
+        for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
+            markAbort(caddr, *i_aborted, i_gate->second, TM_ATYPE_DEFAULT);
         }
     }
 
@@ -1530,13 +1499,12 @@ TMRWStatus TMLELock0Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLELock0Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
 
     // An idle address, so handle like LE-coherence
-    set<Pid_t> abortedSet;
-    cacheLine.abortReadersExcept(pid, abortedSet);
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    if(abortedSet.size() > 0) {
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    if(aborted.size() > 0) {
         std::map<VAddr, HWGate>::iterator i_gate = gates.find(caddr);
         if(i_gate != gates.end() && i_gate->second.getOwner() != pid) {
             Pid_t oldOwner = i_gate->second.getOwner();
@@ -1547,8 +1515,8 @@ TMRWStatus TMLELock0Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
             i_gate = gates.find(caddr);
         }
         set<Pid_t>::iterator i_aborted;
-        for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-            markAbort(caddr, *i_aborted, i_gate->second, 1);
+        for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
+            markAbort(caddr, *i_aborted, i_gate->second, TM_ATYPE_DEFAULT);
         }
     }
 
@@ -1576,7 +1544,7 @@ TMBCStatus TMLELock0Coherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLELock0Coherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1634,11 +1602,12 @@ TMLEAsetCoherence::TMLEAsetCoherence(int32_t nProcs, int lineSize, int lines, in
 
 TMRWStatus TMLEAsetCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
+    uint64_t utid = transStates[pid].getUtid();
 
     // Abort writers once we try to read
-    if(cacheLineState[caddr].numWriters() > 0) {
-        abortWriters(caddr, pid, transStates[pid].getUtid(), TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -1646,16 +1615,13 @@ TMRWStatus TMLEAsetCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLEAsetCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     // Abort everyone once we try to write
-    if(cacheLine.numWriters() > 0) {
-        abortWriters(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
-    if(cacheLine.numReaders() > 0) {
-        abortReaders(caddr, pid, utid, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     accessed[pid].insert(caddr);
     writeTrans(pid, tid, raddr, caddr);
@@ -1684,7 +1650,7 @@ TMBCStatus TMLEAsetCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLEAsetCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1750,7 +1716,6 @@ TMLESnoopCoherence::TMLESnoopCoherence(int32_t nProcs, int lineSize, int lines, 
 }
 TMRWStatus TMLESnoopCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     for(Pid_t oPid = 0; oPid < nProcs; ++oPid) {
@@ -1761,13 +1726,9 @@ TMRWStatus TMLESnoopCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     }
 
     // Abort writers once we try to read
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     readLines.at(pid).insert(caddr);
     readTrans(pid, tid, raddr, caddr);
@@ -1776,7 +1737,6 @@ TMRWStatus TMLESnoopCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMLESnoopCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     for(Pid_t oPid = 0; oPid < nProcs; ++oPid) {
@@ -1787,14 +1747,10 @@ TMRWStatus TMLESnoopCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
 
     // Abort everyone once we try to write
-    set<Pid_t> abortedSet;
-    cacheLine.abortWritersExcept(pid, abortedSet);
-    cacheLine.abortReadersExcept(pid, abortedSet);
-
-    set<Pid_t>::iterator i_aborted;
-    for(i_aborted = abortedSet.begin(); i_aborted != abortedSet.end(); ++i_aborted) {
-        markTransAborted(*i_aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
-    }
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
     wroteLines.at(pid).insert(caddr);
     writeTrans(pid, tid, raddr, caddr);
@@ -1813,7 +1769,7 @@ TMBCStatus TMLESnoopCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLESnoopCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1858,31 +1814,17 @@ TMFirstWinsCoherence::TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lin
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
-void TMFirstWinsCoherence::markWriters(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
-
-	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
-    while(i_pid != cacheLine.writers.end()) {
+void TMFirstWinsCoherence::markTrans(Pid_t pid, std::set<Pid_t>& m) {
+	set<Pid_t>::iterator i_pid = m.begin();
+    for(i_pid = m.begin(); i_pid != m.end(); ++i_pid) {
 		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
             marked[*i_pid].insert(pid);
         }
-        ++i_pid;
 	}
 }
-void TMFirstWinsCoherence::markReaders(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
 
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
-            marked[*i_pid].insert(pid);
-        }
-        ++i_pid;
-	}
-}
 TMRWStatus TMFirstWinsCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -1894,7 +1836,9 @@ TMRWStatus TMFirstWinsCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     marked[pid].clear();
 
     // Abort writers once we try to read
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -1902,7 +1846,6 @@ TMRWStatus TMFirstWinsCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMFirstWinsCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -1914,8 +1857,10 @@ TMRWStatus TMFirstWinsCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     marked[pid].clear();
 
     // Abort everyone once we try to write
-    markReaders(caddr, pid);
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getReadersExcept(caddr, pid, m);
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -1927,7 +1872,7 @@ TMBCStatus TMFirstWinsCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMFirstWinsCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -1962,31 +1907,16 @@ TMOlderCoherence::TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
-void TMOlderCoherence::markWriters(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
-
-	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
-    while(i_pid != cacheLine.writers.end()) {
+void TMOlderCoherence::markTrans(Pid_t pid, std::set<Pid_t>& m) {
+	set<Pid_t>::iterator i_pid = m.begin();
+    for(i_pid = m.begin(); i_pid != m.end(); ++i_pid) {
 		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
             marked[*i_pid].insert(pid);
         }
-        ++i_pid;
-	}
-}
-void TMOlderCoherence::markReaders(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
-
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
-            marked[*i_pid].insert(pid);
-        }
-        ++i_pid;
 	}
 }
 TMRWStatus TMOlderCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -2003,7 +1933,9 @@ TMRWStatus TMOlderCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     marked[pid].clear();
 
     // Abort writers once we try to read
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -2011,7 +1943,6 @@ TMRWStatus TMOlderCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMOlderCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -2029,8 +1960,10 @@ TMRWStatus TMOlderCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 
 
     // Abort everyone once we try to write
-    markReaders(caddr, pid);
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getReadersExcept(caddr, pid, m);
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -2042,7 +1975,7 @@ TMBCStatus TMOlderCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMOlderCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -2075,31 +2008,18 @@ TMOlderAllCoherence::TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
-void TMOlderAllCoherence::markWriters(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
 
-	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
-    while(i_pid != cacheLine.writers.end()) {
+void TMOlderAllCoherence::markTrans(Pid_t pid, std::set<Pid_t>& m) {
+	set<Pid_t>::iterator i_pid = m.begin();
+    for(i_pid = m.begin(); i_pid != m.end(); ++i_pid) {
 		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
             marked[*i_pid].insert(pid);
         }
-        ++i_pid;
 	}
 }
-void TMOlderAllCoherence::markReaders(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
 
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
-            marked[*i_pid].insert(pid);
-        }
-        ++i_pid;
-	}
-}
 TMRWStatus TMOlderAllCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -2116,7 +2036,9 @@ TMRWStatus TMOlderAllCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     marked[pid].clear();
 
     // Abort writers once we try to read
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -2124,7 +2046,6 @@ TMRWStatus TMOlderAllCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMOlderAllCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -2142,8 +2063,10 @@ TMRWStatus TMOlderAllCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 
 
     // Abort everyone once we try to write
-    markReaders(caddr, pid);
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getReadersExcept(caddr, pid, m);
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -2158,7 +2081,7 @@ TMBCStatus TMOlderAllCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMOlderAllCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
@@ -2192,31 +2115,17 @@ TMMoreCoherence::TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int ar
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
-void TMMoreCoherence::markWriters(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
-
-	list<Pid_t>::iterator i_pid = cacheLine.writers.begin();
-    while(i_pid != cacheLine.writers.end()) {
+void TMMoreCoherence::markTrans(Pid_t pid, std::set<Pid_t>& m) {
+	set<Pid_t>::iterator i_pid = m.begin();
+    for(i_pid = m.begin(); i_pid != m.end(); ++i_pid) {
 		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
             marked[*i_pid].insert(pid);
         }
-        ++i_pid;
 	}
 }
-void TMMoreCoherence::markReaders(VAddr caddr, Pid_t pid) {
-	CacheLineState& cacheLine = cacheLineState[caddr];
 
-	list<Pid_t>::iterator i_pid = cacheLine.readers.begin();
-    while(i_pid != cacheLine.readers.end()) {
-		if(*i_pid != pid && transStates[*i_pid].getState() == TM_RUNNING) {
-            marked[*i_pid].insert(pid);
-        }
-        ++i_pid;
-	}
-}
 TMRWStatus TMMoreCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -2233,7 +2142,9 @@ TMRWStatus TMMoreCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     marked[pid].clear();
 
     // Abort writers once we try to read
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -2241,7 +2152,6 @@ TMRWStatus TMMoreCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
 TMRWStatus TMMoreCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
-    CacheLineState& cacheLine = cacheLineState[caddr];
     uint64_t utid = transStates[pid].getUtid();
 
     std::set<Pid_t>::iterator i_markers = marked[pid].begin();
@@ -2259,8 +2169,10 @@ TMRWStatus TMMoreCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 
 
     // Abort everyone once we try to write
-    markReaders(caddr, pid);
-    markWriters(caddr, pid);
+    set<Pid_t> m;
+    getReadersExcept(caddr, pid, m);
+    getWritersExcept(caddr, pid, m);
+    markTrans(pid, m);
 
     numWrites[pid]++;
     writeTrans(pid, tid, raddr, caddr);
@@ -2274,7 +2186,7 @@ TMBCStatus TMMoreCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMMoreCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = getWriteSetSize(pid);
+	size_t writeSetSize = linesWritten[pid].size();
 	Time_t stallLength = abortBaseStallCycles;
     transStates[pid].startStalling(globalClock + stallLength);
 
