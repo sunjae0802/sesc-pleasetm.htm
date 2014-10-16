@@ -117,6 +117,7 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
         // This is a new transaction instance
     } // Else a restarted transaction
 	cacheLines[pid].clear();
+    removeTransaction(pid);
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 void TMCoherence::commitTrans(Pid_t pid) {
@@ -161,6 +162,7 @@ void TMCoherence::nackTrans(Pid_t pid, TimeDelta_t stallCycles) {
 
 TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
     if(transStates[pid].getDepth() > 0) {
+        fail("Nested transactions not tested\n");
 		transStates[pid].beginNested();
 		return TMBC_IGNORE;
 	} else {
@@ -243,6 +245,7 @@ TMRWStatus TMCoherence::nonTMread(Pid_t pid, VAddr raddr) {
     // Abort writers once we try to read
     set<Pid_t> aborted;
     getWritersExcept(caddr, pid, aborted);
+
     markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
     return TMRW_SUCCESS;
@@ -261,6 +264,7 @@ TMRWStatus TMCoherence::nonTMwrite(Pid_t pid, VAddr raddr) {
     set<Pid_t> aborted;
     getReadersExcept(caddr, pid, aborted);
     getWritersExcept(caddr, pid, aborted);
+
     markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
     return TMRW_SUCCESS;
@@ -2082,4 +2086,3 @@ TMRWStatus TMMoreCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
     return TMRW_SUCCESS;
 }
-

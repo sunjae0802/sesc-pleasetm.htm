@@ -24,51 +24,6 @@ enum TMAbortType_e { TM_ATYPE_NONTM = 255, TM_ATYPE_DEFAULT = 0, TM_ATYPE_USER =
 static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
 static const uint64_t INVALID_UTID = -1;
 
-struct CacheLineState {
-    CacheLineState() {}
-    bool hadWrote(Pid_t pid) const {
-        return std::find(writers.begin(), writers.end(), pid) != writers.end();
-    }
-    bool hadRead(Pid_t pid) const {
-        return std::find(readers.begin(), readers.end(), pid) != readers.end();
-    }
-    size_t numReaders() const {
-        return readers.size();
-    }
-    size_t numWriters() const {
-        return writers.size();
-    }
-    void addWriter(Pid_t pid) {
-        if(!hadWrote(pid)) {
-            writers.push_back(pid);
-        }
-    }
-    void addReader(Pid_t pid) {
-        if(!hadRead(pid)) {
-            readers.push_back(pid);
-        }
-    }
-    void abortWritersExcept(Pid_t except, std::set<Pid_t>& abortedSet) {
-        abortExcept(except, writers, abortedSet);
-    }
-    void abortReadersExcept(Pid_t except, std::set<Pid_t>& abortedSet) {
-        abortExcept(except, readers, abortedSet);
-    }
-    void abortExcept(Pid_t except, std::list<Pid_t>& members, std::set<Pid_t>& abortedSet) {
-        std::list<Pid_t>::iterator i_pid = members.begin();
-        while(i_pid != members.end()) {
-            if(*i_pid != except) {
-                abortedSet.insert(*i_pid);
-                members.erase(i_pid++);
-            } else {
-                ++i_pid;
-            }
-        }
-    }
-    std::list<Pid_t> readers;
-    std::list<Pid_t> writers;
-};
-
 class TransState {
 
 public:
@@ -244,7 +199,6 @@ protected:
 
     static uint64_t nextUtid;
 
-    std::map<VAddr, CacheLineState> cacheLineState; //!< The cache ownership
     std::vector<struct TransState>  transStates;
     static const int MAX_EXP_BACKOFF = 10;
     std::map<Pid_t, std::set<VAddr> > cacheLines;
