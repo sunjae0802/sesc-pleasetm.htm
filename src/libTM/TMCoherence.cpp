@@ -2099,3 +2099,138 @@ TMRWStatus TMMoreCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
     return TMRW_SUCCESS;
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with first wins with Nacking
+/////////////////////////////////////////////////////////////////////////////////////////
+TMFirstWins2Coherence::TMFirstWins2Coherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with first wins with NACKing Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+
+TMRWStatus TMFirstWins2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    uint64_t utid = transStates[pid].getUtid();
+	if(transStates[pid].getState() == TM_NACKED) {
+        transStates[pid].startStalling(globalClock + 10);
+        return TMRW_NACKED;
+	}
+
+    // Abort writers once we try to read
+    set<Pid_t> m;
+    getWritersExcept(caddr, pid, m);
+
+    set<Pid_t> m_nacking;
+    set<Pid_t>::iterator i_m = m.begin();
+    while(i_m != m.end()) {
+        if(transStates[*i_m].getState() == TM_NACKED) {
+            m_nacking.insert(*i_m);
+            m.erase(i_m++);
+        } else {
+            ++i_m;
+        }
+    }
+    for(i_m = m_nacking.begin(); i_m != m_nacking.end(); ++i_m) {
+        if(nackedBy.find(*i_m) == nackedBy.end()) { fail("NackedBy mismatch?\n"); }
+        Pid_t nacker = nackedBy.at(*i_m);
+        nackedBy.erase(*i_m);
+        nacking[nacker].erase(*i_m);
+        markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
+    }
+    if(m.size() > 0) {
+        Pid_t aborter = *(m.begin());
+        nackTrans(pid, 10);
+        nackingTMs.insert(pid);
+        if(nackedBy.find(aborter) != nackedBy.end()) { fail("Duplicate nack\n"); }
+        nacking[aborter].insert(pid);
+        nackedBy[pid] = aborter;
+        return TMRW_NACKED;
+    } else {
+        readTrans(pid, tid, raddr, caddr);
+        return TMRW_SUCCESS;
+    }
+}
+
+TMRWStatus TMFirstWins2Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    uint64_t utid = transStates[pid].getUtid();
+	if(transStates[pid].getState() == TM_NACKED) {
+        transStates[pid].startStalling(globalClock + 10);
+        return TMRW_NACKED;
+	}
+
+    // Abort everyone once we try to write
+    set<Pid_t> m;
+    getReadersExcept(caddr, pid, m);
+    getWritersExcept(caddr, pid, m);
+
+    set<Pid_t> m_nacking;
+    set<Pid_t>::iterator i_m = m.begin();
+    while(i_m != m.end()) {
+        if(transStates[*i_m].getState() == TM_NACKED) {
+            m_nacking.insert(*i_m);
+            m.erase(i_m++);
+        } else {
+            ++i_m;
+        }
+    }
+    for(i_m = m_nacking.begin(); i_m != m_nacking.end(); ++i_m) {
+        if(nackedBy.find(*i_m) == nackedBy.end()) { fail("NackedBy mismatch?\n"); }
+        Pid_t nacker = nackedBy.at(*i_m);
+        nackedBy.erase(*i_m);
+        nacking[nacker].erase(*i_m);
+        markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
+    }
+    if(m.size() > 0) {
+        Pid_t aborter = *(m.begin());
+        nackTrans(pid, 10);
+        nackingTMs.insert(pid);
+        if(nackedBy.find(aborter) != nackedBy.end()) { fail("Duplicate nack\n"); }
+        nacking[aborter].insert(pid);
+        nackedBy[pid] = aborter;
+        return TMRW_NACKED;
+    } else {
+        writeTrans(pid, tid, raddr, caddr);
+        return TMRW_SUCCESS;
+    }
+}
+
+TMBCStatus TMFirstWins2Coherence::myCommit(Pid_t pid, int tid) {
+    set<Pid_t>::iterator i_nacked;
+    for(i_nacked = nacking[pid].begin(); i_nacked != nacking[pid].end(); ++i_nacked) {
+        if(nackedBy.find(*i_nacked) == nackedBy.end()) { fail("NackedBy resume mismatch?\n"); }
+        if(nackedBy.at(*i_nacked) == pid) {
+            // Note: The supposedly nacked transaction might not be nacked anymore,
+            // because of nonTM aborts
+            if(transStates.at(*i_nacked).getState() == TM_NACKED) {
+                transStates[*i_nacked].resumeAfterNack();
+                nackingTMs.erase(*i_nacked);
+            }
+            nackedBy.erase(*i_nacked);
+        } else { fail("NackedBy mismatch pid\n"); }
+    }
+    nacking[pid].clear();
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+TMBCStatus TMFirstWins2Coherence::myBegin(Pid_t pid, InstDesc *inst) {
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+TMBCStatus TMFirstWins2Coherence::myAbort(Pid_t pid, int tid) {
+	size_t writeSetSize = linesWritten[pid].size();
+	Time_t stallLength = abortBaseStallCycles;
+    transStates[pid].startStalling(globalClock + stallLength);
+
+    if(nackedBy.find(pid) != nackedBy.end()) {
+        Pid_t nacker = nackedBy.at(pid);
+        nackedBy.erase(pid);
+        nacking[nacker].erase(pid);
+        nackingTMs.erase(pid);
+    }
+	abortTrans(pid);
+    return TMBC_SUCCESS;
+}

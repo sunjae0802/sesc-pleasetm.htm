@@ -88,6 +88,8 @@ void initTMCoherence(int32_t nProcs)
         tmCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "More") {
         tmCohManager = new TMMoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "First2") {
+        tmCohManager = new TMFirstWins2Coherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else {
         MSG("unknown TM method, using EE");
         tmCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);

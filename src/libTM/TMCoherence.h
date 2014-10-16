@@ -510,6 +510,21 @@ private:
     Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
 };
 
+class TMFirstWins2Coherence: public TMCoherence {
+public:
+    TMFirstWins2Coherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMFirstWins2Coherence() { }
+    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myAbort(Pid_t pid, int tid);
+private:
+    std::map<Pid_t, std::set<Pid_t> > nacking;
+    std::map<Pid_t, Pid_t> nackedBy;
+    std::set<Pid_t> nackingTMs;
+};
+
 extern TMCoherence *tmCohManager;
 
 #endif
