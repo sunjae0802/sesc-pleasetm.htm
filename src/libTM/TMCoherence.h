@@ -109,6 +109,7 @@ public:
     bool checkStall(Time_t clock) const {
         return stallUntil >= clock;
     }
+    void print() const;
 
     TMState_e getState() const { return state; }
     uint64_t getUtid() const { return utid; }

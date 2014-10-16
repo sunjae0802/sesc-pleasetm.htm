@@ -10,6 +10,19 @@ using namespace std;
 TMCoherence *tmCohManager = 0;
 uint64_t TMCoherence::nextUtid = 0;
 
+void TransState::print() const {
+    std::cout << myPid << " ";
+    switch(state) {
+        case TM_INVALID:    cout << "INVALID";  break;
+        case TM_RUNNING:    cout << "RUNNING";  break;
+        case TM_NACKED:     cout << "NACKED";   break;
+        case TM_ABORTING:   cout << "ABORING";  break;
+        case TM_MARKABORT:  cout << "MARK_ABORT"; break;
+        default:            cout << "??????";   break;
+    };
+    std::cout << " \n";
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Abstract super-class of all TM policies. Contains the external interface and common
 // implementations
