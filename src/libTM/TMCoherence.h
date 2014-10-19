@@ -3,12 +3,12 @@
 
 #include <map>
 #include <set>
-#include <algorithm>
 #include <list>
 #include <vector>
 
 #include "Snippets.h"
 #include "libemul/InstDesc.h"
+#include "TMState.h"
 #include "HWGate.h"
 
 #define MAX_CPU_COUNT 512
@@ -16,121 +16,8 @@
 typedef unsigned long long ID; 
 typedef unsigned long long INSTCOUNT;
 
-enum TMState_e { TM_INVALID, TM_RUNNING, TM_NACKED, TM_ABORTING, TM_MARKABORT };
 enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT, TMBC_IGNORE };
 enum TMRWStatus { TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
-enum TMAbortType_e { TM_ATYPE_NONTM = 255, TM_ATYPE_DEFAULT = 0, TM_ATYPE_USER = 1, TM_ATYPE_CAPACITY = 2, TM_ATYPE_SYSCALL = 3 };
-
-static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
-static const uint64_t INVALID_UTID = -1;
-
-class TransState {
-
-public:
-    TransState(Pid_t pid): myPid(pid), state(TM_INVALID), stallUntil(0), timestamp(INVALID_TIMESTAMP),
-            utid(INVALID_UTID), depth(0), restartPending(false) {}
-
-    struct AbortState {
-        AbortState(): aborterPid(-1), aborterUtid(INVALID_UTID), abortByAddr(0), abortType(TM_ATYPE_DEFAULT) {}
-        void clear() {
-            aborterPid  = -1;
-            aborterUtid = INVALID_UTID;
-            abortByAddr = 0;
-            abortType   = TM_ATYPE_DEFAULT;
-        }
-        void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, int type) {
-            aborterPid  = byPid;
-            aborterUtid = byUtid;
-            abortByAddr = byCaddr;
-            abortType   = type;
-        }
-        Pid_t   aborterPid;
-        uint64_t aborterUtid;
-        VAddr   abortByAddr;
-        int     abortType;
-    };
-
-    void begin(uint64_t newUtid) {
-        timestamp   = globalClock;
-        utid        = newUtid;
-        state       = TM_RUNNING;
-        I(depth == 0);
-        depth       = 1;
-
-        abortState.clear();
-        restartPending = false;
-    }
-    void beginNested() {
-        depth++;
-    }
-    void commitNested() {
-        depth--;
-    }
-    void startAborting() {
-        state       = TM_ABORTING;
-        // We can't just decrement because we should be going back to the original begin
-        //depth       = 0;
-    }
-    void startNacking() {
-        state       = TM_NACKED;
-    }
-    void resumeAfterNack() {
-        I(state == TM_NACKED);
-        state       = TM_RUNNING;
-    }
-    void completeAbort() {
-        I(state == TM_ABORTING);
-        timestamp   = INVALID_TIMESTAMP;
-        utid        = INVALID_UTID;
-        state       = TM_INVALID;
-        // We can't just decrement because we should be going back to the original begin
-        depth       = 0;
-        restartPending = true;
-    }
-    void completeFallback() {
-        restartPending = false;
-        abortState.clear();
-    }
-    void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, int abortType) {
-        state       = TM_MARKABORT;
-        abortState.markAbort(byPid, byUtid, byCaddr, abortType);
-    }
-    void commit() {
-        timestamp   = INVALID_TIMESTAMP;
-        utid        = INVALID_UTID;
-        state       = TM_INVALID;
-        I(depth == 1);
-        depth       = 0;
-        abortState.clear();
-    }
-    void startStalling(Time_t util) {
-        stallUntil = util;
-    }
-    bool checkStall(Time_t clock) const {
-        return stallUntil >= clock;
-    }
-    void print() const;
-
-    TMState_e getState() const { return state; }
-    uint64_t getUtid() const { return utid; }
-    Time_t getTimestamp() const { return timestamp; }
-    size_t getDepth() const { return depth; }
-    bool  getRestartPending() const { return restartPending; }
-    int   getAbortType() const { return abortState.abortType; }
-    Pid_t getAborterPid() const { return abortState.aborterPid; }
-    uint64_t getAborterUtid() const { return abortState.aborterUtid; }
-    VAddr getAbortBy() const { return abortState.abortByAddr; }
-
-private:
-    Pid_t   myPid;
-    TMState_e state;
-    Time_t  stallUntil;
-    Time_t  timestamp;
-    uint64_t utid;
-    size_t  depth;
-    bool    restartPending;
-    AbortState abortState;
-};
 
 class TMCoherence {
 public:
