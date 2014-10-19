@@ -127,9 +127,7 @@ public:
     virtual ~TMLLCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
     Pid_t   currentCommitter;                          //!< PID of the currently committing processor
     int     abortVarStallCycles;
@@ -143,9 +141,6 @@ public:
     virtual ~TMLECoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
 };
 
@@ -155,7 +150,6 @@ public:
     virtual ~TMLEHourglassCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
@@ -172,7 +166,6 @@ public:
     virtual ~TMLESOKCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
@@ -190,7 +183,6 @@ public:
     virtual ~TMLESOKQueueCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
@@ -208,7 +200,6 @@ public:
     virtual ~TMLESOA0Coherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
@@ -225,7 +216,6 @@ public:
     virtual ~TMLESOA2Coherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
@@ -256,7 +246,6 @@ public:
     virtual ~TMLEATSCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual void myCompleteAbort(Pid_t pid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
@@ -272,7 +261,6 @@ public:
     virtual ~TMLELockCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
@@ -298,7 +286,6 @@ public:
     virtual ~TMLELock0Coherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
@@ -324,7 +311,6 @@ public:
     virtual ~TMLEAsetCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid);
@@ -403,7 +389,6 @@ public:
     virtual ~TMFirstWins2Coherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myAbort(Pid_t pid, int tid);
 private:

@@ -464,17 +464,6 @@ TMRWStatus TMLLCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     return TMRW_SUCCESS;
 }
 
-TMBCStatus TMLLCoherence::myBegin(Pid_t pid, InstDesc* inst) {
-    beginTrans(pid, inst);
-    return TMBC_SUCCESS;
-}
-
-TMBCStatus TMLLCoherence::myAbort(Pid_t pid, int tid) {
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
-
 TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
     if(currentCommitter == INVALID_PID) {
         // Stop other transactions from being able to commit
@@ -543,27 +532,6 @@ TMRWStatus TMLECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     return TMRW_SUCCESS;
 }
 
-TMBCStatus TMLECoherence::myBegin(Pid_t pid, InstDesc* inst) {
-    beginTrans(pid, inst);
-    return TMBC_SUCCESS;
-}
-
-TMBCStatus TMLECoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
-
-TMBCStatus TMLECoherence::myCommit(Pid_t pid, int tid) {
-    commitTrans(pid);
-
-    return TMBC_SUCCESS;
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with Hourglass. If a transaction gets aborted more than a
 // threshold number of times, the hourglass is triggered.
@@ -612,15 +580,6 @@ TMBCStatus TMLEHourglassCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     }
 }
 
-TMBCStatus TMLEHourglassCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
 void TMLEHourglassCoherence::myCompleteAbort(Pid_t pid) {
     abortCount[pid]++;
 
@@ -698,15 +657,6 @@ TMBCStatus TMLESOKCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     }
 }
 
-TMBCStatus TMLESOKCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
 void TMLESOKCoherence::myCompleteAbort(Pid_t pid) {
     abortCount[pid]++;
     Pid_t aborter = transStates[pid].getAborterPid();
@@ -782,15 +732,6 @@ TMBCStatus TMLESOKQueueCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     }
 }
 
-TMBCStatus TMLESOKQueueCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
 void TMLESOKQueueCoherence::myCompleteAbort(Pid_t pid) {
     abortCount[pid]++;
     Pid_t aborter = transStates[pid].getAborterPid();
@@ -886,16 +827,6 @@ TMBCStatus TMLESOA0Coherence::myBegin(Pid_t pid, InstDesc* inst) {
     }
 }
 
-TMBCStatus TMLESOA0Coherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
-
 void TMLESOA0Coherence::myCompleteAbort(Pid_t pid) {
     Pid_t aborter = transStates[pid].getAborterPid();
     VAddr abortAddr = transStates[pid].getAbortBy();
@@ -985,16 +916,6 @@ TMBCStatus TMLESOA2Coherence::myBegin(Pid_t pid, InstDesc* inst) {
         beginTrans(pid, inst);
         return TMBC_SUCCESS;
     }
-}
-
-TMBCStatus TMLESOA2Coherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
 }
 
 TMBCStatus TMLESOA2Coherence::myCommit(Pid_t pid, int tid) {
@@ -1153,16 +1074,6 @@ void TMLEATSCoherence::myCompleteAbort(Pid_t pid) {
     if(abortCount[pid] > 0.5) {
         runQueue.push_back(pid);
     }
-}
-
-TMBCStatus TMLEATSCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
 }
 
 TMBCStatus TMLEATSCoherence::myCommit(Pid_t pid, int tid) {
@@ -1348,15 +1259,6 @@ TMBCStatus TMLELockCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     }
 }
 
-TMBCStatus TMLELockCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
 void TMLELockCoherence::updateAbortAddr(VAddr abortAddr, size_t count) {
     abortAddrCount[abortAddr] += count;
     lruList.remove(abortAddr);
@@ -1565,15 +1467,6 @@ TMBCStatus TMLELock0Coherence::myBegin(Pid_t pid, InstDesc* inst) {
     }
 }
 
-TMBCStatus TMLELock0Coherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
 void TMLELock0Coherence::updateAbortAddr(VAddr abortAddr, size_t count) {
     abortAddrCount[abortAddr] += count;
     lruList.remove(abortAddr);
@@ -1671,15 +1564,6 @@ TMBCStatus TMLEAsetCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     }
 }
 
-TMBCStatus TMLEAsetCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
-	abortTrans(pid);
-
-	return TMBC_SUCCESS;
-}
 void TMLEAsetCoherence::myCompleteAbort(Pid_t pid) {
     abortCount[pid]++;
     Pid_t aborter = transStates[pid].getAborterPid();
@@ -2201,10 +2085,6 @@ TMBCStatus TMFirstWins2Coherence::myCommit(Pid_t pid, int tid) {
     }
     nacking[pid].clear();
     commitTrans(pid);
-    return TMBC_SUCCESS;
-}
-TMBCStatus TMFirstWins2Coherence::myBegin(Pid_t pid, InstDesc *inst) {
-    beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
 TMBCStatus TMFirstWins2Coherence::myAbort(Pid_t pid, int tid) {
