@@ -52,6 +52,7 @@ void ThreadContext::initialize(bool child) {
     traceMemOps = false;
 
 #if (defined TM)
+    tmStallUntil= 0;
     tmBCFlag    = INVALID_TM;
     tmAbortIAddr= 0;
     tmEndRA     = 0;

@@ -1544,6 +1544,7 @@ public:
 //                context->abortTransaction();
 //                return inst;
             if(context->isTMNacking()) {
+                context->startStalling(10);
                 return inst;
             }
 #endif
@@ -1600,6 +1601,7 @@ public:
 //                context->abortTransaction();
 //                return inst;
             if(context->isTMNacking()) {
+                context->startStalling(10);
                 return inst;
             }
 #endif    

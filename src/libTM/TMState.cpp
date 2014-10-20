@@ -9,7 +9,7 @@
 using namespace std;
 
 TransState::TransState(Pid_t pid):
-        myPid(pid), state(TM_INVALID), stallUntil(0), timestamp(INVALID_TIMESTAMP),
+        myPid(pid), state(TM_INVALID), timestamp(INVALID_TIMESTAMP),
         utid(INVALID_UTID), depth(0), restartPending(false) {
 }
 

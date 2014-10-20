@@ -44,12 +44,6 @@ public:
     void completeFallback();
     void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, int abortType);
     void commit();
-    void startStalling(Time_t util) {
-        stallUntil = util;
-    }
-    bool checkStall(Time_t clock) const {
-        return stallUntil >= clock;
-    }
     void print() const;
 
     TMState_e getState() const { return state; }
@@ -65,7 +59,6 @@ public:
 private:
     Pid_t   myPid;
     TMState_e state;
-    Time_t  stallUntil;
     Time_t  timestamp;
     uint64_t utid;
     size_t  depth;

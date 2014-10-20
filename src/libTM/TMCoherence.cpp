@@ -155,8 +155,7 @@ void TMCoherence::writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
 
 	I(transStates[pid].getState() == TM_RUNNING);
 }
-void TMCoherence::nackTrans(Pid_t pid, TimeDelta_t stallCycles) {
-    transStates[pid].startStalling(globalClock + stallCycles);
+void TMCoherence::nackTrans(Pid_t pid) {
     transStates[pid].startNacking();
 }
 
@@ -276,12 +275,7 @@ TMBCStatus TMCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
 	abortTrans(pid);
-
 	return TMBC_SUCCESS;
 }
 
@@ -303,7 +297,6 @@ TMEECoherence::TMEECoherence(int32_t nProcs, int lineSize, int lines, int argTyp
 	abortVarStallCycles     = SescConf->getInt("TransactionalMemory","secondaryVarStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitVarStallCycles    = SescConf->getInt("TransactionalMemory","primaryVarStallCycles");
-	nackStallCycles = SescConf->getInt("TransactionalMemory","nackStallCycles");
 }
 TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
@@ -335,7 +328,7 @@ TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
                 cycleFlags[aborterPid] = true;
             }
 
-            nackTrans(pid, nackStallCycles);
+            nackTrans(pid);
             return TMRW_NACKED;
         }
     } else {
@@ -375,7 +368,7 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
                 cycleFlags[aborterPid] = true;
             }
 
-            nackTrans(pid, nackStallCycles);
+            nackTrans(pid);
             return TMRW_NACKED;
         }
     } else if(writers2[caddr].size() > 1 || ((writers2[caddr].size() == 1) && !hadWrote(caddr, pid))) {
@@ -400,7 +393,7 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
                 cycleFlags[aborterPid] = true;
             }
 
-            nackTrans(pid, nackStallCycles);
+            nackTrans(pid);
             return TMRW_NACKED;
         }
     } else {
@@ -417,11 +410,6 @@ TMBCStatus TMEECoherence::myBegin(Pid_t pid, InstDesc* inst) {
 
 TMBCStatus TMEECoherence::myAbort(Pid_t pid, int tid) {
 	cycleFlags[pid] = false;
-
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles + (abortVarStallCycles * writeSetSize);
-    transStates[pid].startStalling(globalClock + stallLength);
-
 	abortTrans(pid);
 
 	return TMBC_SUCCESS;
@@ -446,7 +434,6 @@ TMLLCoherence::TMLLCoherence(int32_t nProcs, int lineSize, int lines, int argTyp
 	abortVarStallCycles     = SescConf->getInt("TransactionalMemory","primaryVarStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 	commitVarStallCycles    = SescConf->getInt("TransactionalMemory","secondaryVarStallCycles");
-	nackStallCycles = SescConf->getInt("TransactionalMemory","nackStallCycles");
 
 	currentCommitter = INVALID_PID; 
 }
@@ -489,7 +476,7 @@ TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
         currentCommitter = INVALID_PID;
         return TMBC_SUCCESS;
     } else {
-        nackTrans(pid, nackStallCycles);
+        nackTrans(pid);
 
         return TMBC_NACK;
     }
@@ -1006,10 +993,6 @@ TMBCStatus TMLEWARCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLEWARCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
     warChest[pid].clear();
 	abortTrans(pid);
 
@@ -1675,10 +1658,6 @@ TMBCStatus TMLESnoopCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLESnoopCoherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
 	abortTrans(pid);
     readLines[pid].clear();
     wroteLines[pid].clear();
@@ -1986,7 +1965,6 @@ TMRWStatus TMFirstWins2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 	if(transStates[pid].getState() == TM_NACKED) {
-        transStates[pid].startStalling(globalClock + 10);
         return TMRW_NACKED;
 	}
 
@@ -2013,7 +1991,7 @@ TMRWStatus TMFirstWins2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     }
     if(m.size() > 0) {
         Pid_t aborter = *(m.begin());
-        nackTrans(pid, 10);
+        nackTrans(pid);
         nackingTMs.insert(pid);
         if(nackedBy.find(aborter) != nackedBy.end()) { fail("Duplicate nack\n"); }
         nacking[aborter].insert(pid);
@@ -2029,7 +2007,6 @@ TMRWStatus TMFirstWins2Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 	if(transStates[pid].getState() == TM_NACKED) {
-        transStates[pid].startStalling(globalClock + 10);
         return TMRW_NACKED;
 	}
 
@@ -2057,7 +2034,7 @@ TMRWStatus TMFirstWins2Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
     if(m.size() > 0) {
         Pid_t aborter = *(m.begin());
-        nackTrans(pid, 10);
+        nackTrans(pid);
         nackingTMs.insert(pid);
         if(nackedBy.find(aborter) != nackedBy.end()) { fail("Duplicate nack\n"); }
         nacking[aborter].insert(pid);
@@ -2088,10 +2065,6 @@ TMBCStatus TMFirstWins2Coherence::myCommit(Pid_t pid, int tid) {
     return TMBC_SUCCESS;
 }
 TMBCStatus TMFirstWins2Coherence::myAbort(Pid_t pid, int tid) {
-	size_t writeSetSize = linesWritten[pid].size();
-	Time_t stallLength = abortBaseStallCycles;
-    transStates[pid].startStalling(globalClock + stallLength);
-
     if(nackedBy.find(pid) != nackedBy.end()) {
         Pid_t nacker = nackedBy.at(pid);
         nackedBy.erase(pid);

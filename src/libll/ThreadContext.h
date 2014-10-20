@@ -41,6 +41,8 @@ private:
 #if (defined TM)
     // Unique transaction identifier
     uint64_t tmUtid;
+    // Stall thread if we get a NACK
+    Time_t  tmStallUntil;
     // Transaction begin/commit flags
     BCFlag  tmBCFlag;
     // Saved thread context
@@ -149,6 +151,12 @@ public:
     uint32_t getBeginArg();
     uint32_t getAbortArg();
     void completeFallback();
+    void startStalling(TimeDelta_t amount) {
+        tmStallUntil = globalClock + amount;
+    }
+    bool checkStall() const {
+        return tmStallUntil != 0 && tmStallUntil >= globalClock;
+    }
 #endif
 
     void incNRetiredInsts() {

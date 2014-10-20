@@ -44,10 +44,6 @@ public:
     bool markedForAbort(Pid_t pid)  const { return transStates.at(pid).getState() == TM_MARKABORT; }
     Pid_t getTMNackOwner(Pid_t pid) const { return nackOwner.find(pid) != nackOwner.end() ? nackOwner.at(pid) : -1; }
 
-    bool checkStall(Pid_t pid)      const {
-        return pid >= 0 && transStates.at(pid).checkStall(globalClock);
-    }
-
 protected:
     std::map<Pid_t, Pid_t> nackOwner;
 
@@ -60,7 +56,7 @@ protected:
     void beginTrans(Pid_t pid, InstDesc* inst);
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
-    void nackTrans(Pid_t pid, TimeDelta_t stallCycles);
+    void nackTrans(Pid_t pid);
     void readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType);
@@ -118,7 +114,6 @@ private:
     std::vector<bool> cycleFlags;
     int     abortVarStallCycles;
     int     commitVarStallCycles;
-    int     nackStallCycles;
 };
 
 class TMLLCoherence: public TMCoherence {
@@ -132,7 +127,6 @@ private:
     Pid_t   currentCommitter;                          //!< PID of the currently committing processor
     int     abortVarStallCycles;
     int     commitVarStallCycles;
-    int     nackStallCycles;
 };
 
 class TMLECoherence: public TMCoherence {
