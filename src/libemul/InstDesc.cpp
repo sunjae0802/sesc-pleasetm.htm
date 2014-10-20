@@ -1520,7 +1520,7 @@ public:
                     rval|=((mval>>(8*(sizeof(MemT)-offs-1)))&(~(MemT(-256)<<(8*offs))));
                 }
 #if (defined TM)
-                if((!markedForAbort(inst, context) && !context->isTMNacking())) {
+                if((!markedForAbort(inst, context) && !context->tmNacked())) {
 #endif
                     setReg<Tregv_t,DTyp>(context,inst->regDst,Extend<MemT,Tregv_t>::ext(rval));
 #if (defined TM)
@@ -1529,7 +1529,7 @@ public:
             } else {
                 MemT  val=readMem<MemT>(context,addr);
 #if (defined TM)
-                if((!markedForAbort(inst, context) && !context->isTMNacking())) {
+                if((!markedForAbort(inst, context) && !context->tmNacked())) {
 #endif
                     if(kind&LdStNoExt)
                         setReg<MemT,DTyp>(context,inst->regDst,val);
@@ -1543,7 +1543,7 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
-            if(context->isTMNacking()) {
+            if(context->tmNacked()) {
                 context->startStalling(10);
                 return inst;
             }
@@ -1600,7 +1600,7 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
-            if(context->isTMNacking()) {
+            if(context->tmNacked()) {
                 context->startStalling(10);
                 return inst;
             }

@@ -39,7 +39,7 @@ public:
     int getReturnArgType()          const { return returnArgType; }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
     size_t getDepth(Pid_t pid)      const { return transStates.at(pid).getDepth(); }
-    bool checkNacking(Pid_t pid)    const { return transStates.at(pid).getState() == TM_NACKED; }
+    bool checkNacked(Pid_t pid)    const { return transStates.at(pid).getState() == TM_NACKED; }
     bool checkAborting(Pid_t pid)   const { return transStates.at(pid).getState() == TM_ABORTING; }
     bool markedForAbort(Pid_t pid)  const { return transStates.at(pid).getState() == TM_MARKABORT; }
     Pid_t getTMNackOwner(Pid_t pid) const { return nackOwner.find(pid) != nackOwner.end() ? nackOwner.at(pid) : -1; }

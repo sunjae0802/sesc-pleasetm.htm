@@ -127,7 +127,7 @@ public:
     bool isInTM()           const { return getTMdepth() > 0; }
     bool isTMAborting()     const { return tmCohManager->checkAborting(pid); }
     bool markedForAbort()   const { return tmCohManager->markedForAbort(pid); }
-    bool isTMNacking()      const { return tmCohManager->checkNacking(pid); }
+    bool tmNacked()         const { return tmCohManager->checkNacked(pid); }
 
     void retireTMMemOp(VAddr addr, bool isStore) { tmMemOps.push_back(MemOp(addr, isStore, globalClock)); }
     void initTMMemOps() { tmMemOps.clear(); }
