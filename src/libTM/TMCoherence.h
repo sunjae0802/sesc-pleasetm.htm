@@ -387,6 +387,9 @@ public:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myAbort(Pid_t pid, int tid);
 private:
+    void abortNacked(Pid_t pid, VAddr raddr, std::set<Pid_t>& m);
+    void getNacked(Pid_t pid, Pid_t nacker);
+    void releaseNacker(Pid_t pid);
     std::map<Pid_t, std::set<Pid_t> > nacking;
     std::map<Pid_t, Pid_t> nackedBy;
     std::set<Pid_t> nackingTMs;
