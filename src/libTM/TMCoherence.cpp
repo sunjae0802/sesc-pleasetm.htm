@@ -10,6 +10,59 @@ using namespace std;
 TMCoherence *tmCohManager = 0;
 uint64_t TMCoherence::nextUtid = 0;
 
+TMCoherence *TMCoherence::create(int32_t nProcs) {
+    TMCoherence* newCohManager;
+
+    string method = SescConf->getCharPtr("TransactionalMemory","method");
+    int cacheLineSize = SescConf->getInt("TransactionalMemory","cacheLineSize");
+    int numLines = SescConf->getInt("TransactionalMemory","numLines");
+	int returnArgType = SescConf->getInt("TransactionalMemory","returnArgType");
+    if(method == "EE") {
+        newCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LL") {
+        newCohManager = new TMLLCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE") {
+        newCohManager = new TMLECoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-Hourglass") {
+        newCohManager = new TMLEHourglassCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-SOK") {
+        newCohManager = new TMLESOKCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-SOK-Queue") {
+        newCohManager = new TMLESOKQueueCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-SOA-Original") {
+        newCohManager = new TMLESOA0Coherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-SOA2") {
+        newCohManager = new TMLESOA2Coherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-Lock") {
+        newCohManager = new TMLELockCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-Lock0") {
+        newCohManager = new TMLELock0Coherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-WAR") {
+        newCohManager = new TMLEWARCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-ATS") {
+        newCohManager = new TMLEATSCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-ASet") {
+        newCohManager = new TMLEAsetCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "LE-Snoop") {
+        newCohManager = new TMLESnoopCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "First") {
+        newCohManager = new TMFirstWinsCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "Older") {
+        newCohManager = new TMOlderCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "OlderAll") {
+        newCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "More") {
+        newCohManager = new TMMoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "First2") {
+        newCohManager = new TMFirstWins2Coherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else {
+        MSG("unknown TM method, using EE");
+        newCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    }
+
+    return newCohManager;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Abstract super-class of all TM policies. Contains the external interface and common
 // implementations

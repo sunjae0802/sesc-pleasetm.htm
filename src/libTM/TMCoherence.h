@@ -23,6 +23,7 @@ class TMCoherence {
 public:
     TMCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMCoherence() {}
+    static TMCoherence *create(int32_t nProcs);
 
     TMRWStatus read(Pid_t pid, int tid, VAddr raddr);
     TMRWStatus write(Pid_t pid, int tid, VAddr raddr);
