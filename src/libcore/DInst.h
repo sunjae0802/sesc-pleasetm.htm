@@ -120,6 +120,7 @@ private:
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
     bool tmOp;
+    bool tmNacked;
 
 #ifdef SESC_MISPATH
     bool fake;
@@ -414,6 +415,10 @@ public:
 
     bool isTMOp() const {
         return tmOp;
+    }
+
+    bool wasTMNacked() const {
+        return tmNacked;
     }
 
     VAddr getVaddr() const {
