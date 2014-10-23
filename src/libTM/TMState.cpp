@@ -54,7 +54,7 @@ void TransState::completeFallback() {
     restartPending = false;
     abortState.clear();
 }
-void TransState::markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, int abortType) {
+void TransState::markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e abortType) {
     state       = TM_MARKABORT;
     abortState.markAbort(byPid, byUtid, byCaddr, abortType);
 }

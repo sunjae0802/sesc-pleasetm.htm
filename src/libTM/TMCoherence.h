@@ -27,7 +27,7 @@ public:
 
     TMRWStatus read(Pid_t pid, int tid, VAddr raddr);
     TMRWStatus write(Pid_t pid, int tid, VAddr raddr);
-    TMBCStatus abort(Pid_t pid, int tid, uint32_t abortType);
+    TMBCStatus abort(Pid_t pid, int tid, TMAbortType_e abortType);
     TMBCStatus commit(Pid_t pid, int tid);
     TMBCStatus begin(Pid_t pid, InstDesc *inst);
 
@@ -61,8 +61,8 @@ protected:
     void nackTrans(Pid_t pid);
     void readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
-    void markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType);
-    void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType);
+    void markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType);
+    void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType);
 
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr) = 0;
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr) = 0;
@@ -233,7 +233,7 @@ public:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    void markReaders(VAddr caddr, Pid_t aborterPid, uint64_t aborterUtid, int abortType);
+    void markReaders(VAddr caddr, Pid_t aborterPid, uint64_t aborterUtid, TMAbortType_e abortType);
 
     std::map<Pid_t, std::set<VAddr> > warChest;
 };
@@ -265,7 +265,7 @@ public:
 private:
     void addMember(HWGate& gate, Pid_t pid);
     void updateAbortAddr(VAddr abortAddr, size_t count);
-    void markAbort(VAddr caddr, Pid_t pid, HWGate& gate, int abortType);
+    void markAbort(VAddr caddr, Pid_t pid, HWGate& gate, TMAbortType_e abortType);
     size_t getAbortAddrCount(VAddr caddr);
 
     HWGate& newGate(Pid_t pid, VAddr caddr, bool readOnly);
@@ -290,7 +290,7 @@ public:
 private:
     void addMember(HWGate& gate, Pid_t pid);
     void updateAbortAddr(VAddr abortAddr, size_t count);
-    void markAbort(VAddr caddr, Pid_t pid, HWGate& gate, int abortType);
+    void markAbort(VAddr caddr, Pid_t pid, HWGate& gate, TMAbortType_e abortType);
     size_t getAbortAddrCount(VAddr caddr);
 
     HWGate& newGate(Pid_t pid, VAddr caddr, bool readOnly);

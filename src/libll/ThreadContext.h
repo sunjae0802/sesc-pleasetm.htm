@@ -146,7 +146,7 @@ public:
         tmAbortArg = arg;
         abortTransaction(TM_ATYPE_USER);
     }
-    void abortTransaction(uint32_t abortType = TM_ATYPE_DEFAULT);
+    void abortTransaction(TMAbortType_e abortType = TM_ATYPE_DEFAULT);
     uint32_t completeAbort(InstDesc* inst);
     uint32_t getBeginArg();
     uint32_t getAbortArg();

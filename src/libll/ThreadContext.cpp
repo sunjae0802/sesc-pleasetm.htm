@@ -169,7 +169,7 @@ void ThreadContext::commitTransaction(InstDesc* inst) {
         assert(0);
     }
 }
-void ThreadContext::abortTransaction(uint32_t abortType) {
+void ThreadContext::abortTransaction(TMAbortType_e abortType) {
     assert(tmContext);
 
     // Save UTID before aborting
@@ -221,18 +221,29 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
     std::ostringstream out;
     const TransState &transState = tmCohManager->getTransState(pid);
     Pid_t aborter = transState.getAborterPid();
-    if(transState.getAbortBy() == 0) {
+    TMAbortType_e abortType = transState.getAbortType();
+
+    if(abortType == TM_ATYPE_SYSCALL) {
+        out<<pid<<" Z"
+                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
+                        <<" "<<(tmAbortArg>>8)
+                        <<" "<<pid;
+    } else if(abortType == TM_ATYPE_USER) {
         out<<pid<<" Z"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
                         <<" "<<(tmAbortArg>>8)
                         <<" "<<pid;
     } else {
+        if(transState.getAbortBy() == 0) {
+            fail("Why abort addr NULL?\n");
+        }
         out<<pid<<" A"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
                         <<" 0x"<<std::hex<<transState.getAbortBy()<<std::dec
                         <<" "<<aborter
                         <<" "<<transState.getAbortType();
     }
+
     instTrace10 = out.str();
 
     // And "return" from TM Begin

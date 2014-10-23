@@ -183,14 +183,14 @@ void TMCoherence::abortTrans(Pid_t pid) {
     // No need to update aborts, victims since this is done by user
 	transStates[pid].startAborting();
 }
-void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType) {
+void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType) {
     if(transStates[victimPid].getState() != TM_ABORTING) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
         removeTransaction(victimPid);
     } // Else victim is already aborting, so leave it alone
 }
 
-void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, int abortType) {
+void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType) {
 	set<Pid_t>::iterator i_aborted;
     for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
 		if(*i_aborted == aborterPid) {
@@ -235,7 +235,7 @@ TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
 	}
 }
 
-TMBCStatus TMCoherence::abort(Pid_t pid, int tid, uint32_t abortType) {
+TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
     if(abortType == TM_ATYPE_SYSCALL || abortType == TM_ATYPE_USER) {
         transStates[pid].markAbort(pid, transStates[pid].getUtid(), 0, abortType);
     } else if(abortType != 0) {
@@ -1169,7 +1169,7 @@ size_t TMLELockCoherence::getAbortAddrCount(VAddr caddr) {
     return i_abortAddrCount != abortAddrCount.end() ? i_abortAddrCount->second : 0;
 }
 
-void TMLELockCoherence::markAbort(VAddr caddr, Pid_t pid, HWGate& gate, int abortType) {
+void TMLELockCoherence::markAbort(VAddr caddr, Pid_t pid, HWGate& gate, TMAbortType_e abortType) {
     if(gate.getOwner() == pid) {
         fail("Aborting gate owner?");
     }
@@ -1420,7 +1420,7 @@ size_t TMLELock0Coherence::getAbortAddrCount(VAddr caddr) {
     return i_abortAddrCount != abortAddrCount.end() ? i_abortAddrCount->second : 0;
 }
 
-void TMLELock0Coherence::markAbort(VAddr caddr, Pid_t pid, HWGate& gate, int abortType) {
+void TMLELock0Coherence::markAbort(VAddr caddr, Pid_t pid, HWGate& gate, TMAbortType_e abortType) {
     if(gate.getOwner() == pid) {
         fail("Aborting gate owner?");
     }
