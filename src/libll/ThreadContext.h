@@ -149,7 +149,7 @@ public:
     void abortTransaction(TMAbortType_e abortType = TM_ATYPE_DEFAULT);
     uint32_t completeAbort(InstDesc* inst);
     uint32_t getBeginArg();
-    uint32_t getAbortArg();
+    uint32_t getAbortArg(const TransState& transState);
     void completeFallback();
     size_t tmNumNacks;
     void startStalling(TimeDelta_t amount) {

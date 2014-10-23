@@ -215,14 +215,13 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
     tmCohManager->completeAbort(pid);
     tmBCFlag = COMPLETING_ABORT;
 
-    uint32_t returnArg = getAbortArg();
-
-    // Trace this instruction
-    std::ostringstream out;
+    // Get abort state
     const TransState &transState = tmCohManager->getTransState(pid);
     Pid_t aborter = transState.getAborterPid();
     TMAbortType_e abortType = transState.getAbortType();
 
+    // Trace this instruction
+    std::ostringstream out;
     if(abortType == TM_ATYPE_SYSCALL) {
         out<<pid<<" Z"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
@@ -243,8 +242,10 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
                         <<" "<<aborter
                         <<" "<<transState.getAbortType();
     }
-
     instTrace10 = out.str();
+
+    // set return arg
+    uint32_t returnArg = getAbortArg(transState);
 
     // And "return" from TM Begin
     updIAddr(inst->aupdate,1);
@@ -252,11 +253,12 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
     return returnArg;
 }
 
-uint32_t ThreadContext::getAbortArg() {
-    const TransState& transState = tmCohManager->getTransState(pid);
-
+uint32_t ThreadContext::getAbortArg(const TransState& transState) {
     uint32_t abortArg = 1;
     abortArg |= tmAbortArg << 8; // bottom 8 bits are reserved
+    tmAbortArg  = 0;
+
+    // Set per-type return arg in upper bits
     switch(tmCohManager->getReturnArgType()) {
         case 0:
             abortArg |= (transState.getAborterPid()) << 12;
@@ -270,7 +272,7 @@ uint32_t ThreadContext::getAbortArg() {
         default:
             fail("TM Abort return arg type not specified");
     }
-    tmAbortArg  = 0;
+
     return abortArg;
 }
 
