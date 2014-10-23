@@ -68,7 +68,9 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
 TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
-        nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType) {
+        nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType), nackStallCycles(0), maxNacks(0) {
+	nackStallCycles         = SescConf->getInt("TransactionalMemory","nackStallCycles");
+	maxNacks                = SescConf->getInt("TransactionalMemory","maxNacks");
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
         cacheLines[pid].clear();        // Initialize map to enable at() use

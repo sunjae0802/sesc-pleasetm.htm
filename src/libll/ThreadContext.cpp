@@ -53,6 +53,7 @@ void ThreadContext::initialize(bool child) {
 
 #if (defined TM)
     tmStallUntil= 0;
+    tmNumNacks  = 0;
     tmBCFlag    = INVALID_TM;
     tmAbortIAddr= 0;
     tmEndRA     = 0;
@@ -112,7 +113,7 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         }
         tmBeginNackCycles++;
         tmBCFlag = NACKED_BEGIN;
-        // And "return" from TM Begin
+        // And "return" from TM Begin, returning 4|1 from getBeginArg
         updIAddr(inst->aupdate,1);
 
         return getBeginArg();

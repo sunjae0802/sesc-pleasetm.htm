@@ -151,6 +151,7 @@ public:
     uint32_t getBeginArg();
     uint32_t getAbortArg();
     void completeFallback();
+    size_t tmNumNacks;
     void startStalling(TimeDelta_t amount) {
         tmStallUntil = globalClock + amount;
     }

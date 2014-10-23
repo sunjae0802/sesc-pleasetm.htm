@@ -1544,8 +1544,11 @@ public:
 //                context->abortTransaction();
 //                return inst;
             if(context->tmNacked()) {
-                context->startStalling(10);
+                context->tmNumNacks++;
+                context->startStalling(tmCohManager->getNackStallCycles() * context->tmNumNacks);
                 return inst;
+            } else {
+                context->tmNumNacks = 0;
             }
 #endif
             if (context->memopTrace() && context->isLocalStackData(addr) == false) {
@@ -1601,8 +1604,11 @@ public:
 //                context->abortTransaction();
 //                return inst;
             if(context->tmNacked()) {
-                context->startStalling(10);
+                context->tmNumNacks++;
+                context->startStalling(tmCohManager->getNackStallCycles() * context->tmNumNacks);
                 return inst;
+            } else {
+                context->tmNumNacks = 0;
             }
 #endif    
 
