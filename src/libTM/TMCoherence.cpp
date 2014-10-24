@@ -53,8 +53,10 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "More") {
         newCohManager = new TMMoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
-    } else if(method == "First2") {
-        newCohManager = new TMFirstWins2Coherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "FirstNotify") {
+        newCohManager = new TMFirstWinsNotifyNackerCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "FirstNackRetry") {
+        newCohManager = new TMFirstWinsLoserRetriesCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else {
         MSG("unknown TM method, using EE");
         newCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);
@@ -68,9 +70,8 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
 TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
-        nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType), nackStallCycles(0), maxNacks(0) {
-	nackStallCycles         = SescConf->getInt("TransactionalMemory","nackStallCycles");
-	maxNacks                = SescConf->getInt("TransactionalMemory","maxNacks");
+        nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType),
+        nackStallBaseCycles(1), nackStallCap(1), maxNacks(0) {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
         cacheLines[pid].clear();        // Initialize map to enable at() use
@@ -1949,19 +1950,19 @@ TMBCStatus TMOlderAllCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 /////////////////////////////////////////////////////////////////////////////////////////
 TMMoreCoherence::TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence(nProcs, lineSize, lines, argType) {
-	cout<<"[TM] Lazy/Eager with more writes wins Transactional Memory System" << endl;
+	cout<<"[TM] Lazy/Eager with more reads wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
 Pid_t TMMoreCoherence::shouldAbort(std::set<Pid_t>& m, Pid_t pid) {
     Pid_t aborter = INVALID_PID;
-    size_t myNumWrites = linesWritten[pid].size();
+    size_t myNumReads = linesRead[pid].size();
 
     set<Pid_t>::iterator i_m;
     for(i_m = m.begin(); i_m != m.end(); ++i_m) {
         if(transStates[*i_m].getState() == TM_RUNNING) {
-            if(linesWritten[*i_m].size() > myNumWrites) {
+            if(linesRead[*i_m].size() > myNumReads) {
                 aborter = *i_m;
             }
         }
@@ -2006,17 +2007,20 @@ TMRWStatus TMMoreCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// Lazy-eager coherence with first wins with Nacking
+// Lazy-eager coherence with first wins with nacked transactions resume after notify
 /////////////////////////////////////////////////////////////////////////////////////////
-TMFirstWins2Coherence::TMFirstWins2Coherence(int32_t nProcs, int lineSize, int lines, int argType):
+TMFirstWinsNotifyNackerCoherence::TMFirstWinsNotifyNackerCoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence(nProcs, lineSize, lines, argType) {
-	cout<<"[TM] Lazy/Eager with first wins with NACKing Transactional Memory System" << endl;
+	cout<<"[TM] Lazy/Eager with first wins with nacked transactions resume after notify Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+	nackStallBaseCycles     = SescConf->getInt("TransactionalMemory","nackStallBaseCycles");
+	nackStallCap            = SescConf->getInt("TransactionalMemory","nackStallCap");
+	maxNacks                = SescConf->getInt("TransactionalMemory","maxNacks");
 }
 
-void TMFirstWins2Coherence::abortNacked(Pid_t pid, VAddr raddr, set<Pid_t>& m) {
+void TMFirstWinsNotifyNackerCoherence::abortNacked(Pid_t pid, VAddr raddr, set<Pid_t>& m) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 
@@ -2040,7 +2044,7 @@ void TMFirstWins2Coherence::abortNacked(Pid_t pid, VAddr raddr, set<Pid_t>& m) {
         markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 }
-void TMFirstWins2Coherence::getNacked(Pid_t pid, Pid_t nacker) {
+void TMFirstWinsNotifyNackerCoherence::getNacked(Pid_t pid, Pid_t nacker) {
     nackTrans(pid);
     nackingTMs.insert(pid);
     if(nackedBy.find(nacker) != nackedBy.end()) { fail("Duplicate nack\n"); }
@@ -2048,14 +2052,14 @@ void TMFirstWins2Coherence::getNacked(Pid_t pid, Pid_t nacker) {
     nacking[nacker].insert(pid);
     nackedBy[pid] = nacker;
 }
-void TMFirstWins2Coherence::releaseNacker(Pid_t pid) {
+void TMFirstWinsNotifyNackerCoherence::releaseNacker(Pid_t pid) {
     Pid_t nacker = nackedBy.at(pid);
     nackedBy.erase(pid);
     nacking[nacker].erase(pid);
     nackingTMs.erase(pid);
 }
 
-TMRWStatus TMFirstWins2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMFirstWinsNotifyNackerCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 	if(transStates[pid].getState() == TM_NACKED) {
@@ -2077,7 +2081,7 @@ TMRWStatus TMFirstWins2Coherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     }
 }
 
-TMRWStatus TMFirstWins2Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMFirstWinsNotifyNackerCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 	if(transStates[pid].getState() == TM_NACKED) {
@@ -2100,7 +2104,7 @@ TMRWStatus TMFirstWins2Coherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
 }
 
-TMBCStatus TMFirstWins2Coherence::myCommit(Pid_t pid, int tid) {
+TMBCStatus TMFirstWinsNotifyNackerCoherence::myCommit(Pid_t pid, int tid) {
     set<Pid_t>::iterator i_nacked;
     for(i_nacked = nacking[pid].begin(); i_nacked != nacking[pid].end(); ++i_nacked) {
         if(nackedBy.find(*i_nacked) == nackedBy.end()) { fail("NackedBy resume mismatch?\n"); }
@@ -2118,11 +2122,115 @@ TMBCStatus TMFirstWins2Coherence::myCommit(Pid_t pid, int tid) {
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
-TMBCStatus TMFirstWins2Coherence::myAbort(Pid_t pid, int tid) {
+
+void TMFirstWinsNotifyNackerCoherence::myCompleteAbort(Pid_t pid) {
     if(nackedBy.find(pid) != nackedBy.end()) {
         releaseNacker(pid);
     }
+}
 
-	abortTrans(pid);
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with first wins with nacked transactions retrying
+/////////////////////////////////////////////////////////////////////////////////////////
+TMFirstWinsLoserRetriesCoherence::TMFirstWinsLoserRetriesCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMCoherence(nProcs, lineSize, lines, argType), maxNacks(10) {
+	cout<<"[TM] Lazy/Eager with first wins with nacked transactions retrying Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+	nackStallBaseCycles     = SescConf->getInt("TransactionalMemory","nackStallBaseCycles");
+	nackStallCap            = SescConf->getInt("TransactionalMemory","nackStallCap");
+	maxNacks                = SescConf->getInt("TransactionalMemory","maxNacks");
+}
+
+void TMFirstWinsLoserRetriesCoherence::getNacked(Pid_t pid, Pid_t n) {
+    nackTrans(pid);
+    numNacked[pid]++;
+    nacker[pid] = n;
+    nackerUtid[pid] = transStates[n].getUtid();
+}
+void TMFirstWinsLoserRetriesCoherence::abortNacked(Pid_t pid, VAddr raddr, set<Pid_t>& m) {
+	VAddr caddr = addrToCacheLine(raddr);
+    uint64_t utid = transStates[pid].getUtid();
+
+    // Collect transactions that are in NACKED state and remove from m
+    set<Pid_t> m_nacking;
+    set<Pid_t>::iterator i_m = m.begin();
+    while(i_m != m.end()) {
+        if(transStates[*i_m].getState() == TM_NACKED) {
+            m_nacking.insert(*i_m);
+            m.erase(i_m++);
+        } else {
+            ++i_m;
+        }
+    }
+
+    // Abort them
+    for(i_m = m_nacking.begin(); i_m != m_nacking.end(); ++i_m) {
+        nacker.erase(pid);
+        nackerUtid.erase(pid);
+        markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
+    }
+}
+TMRWStatus TMFirstWinsLoserRetriesCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    uint64_t utid = transStates[pid].getUtid();
+	if(transStates[pid].getState() == TM_NACKED && transStates[nacker.at(pid)].getState() == TM_RUNNING && transStates[nacker.at(pid)].getUtid() == nackerUtid.at(pid)) {
+        return TMRW_NACKED;
+    }
+	if(transStates[pid].getState() == TM_NACKED) {
+        transStates[pid].resumeAfterNack();
+        nacker.erase(pid);
+        nackerUtid.erase(pid);
+	}
+
+    // Abort writers once we try to read
+    set<Pid_t> m;
+    getWritersExcept(caddr, pid, m);
+
+    abortNacked(pid, raddr, m);
+
+    if(m.size() > 0) {
+        getNacked(pid, *(m.begin()));
+        return TMRW_NACKED;
+    } else {
+        readTrans(pid, tid, raddr, caddr);
+        return TMRW_SUCCESS;
+    }
+}
+
+TMRWStatus TMFirstWinsLoserRetriesCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+    uint64_t utid = transStates[pid].getUtid();
+	if(transStates[pid].getState() == TM_NACKED && transStates[nacker.at(pid)].getState() == TM_RUNNING && transStates[nacker.at(pid)].getUtid() == nackerUtid.at(pid)) {
+        return TMRW_NACKED;
+    }
+	if(transStates[pid].getState() == TM_NACKED) {
+        transStates[pid].resumeAfterNack();
+        nacker.erase(pid);
+        nackerUtid.erase(pid);
+	}
+
+    // Abort everyone once we try to write
+    set<Pid_t> m;
+    getReadersExcept(caddr, pid, m);
+    getWritersExcept(caddr, pid, m);
+
+    abortNacked(pid, raddr, m);
+
+    if(m.size() > 0) {
+        getNacked(pid, *(m.begin()));
+        return TMRW_NACKED;
+    } else {
+        writeTrans(pid, tid, raddr, caddr);
+        return TMRW_SUCCESS;
+    }
+}
+
+TMBCStatus TMFirstWinsLoserRetriesCoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    numNacked[pid] = 0;
+    nacker.erase(pid);
+    nackerUtid.erase(pid);
+    beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }

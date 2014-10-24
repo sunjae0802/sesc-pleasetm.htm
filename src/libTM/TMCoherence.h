@@ -388,14 +388,14 @@ private:
     Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
 };
 
-class TMFirstWins2Coherence: public TMCoherence {
+class TMFirstWinsNotifyNackerCoherence: public TMCoherence {
 public:
-    TMFirstWins2Coherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
-    virtual ~TMFirstWins2Coherence() { }
+    TMFirstWinsNotifyNackerCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMFirstWinsNotifyNackerCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
+    virtual void myCompleteAbort(Pid_t pid);
 private:
     void abortNacked(Pid_t pid, VAddr raddr, std::set<Pid_t>& m);
     void getNacked(Pid_t pid, Pid_t nacker);
@@ -403,6 +403,23 @@ private:
     std::map<Pid_t, std::set<Pid_t> > nacking;
     std::map<Pid_t, Pid_t> nackedBy;
     std::set<Pid_t> nackingTMs;
+};
+
+class TMFirstWinsLoserRetriesCoherence: public TMCoherence {
+public:
+    TMFirstWinsLoserRetriesCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMFirstWinsLoserRetriesCoherence() { }
+    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+private:
+    void getNacked(Pid_t pid, Pid_t nacker);
+    void abortNacked(Pid_t pid, VAddr raddr, std::set<Pid_t>& m);
+
+    size_t maxNacks;
+    std::map<Pid_t, size_t> numNacked;
+    std::map<Pid_t, Pid_t> nacker;
+    std::map<Pid_t, uint64_t> nackerUtid;
 };
 
 extern TMCoherence *tmCohManager;
