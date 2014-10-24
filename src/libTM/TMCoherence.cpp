@@ -2175,9 +2175,6 @@ void TMFirstWinsLoserRetriesCoherence::abortNacked(Pid_t pid, VAddr raddr, set<P
 TMRWStatus TMFirstWinsLoserRetriesCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
-	if(transStates[pid].getState() == TM_NACKED && transStates[nacker.at(pid)].getState() == TM_RUNNING && transStates[nacker.at(pid)].getUtid() == nackerUtid.at(pid)) {
-        return TMRW_NACKED;
-    }
 	if(transStates[pid].getState() == TM_NACKED) {
         transStates[pid].resumeAfterNack();
         nacker.erase(pid);
@@ -2202,9 +2199,6 @@ TMRWStatus TMFirstWinsLoserRetriesCoherence::myRead(Pid_t pid, int tid, VAddr ra
 TMRWStatus TMFirstWinsLoserRetriesCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
-	if(transStates[pid].getState() == TM_NACKED && transStates[nacker.at(pid)].getState() == TM_RUNNING && transStates[nacker.at(pid)].getUtid() == nackerUtid.at(pid)) {
-        return TMRW_NACKED;
-    }
 	if(transStates[pid].getState() == TM_NACKED) {
         transStates[pid].resumeAfterNack();
         nacker.erase(pid);
