@@ -152,6 +152,10 @@ public:
     uint32_t getAbortArg(const TransState& transState);
     void completeFallback();
     size_t tmNumNacks;
+    void startNackStalling() {
+        tmNumNacks++;
+        startStalling(tmCohManager->getNackStallCycles(tmNumNacks));
+    }
     void startStalling(TimeDelta_t amount) {
         tmStallUntil = globalClock + amount;
     }

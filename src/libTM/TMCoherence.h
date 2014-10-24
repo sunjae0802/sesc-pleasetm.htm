@@ -44,7 +44,13 @@ public:
     bool checkAborting(Pid_t pid)   const { return transStates.at(pid).getState() == TM_ABORTING; }
     bool markedForAbort(Pid_t pid)  const { return transStates.at(pid).getState() == TM_MARKABORT; }
     Pid_t getTMNackOwner(Pid_t pid) const { return nackOwner.find(pid) != nackOwner.end() ? nackOwner.at(pid) : -1; }
-    uint32_t getNackStallCycles()   const { return nackStallCycles; }
+    uint32_t getNackStallCycles(size_t numNacks)   const {
+        uint32_t stallCycles = nackStallBaseCycles * numNacks;
+        if(stallCycles > nackStallCap) {
+            stallCycles = nackStallCap;
+        }
+        return stallCycles;
+    }
 
 protected:
     std::map<Pid_t, Pid_t> nackOwner;
@@ -82,7 +88,8 @@ protected:
     int returnArgType;
     int abortBaseStallCycles;
     int commitBaseStallCycles;
-    uint32_t nackStallCycles;
+    uint32_t nackStallBaseCycles;
+    uint32_t nackStallCap;
     size_t   maxNacks;
 
     static uint64_t nextUtid;

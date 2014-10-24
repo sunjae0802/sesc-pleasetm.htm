@@ -1544,8 +1544,7 @@ public:
 //                context->abortTransaction();
 //                return inst;
             if(context->tmNacked()) {
-                context->tmNumNacks++;
-                context->startStalling(tmCohManager->getNackStallCycles() * context->tmNumNacks);
+                context->startNackStalling();
                 return inst;
             } else {
                 context->tmNumNacks = 0;
@@ -1604,8 +1603,7 @@ public:
 //                context->abortTransaction();
 //                return inst;
             if(context->tmNacked()) {
-                context->tmNumNacks++;
-                context->startStalling(tmCohManager->getNackStallCycles() * context->tmNumNacks);
+                context->startNackStalling();
                 return inst;
             } else {
                 context->tmNumNacks = 0;
