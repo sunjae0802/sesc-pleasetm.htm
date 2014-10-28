@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Snippets.h"
+#include "GStats.h"
 #include "libemul/InstDesc.h"
 #include "TMState.h"
 #include "HWGate.h"
@@ -106,6 +107,10 @@ protected:
     bool hadRead(VAddr caddr, Pid_t pid);
     void getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w);
     void getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r);
+
+    GStatsCntr      commits;
+    GStatsCntr      aborts;
+
     std::map<Pid_t, std::set<VAddr> > linesRead;
     std::map<Pid_t, std::set<VAddr> > linesWritten;
     std::map<VAddr, std::list<Pid_t> > writers2;
@@ -400,6 +405,10 @@ private:
     void abortNacked(Pid_t pid, VAddr raddr, std::set<Pid_t>& m);
     void getNacked(Pid_t pid, Pid_t nacker);
     void releaseNacker(Pid_t pid);
+
+    GStatsCntr      usefulNacks;
+    GStatsCntr      futileNacks;
+
     std::map<Pid_t, std::set<Pid_t> > nacking;
     std::map<Pid_t, Pid_t> nackedBy;
     std::set<Pid_t> nackingTMs;
@@ -418,7 +427,10 @@ private:
     void selfAbort(Pid_t pid, VAddr caddr);
     void selfResume(Pid_t pid);
 
-    size_t maxNacks;
+    size_t          maxNacks;
+    GStatsCntr      usefulNacks;
+    GStatsCntr      futileNacks;
+
     std::map<Pid_t, size_t> numNacked;
     std::map<Pid_t, Pid_t> nacker;
     std::map<Pid_t, uint64_t> nackerUtid;
