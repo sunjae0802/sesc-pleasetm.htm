@@ -267,6 +267,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->localStackData= context->isLocalStackData(va);
     i->tmOp         = context->isInTM();
     i->tmNacked     = context->tmNacked();
+    i->tmAborted    = context->isTMAborting();
 
     i->outTrace = context->outTrace;
     context->outTrace.clear();

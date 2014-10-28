@@ -72,7 +72,6 @@ private:
     // Lower and upper bound for stack addresses in this thread
     VAddr myStackAddrLb;
     VAddr myStackAddrUb;
-    uint64_t nRetiredInsts;
 
     // Local Variables
 private:
@@ -164,12 +163,27 @@ public:
     }
 #endif
 
+    struct {
+        uint64_t nRetiredInsts;
+        Time_t nackStallStart;
+    } retireContext;
+
+    void retireNackedDInst() {
+        retireContext.nackStallStart = globalClock;
+    }
+    Time_t getNackStallStart() const {
+        return retireContext.nackStallStart;
+    }
+    void clearRetireNack() {
+        retireContext.nackStallStart = 0;
+    }
+
     void incNRetiredInsts() {
-        nRetiredInsts++;
+        retireContext.nRetiredInsts++;
     }
 
     uint64_t getNRetiredInsts() const {
-        return nRetiredInsts;
+        return retireContext.nRetiredInsts;
     }
 
     static inline int32_t getPidUb(void) {

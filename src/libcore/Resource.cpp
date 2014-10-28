@@ -602,6 +602,7 @@ void Resource::traceEvent(DInst *dinst) {
     const Instruction *inst = dinst->getInst();
     ThreadContext *context = dinst->context;
     std::ofstream& out = context->getDatafile();
+
     // XXX
     context->incNRetiredInsts();
     if(dinst->isTMOp()) {
@@ -610,6 +611,27 @@ void Resource::traceEvent(DInst *dinst) {
         } else {
             context->retireTMMemOp(dinst->getVaddr(), inst->isStore());
         }
+    }
+
+    // Handle Memop Nack Stall tracking
+    if(dinst->wasTMNacked()) {
+        context->retireNackedDInst();
+    } else if(context->getNackStallStart() != 0) {
+        // DInst after the previous nacked dinst
+        if(dinst->wasTMAborted()) {
+            out<<context->getPid()
+                        <<" k"
+                        <<" 0x"<<std::hex<<inst->getAddr()<<std::dec
+                        <<" " << (globalClock - context->getNackStallStart())
+                        <<" " << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+        } else {
+            out<<context->getPid()
+                        <<" K"
+                        <<" 0x"<<std::hex<<inst->getAddr()<<std::dec
+                        <<" " << (globalClock - context->getNackStallStart())
+                        <<" " << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+        }
+        context->clearRetireNack();
     }
 
     if(!dinst->outTrace.empty()) {

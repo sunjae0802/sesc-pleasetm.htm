@@ -121,6 +121,7 @@ private:
     bool localStackData;
     bool tmOp;
     bool tmNacked;
+    bool tmAborted;
 
 #ifdef SESC_MISPATH
     bool fake;
@@ -419,6 +420,10 @@ public:
 
     bool wasTMNacked() const {
         return tmNacked;
+    }
+
+    bool wasTMAborted() const {
+        return tmAborted;
     }
 
     VAddr getVaddr() const {

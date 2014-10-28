@@ -62,6 +62,8 @@ void ThreadContext::initialize(bool child) {
     tmBeginNackCycles = 0;
     userTid     = -1;
 #endif
+    retireContext.nRetiredInsts =0;
+    retireContext.nackStallStart= 0;
 }
 
 void ThreadContext::cleanup() {
@@ -327,7 +329,6 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
     :
     myStackAddrLb(0),
     myStackAddrUb(0),
-    nRetiredInsts(0),
     execMode(ExecModeNone),
     iAddr(0),
     iDesc(InvalidInstDesc),
@@ -374,7 +375,6 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     :
     myStackAddrLb(parent.myStackAddrLb),
     myStackAddrUb(parent.myStackAddrUb),
-    nRetiredInsts(0),
     dAddr(0),
     nDInsts(0),
     fileSys(cloneFileSys?((FileSys::FileSys *)(parent.fileSys)):(new FileSys::FileSys(*(parent.fileSys),newNameSpace))),
