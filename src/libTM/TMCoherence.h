@@ -411,7 +411,6 @@ private:
 
     std::map<Pid_t, std::set<Pid_t> > nacking;
     std::map<Pid_t, Pid_t> nackedBy;
-    std::set<Pid_t> nackingTMs;
 };
 
 class TMFirstWinsLoserRetriesCoherence: public TMCoherence {

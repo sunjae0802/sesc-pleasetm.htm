@@ -2049,7 +2049,6 @@ void TMFirstWinsNotifyNackerCoherence::abortNacked(Pid_t pid, VAddr raddr, set<P
 }
 void TMFirstWinsNotifyNackerCoherence::getNacked(Pid_t pid, Pid_t nacker) {
     nackTrans(pid);
-    nackingTMs.insert(pid);
     if(nackedBy.find(nacker) != nackedBy.end()) { fail("Duplicate nack\n"); }
 
     nacking[nacker].insert(pid);
@@ -2059,7 +2058,6 @@ void TMFirstWinsNotifyNackerCoherence::releaseNacker(Pid_t pid) {
     Pid_t nacker = nackedBy.at(pid);
     nackedBy.erase(pid);
     nacking[nacker].erase(pid);
-    nackingTMs.erase(pid);
 }
 
 TMRWStatus TMFirstWinsNotifyNackerCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
@@ -2108,27 +2106,29 @@ TMRWStatus TMFirstWinsNotifyNackerCoherence::myWrite(Pid_t pid, int tid, VAddr r
 }
 
 TMBCStatus TMFirstWinsNotifyNackerCoherence::myCommit(Pid_t pid, int tid) {
+    set<Pid_t> imNacking = nacking[pid];
+
     set<Pid_t>::iterator i_nacked;
-    for(i_nacked = nacking[pid].begin(); i_nacked != nacking[pid].end(); ++i_nacked) {
+    for(i_nacked = imNacking.begin(); i_nacked != imNacking.end(); ++i_nacked) {
         if(nackedBy.find(*i_nacked) == nackedBy.end()) { fail("NackedBy resume mismatch?\n"); }
-        if(nackedBy.at(*i_nacked) == pid) {
-            // Note: The supposedly nacked transaction might not be nacked anymore,
-            // because of nonTM aborts
-            if(transStates.at(*i_nacked).getState() == TM_NACKED) {
-                usefulNacks.inc();
-                transStates[*i_nacked].resumeAfterNack();
-                nackingTMs.erase(*i_nacked);
-            }
-            nackedBy.erase(*i_nacked);
-        } else { fail("NackedBy mismatch pid\n"); }
+        if(nackedBy.at(*i_nacked) != pid) { fail("NackedBy mismatch pid\n"); }
+
+        // Note: The supposedly nacked transaction might not be nacked anymore,
+        // because of nonTM aborts
+        if(transStates.at(*i_nacked).getState() == TM_NACKED) {
+            usefulNacks.inc();
+            transStates[*i_nacked].resumeAfterNack();
+        }
+        releaseNacker(*i_nacked);
     }
-    nacking[pid].clear();
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
 void TMFirstWinsNotifyNackerCoherence::myCompleteAbort(Pid_t pid) {
     if(nackedBy.find(pid) != nackedBy.end()) {
+        // I can be aborted while being nacked, so let my nacker know it no longer
+        // needs to abort me
         releaseNacker(pid);
     }
 }
