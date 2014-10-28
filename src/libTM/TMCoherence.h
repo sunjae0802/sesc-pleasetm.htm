@@ -415,6 +415,8 @@ public:
 private:
     void getNacked(Pid_t pid, Pid_t nacker);
     void abortNacked(Pid_t pid, VAddr raddr, std::set<Pid_t>& m);
+    void selfAbort(Pid_t pid, VAddr caddr);
+    void selfResume(Pid_t pid);
 
     size_t maxNacks;
     std::map<Pid_t, size_t> numNacked;

@@ -2172,13 +2172,27 @@ void TMFirstWinsLoserRetriesCoherence::abortNacked(Pid_t pid, VAddr raddr, set<P
         markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 }
+void TMFirstWinsLoserRetriesCoherence::selfAbort(Pid_t pid, VAddr caddr) {
+    Pid_t aborter = nacker.at(pid);
+    markTransAborted(pid, aborter, nackerUtid.at(pid), caddr, TM_ATYPE_DEFAULT);
+    nacker.erase(pid);
+    nackerUtid.erase(pid);
+}
+void TMFirstWinsLoserRetriesCoherence::selfResume(Pid_t pid) {
+    transStates[pid].resumeAfterNack();
+    nacker.erase(pid);
+    nackerUtid.erase(pid);
+}
+
 TMRWStatus TMFirstWinsLoserRetriesCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
+	if(transStates[pid].getState() == TM_NACKED && numNacked[pid] > maxNacks) {
+        selfAbort(pid, caddr);
+        return TMRW_ABORT;
+    }
 	if(transStates[pid].getState() == TM_NACKED) {
-        transStates[pid].resumeAfterNack();
-        nacker.erase(pid);
-        nackerUtid.erase(pid);
+        selfResume(pid);
 	}
 
     // Abort writers once we try to read
@@ -2199,10 +2213,12 @@ TMRWStatus TMFirstWinsLoserRetriesCoherence::myRead(Pid_t pid, int tid, VAddr ra
 TMRWStatus TMFirstWinsLoserRetriesCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
+	if(transStates[pid].getState() == TM_NACKED && numNacked[pid] > maxNacks) {
+        selfAbort(pid, caddr);
+        return TMRW_ABORT;
+    }
 	if(transStates[pid].getState() == TM_NACKED) {
-        transStates[pid].resumeAfterNack();
-        nacker.erase(pid);
-        nackerUtid.erase(pid);
+        selfResume(pid);
 	}
 
     // Abort everyone once we try to write
@@ -2228,3 +2244,4 @@ TMBCStatus TMFirstWinsLoserRetriesCoherence::myBegin(Pid_t pid, InstDesc* inst) 
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
+
