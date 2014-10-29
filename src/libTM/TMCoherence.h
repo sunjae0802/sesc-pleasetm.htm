@@ -402,7 +402,7 @@ public:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual void myCompleteAbort(Pid_t pid);
 protected:
-    bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
     void getNacked(Pid_t pid, Pid_t nacker);
     void releaseNacker(Pid_t pid);
@@ -414,16 +414,17 @@ protected:
     std::map<Pid_t, Pid_t> nackedBy;
 };
 
-class TMFirstWinsLoserRetriesCoherence: public TMCoherence {
+class TMFirstRetryCoherence: public TMCoherence {
 public:
-    TMFirstWinsLoserRetriesCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
-    virtual ~TMFirstWinsLoserRetriesCoherence() { }
+    TMFirstRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMFirstRetryCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     void getNacked(Pid_t pid, Pid_t nacker);
-    void abortNacked(Pid_t pid, VAddr raddr, std::set<Pid_t>& m);
+    void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
     void selfAbort(Pid_t pid, VAddr caddr);
     void selfResume(Pid_t pid);
 
@@ -432,7 +433,7 @@ private:
     GStatsCntr      futileNacks;
 
     std::map<Pid_t, size_t> numNacked;
-    std::map<Pid_t, Pid_t> nacker;
+    std::map<Pid_t, Pid_t> nackedBy;
     std::map<Pid_t, uint64_t> nackerUtid;
 };
 
@@ -441,7 +442,7 @@ public:
     TMMoreNotifyCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMMoreNotifyCoherence() { }
 protected:
-    bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
 extern TMCoherence *tmCohManager;
