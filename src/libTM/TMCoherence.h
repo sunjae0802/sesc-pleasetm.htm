@@ -393,16 +393,17 @@ private:
     Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
 };
 
-class TMFirstWinsNotifyNackerCoherence: public TMCoherence {
+class TMFirstNotifyCoherence: public TMCoherence {
 public:
-    TMFirstWinsNotifyNackerCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
-    virtual ~TMFirstWinsNotifyNackerCoherence() { }
+    TMFirstNotifyCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMFirstNotifyCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual void myCompleteAbort(Pid_t pid);
-private:
-    void abortNacked(Pid_t pid, VAddr raddr, std::set<Pid_t>& m);
+protected:
+    bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
     void getNacked(Pid_t pid, Pid_t nacker);
     void releaseNacker(Pid_t pid);
 
@@ -433,6 +434,14 @@ private:
     std::map<Pid_t, size_t> numNacked;
     std::map<Pid_t, Pid_t> nacker;
     std::map<Pid_t, uint64_t> nackerUtid;
+};
+
+class TMMoreNotifyCoherence: public TMFirstNotifyCoherence {
+public:
+    TMMoreNotifyCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMMoreNotifyCoherence() { }
+protected:
+    bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
 extern TMCoherence *tmCohManager;
