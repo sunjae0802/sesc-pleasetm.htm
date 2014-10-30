@@ -229,6 +229,11 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
                         <<" 0"
                         <<" "<<pid;
+    } else if(abortType == TM_ATYPE_CAPACITY) {
+        out<<pid<<" Z"
+                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
+                        <<" 1"
+                        <<" "<<pid;
     } else if(abortType == TM_ATYPE_USER) {
         out<<pid<<" Z"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
