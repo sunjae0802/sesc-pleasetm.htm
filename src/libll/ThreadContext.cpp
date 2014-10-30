@@ -227,7 +227,7 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
     if(abortType == TM_ATYPE_SYSCALL) {
         out<<pid<<" Z"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" "<<(tmAbortArg>>8)
+                        <<" 0"
                         <<" "<<pid;
     } else if(abortType == TM_ATYPE_USER) {
         out<<pid<<" Z"
@@ -273,6 +273,18 @@ uint32_t ThreadContext::getAbortArg(const TransState& transState) {
             break;
         default:
             fail("TM Abort return arg type not specified");
+    }
+    TMAbortType_e abortType = transState.getAbortType();
+    switch(abortType) {
+        case TM_ATYPE_SYSCALL:
+            abortArg |= 2;
+            break;
+        case TM_ATYPE_CAPACITY:
+            abortArg |= 8;
+            break;
+        default:
+            // Do nothing
+            break;
     }
 
     return abortArg;

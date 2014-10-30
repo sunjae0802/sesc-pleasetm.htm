@@ -273,8 +273,6 @@ TMRWStatus TMCoherence::read(Pid_t pid, int tid, VAddr raddr) {
 		return TMRW_ABORT;
 	} else if(cacheOverflowed(pid, caddr)) {
 		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
-		std::cout << "Overflow " << pid << ": " << cacheLines[pid].size() << '\n';
-		fail("Overflow\n");
 		return TMRW_ABORT;
 	} else {
         return myRead(pid, tid, raddr);
@@ -286,8 +284,6 @@ TMRWStatus TMCoherence::write(Pid_t pid, int tid, VAddr raddr) {
 		return TMRW_ABORT;
 	} else if(cacheOverflowed(pid, caddr)) {
 		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
-		std::cout << "Overflow " << pid << ": " << cacheLines[pid].size() << '\n';
-		fail("Overflow\n");
 		return TMRW_ABORT;
 	} else {
         return myWrite(pid, tid, raddr);
