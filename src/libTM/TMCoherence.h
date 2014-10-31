@@ -453,6 +453,14 @@ protected:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
+class TMLog2MoreRetryCoherence: public TMFirstRetryCoherence {
+public:
+    TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMLog2MoreRetryCoherence() { }
+protected:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
 extern TMCoherence *tmCohManager;
 
 #endif

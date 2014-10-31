@@ -61,6 +61,8 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMFirstRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "MoreNackRetry") {
         newCohManager = new TMMoreRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "MoreLog2Retry") {
+        newCohManager = new TMLog2MoreRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else {
         MSG("unknown TM method, using EE");
         newCohManager = new TMEECoherence(nProcs, cacheLineSize, numLines, returnArgType);
@@ -2306,5 +2308,22 @@ bool TMMoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     size_t myNumReads = linesRead[pid].size();
     return transStates[other].getState() == TM_NACKED ||
         (transStates[other].getState() == TM_RUNNING && linesRead[other].size() < myNumReads);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more reads wins, with nacked transactions retrying
+/////////////////////////////////////////////////////////////////////////////////////////
+TMLog2MoreRetryCoherence::TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with log2(more reads) wins with nacked transactions retrying Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+bool TMLog2MoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    uint32_t log2Num = log2(linesRead[pid].size());
+    uint32_t log2OtherNum = log2(linesRead[other].size());
+    return transStates[other].getState() == TM_NACKED ||
+        (transStates[other].getState() == TM_RUNNING && log2OtherNum < log2Num);
 }
 
