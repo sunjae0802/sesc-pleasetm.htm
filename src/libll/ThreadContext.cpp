@@ -234,6 +234,11 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
                         <<" 1"
                         <<" "<<pid;
+    } else if(abortType == TM_ATYPE_NACKOVERFLOW) {
+        out<<pid<<" Z"
+                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
+                        <<" 2"
+                        <<" "<<pid;
     } else if(abortType == TM_ATYPE_USER) {
         out<<pid<<" Z"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
@@ -286,6 +291,9 @@ uint32_t ThreadContext::getAbortArg(const TransState& transState) {
             break;
         case TM_ATYPE_CAPACITY:
             abortArg |= 8;
+            break;
+        case TM_ATYPE_NACKOVERFLOW:
+            abortArg |= 16;
             break;
         default:
             // Do nothing

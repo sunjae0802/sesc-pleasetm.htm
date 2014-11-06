@@ -2195,7 +2195,7 @@ void TMFirstRetryCoherence::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conf
 }
 void TMFirstRetryCoherence::selfAbort(Pid_t pid, VAddr caddr) {
     Pid_t aborter = nackedBy.at(pid);
-    markTransAborted(pid, aborter, nackerUtid.at(pid), caddr, TM_ATYPE_DEFAULT);
+    markTransAborted(pid, aborter, nackerUtid.at(pid), caddr, TM_ATYPE_NACKOVERFLOW);
     nackedBy.erase(pid);
     nackerUtid.erase(pid);
 }
