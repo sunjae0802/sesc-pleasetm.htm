@@ -78,7 +78,9 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType),
         nackStallBaseCycles(1), nackStallCap(1), maxNacks(0),
-        commits("tm:commits"), aborts("tm:aborts") {
+        numCommits("tm:numCommits"), numAborts("tm:numAborts"),
+        avgLinesRead("tm:avgLinesRead"), avgLinesWritten("tm:avgLinesWritten"),
+        linesReadHist("tm:linesReadHist"), linesWrittenHist("tm:linesWrittenHist") {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
         cacheLines[pid].clear();        // Initialize map to enable at() use
@@ -184,12 +186,15 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 void TMCoherence::commitTrans(Pid_t pid) {
-    commits.inc();
+    numCommits.inc();
+    avgLinesRead.sample(linesRead[pid].size());
+    avgLinesWritten.sample(linesWritten[pid].size());
+    linesReadHist.sample(linesRead[pid].size());
+    linesWrittenHist.sample(linesWritten[pid].size());
     transStates[pid].commit();
     removeTransaction(pid);
 }
 void TMCoherence::abortTrans(Pid_t pid) {
-    aborts.inc();
 	transStates[pid].startAborting();
 }
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType) {
@@ -256,6 +261,12 @@ TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
 
 TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
     if(transStates[pid].getState() == TM_ABORTING) {
+        numAborts.inc();
+        avgLinesRead.sample(linesRead[pid].size());
+        avgLinesWritten.sample(linesWritten[pid].size());
+        linesReadHist.sample(linesRead[pid].size());
+        linesWrittenHist.sample(linesWritten[pid].size());
+
         transStates[pid].completeAbort();
         removeTransaction(pid);
 
@@ -2148,7 +2159,8 @@ void TMFirstNotifyCoherence::myCompleteAbort(Pid_t pid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 TMFirstRetryCoherence::TMFirstRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence(nProcs, lineSize, lines, argType), maxNacks(10),
-        usefulNacks("tm:usefulNacks"), futileNacks("tm:futileNacks") {
+        usefulNacks("tm:usefulNacks"), futileNacks("tm:futileNacks"),
+        nackRefetches("tm:nackRefetches") {
 	cout<<"[TM] Lazy/Eager with first wins with nacked transactions retrying Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -2158,11 +2170,18 @@ TMFirstRetryCoherence::TMFirstRetryCoherence(int32_t nProcs, int lineSize, int l
 	maxNacks                = SescConf->getInt("TransactionalMemory","maxNacks");
 }
 
-void TMFirstRetryCoherence::getNacked(Pid_t pid, Pid_t n) {
+void TMFirstRetryCoherence::getNacked(Pid_t pid, set<Pid_t>& nackers) {
     nackTrans(pid);
     numNacked[pid]++;
+
+    Pid_t n = *(nackers.begin());
     nackedBy[pid] = n;
     nackerUtid[pid] = transStates[n].getUtid();
+
+    set<Pid_t>::iterator i_n;
+    for(i_n = nackers.begin(); i_n != nackers.end(); ++i_n) {
+        numRefetched[*i_n]++;
+    }
 }
 bool TMFirstRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     return transStates[other].getState() == TM_NACKED;
@@ -2226,7 +2245,7 @@ TMRWStatus TMFirstRetryCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 
     if(m.size() > 0) {
         // If anyone refuses to abort, I need to nack instead
-        getNacked(pid, *(m.begin()));
+        getNacked(pid, m);
         return TMRW_NACKED;
     } else {
         if(prevNacked) {
@@ -2259,7 +2278,7 @@ TMRWStatus TMFirstRetryCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 
     if(m.size() > 0) {
         // If anyone refuses to abort, I need to nack instead
-        getNacked(pid, *(m.begin()));
+        getNacked(pid, m);
         return TMRW_NACKED;
     } else {
         if(prevNacked) {
@@ -2272,10 +2291,22 @@ TMRWStatus TMFirstRetryCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 
 TMBCStatus TMFirstRetryCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     numNacked[pid] = 0;
+    numRefetched[pid] = 0;
     nackedBy.erase(pid);
     nackerUtid.erase(pid);
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
+}
+TMBCStatus TMFirstRetryCoherence::myCommit(Pid_t pid, int tid) {
+    nackRefetches.sample(numRefetched[pid]);
+    numRefetched[pid] = 0;
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+void TMFirstRetryCoherence::myCompleteAbort(Pid_t pid) {
+    nackRefetches.sample(numRefetched[pid]);
+    numRefetched[pid] = 0;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

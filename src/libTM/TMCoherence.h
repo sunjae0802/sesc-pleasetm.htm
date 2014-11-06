@@ -108,8 +108,12 @@ protected:
     void getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w);
     void getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r);
 
-    GStatsCntr      commits;
-    GStatsCntr      aborts;
+    GStatsCntr      numCommits;
+    GStatsCntr      numAborts;
+    GStatsAvg       avgLinesRead;
+    GStatsAvg       avgLinesWritten;
+    GStatsHist      linesReadHist;
+    GStatsHist      linesWrittenHist;
 
     std::map<Pid_t, std::set<VAddr> > linesRead;
     std::map<Pid_t, std::set<VAddr> > linesWritten;
@@ -421,9 +425,11 @@ public:
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual void myCompleteAbort(Pid_t pid);
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
-    void getNacked(Pid_t pid, Pid_t nacker);
+    void getNacked(Pid_t pid, std::set<Pid_t>& nackers);
     void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
     void selfAbort(Pid_t pid, VAddr caddr);
     void selfResume(Pid_t pid);
@@ -431,8 +437,10 @@ private:
     size_t          maxNacks;
     GStatsCntr      usefulNacks;
     GStatsCntr      futileNacks;
+    GStatsAvg       nackRefetches;
 
     std::map<Pid_t, size_t> numNacked;
+    std::map<Pid_t, size_t> numRefetched; // # Times a core had to refetch a line
     std::map<Pid_t, Pid_t> nackedBy;
     std::map<Pid_t, uint64_t> nackerUtid;
 };
