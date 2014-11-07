@@ -224,35 +224,32 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
 
     // Trace this instruction
     std::ostringstream out;
-    if(abortType == TM_ATYPE_SYSCALL) {
+    if(abortType == TM_ATYPE_USER) {
         out<<pid<<" Z"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" 0"
-                        <<" "<<pid;
-    } else if(abortType == TM_ATYPE_CAPACITY) {
-        out<<pid<<" Z"
+                        <<" "<<abortType
+                        <<" "<<tmAbortArg;
+    } else if(abortType == TM_ATYPE_NONTM) {
+        if(transState.getAbortBy() == 0) {
+            fail("Why abort addr NULL?\n");
+        }
+        out<<pid<<" a"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" 1"
-                        <<" "<<pid;
-    } else if(abortType == TM_ATYPE_NACKOVERFLOW) {
-        out<<pid<<" Z"
-                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" 2"
-                        <<" "<<pid;
-    } else if(abortType == TM_ATYPE_USER) {
-        out<<pid<<" Z"
-                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" "<<(tmAbortArg>>8)
-                        <<" "<<pid;
-    } else {
+                        <<" 0x"<<std::hex<<transState.getAbortBy()<<std::dec
+                        <<" "<<aborter;
+    } else if(abortType == TM_ATYPE_DEFAULT) {
         if(transState.getAbortBy() == 0) {
             fail("Why abort addr NULL?\n");
         }
         out<<pid<<" A"
                         <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
                         <<" 0x"<<std::hex<<transState.getAbortBy()<<std::dec
-                        <<" "<<aborter
-                        <<" "<<transState.getAbortType();
+                        <<" "<<aborter;
+    } else {
+        out<<pid<<" Z"
+                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
+                        <<" "<<abortType
+                        <<" 0";
     }
     instTrace10 = out.str();
 

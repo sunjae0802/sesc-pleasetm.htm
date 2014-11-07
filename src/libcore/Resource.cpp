@@ -615,6 +615,11 @@ void Resource::traceEvent(DInst *dinst) {
 
     // Handle Memop Nack Stall tracking
     if(dinst->wasTMNacked()) {
+        out<<context->getPid()
+                    <<" M"
+                    <<" 0x"<<std::hex<<inst->getAddr()<<std::dec
+                    <<" 0x"<<std::hex<<dinst->getVaddr()<<std::dec
+                    <<" " << context->getNRetiredInsts() << ' ' << globalClock << '\n';
         context->retireNackedDInst();
     } else if(context->getNackStallStart() != 0) {
         // DInst after the previous nacked dinst
