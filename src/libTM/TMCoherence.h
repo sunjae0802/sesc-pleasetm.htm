@@ -463,6 +463,25 @@ protected:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
+class TMOlderRetryCoherence: public TMFirstRetryCoherence {
+public:
+    TMOlderRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMOlderRetryCoherence() { }
+protected:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
+class TMOlderAllRetryCoherence: public TMFirstRetryCoherence {
+public:
+    TMOlderAllRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMOlderAllRetryCoherence() { }
+    TMBCStatus myBegin(Pid_t pid, InstDesc* inst);
+    TMBCStatus myCommit(Pid_t pid, int tid);
+protected:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    std::map<Pid_t, Time_t> startedAt;
+};
+
 class TMLog2MoreRetryCoherence: public TMFirstRetryCoherence {
 public:
     TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);

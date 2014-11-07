@@ -61,6 +61,10 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMFirstRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "MoreNackRetry") {
         newCohManager = new TMMoreRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "OlderNackRetry") {
+        newCohManager = new TMOlderRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "OlderAllRetry") {
+        newCohManager = new TMOlderAllRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "MoreLog2Retry") {
         newCohManager = new TMLog2MoreRetryCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else {
@@ -2342,6 +2346,50 @@ bool TMMoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     size_t myNumReads = linesRead[pid].size();
     return transStates[other].getState() == TM_NACKED ||
         (transStates[other].getState() == TM_RUNNING && linesRead[other].size() < myNumReads);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more reads wins, with nacked transactions retrying
+/////////////////////////////////////////////////////////////////////////////////////////
+TMOlderRetryCoherence::TMOlderRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with older all wins with nacked transactions retrying Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+bool TMOlderRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    size_t myTimestamp = transStates[pid].getTimestamp();
+    return transStates[other].getState() == TM_NACKED ||
+        (transStates[other].getState() == TM_RUNNING && transStates[pid].getTimestamp() > myTimestamp);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more reads wins, with nacked transactions retrying
+/////////////////////////////////////////////////////////////////////////////////////////
+TMOlderAllRetryCoherence::TMOlderAllRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with older wins with nacked transactions retrying Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+bool TMOlderAllRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    size_t myTimestamp = startedAt[pid];
+    return transStates[other].getState() == TM_NACKED ||
+        (transStates[other].getState() == TM_RUNNING && startedAt[other] > myTimestamp);
+}
+TMBCStatus TMOlderAllRetryCoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    if(startedAt[pid] == 0) {
+        startedAt[pid] = globalClock;
+    }
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+TMBCStatus TMOlderAllRetryCoherence::myCommit(Pid_t pid, int tid) {
+    startedAt[pid] = 0;
+    commitTrans(pid);
+    return TMBC_SUCCESS;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with more reads wins, with nacked transactions retrying
