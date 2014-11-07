@@ -110,6 +110,7 @@ protected:
 
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
+    GStatsHist      abortTypes;
     GStatsAvg       avgLinesRead;
     GStatsAvg       avgLinesWritten;
     GStatsHist      linesReadHist;
@@ -437,6 +438,7 @@ private:
     size_t          maxNacks;
     GStatsCntr      usefulNacks;
     GStatsCntr      futileNacks;
+    GStatsCntr      timedOutNacks;
     GStatsAvg       nackRefetches;
 
     std::map<Pid_t, size_t> numNacked;
