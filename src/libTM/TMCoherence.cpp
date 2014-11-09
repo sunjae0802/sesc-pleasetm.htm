@@ -1825,6 +1825,11 @@ TMRWStatus TMFirstWinsCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
     return TMRW_SUCCESS;
 }
+TMRWStatus TMFirstWinsCoherence::nonTMread(Pid_t pid, VAddr raddr) {
+    // If anyone refuses to abort, they'll refetch the line later
+
+    return TMRW_SUCCESS;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with older wins
@@ -2183,10 +2188,17 @@ void TMFirstRetryCoherence::getNacked(Pid_t pid, set<Pid_t>& nackers) {
     nackedBy[pid] = n;
     nackerUtid[pid] = transStates[n].getUtid();
 
-    set<Pid_t>::iterator i_n;
-    for(i_n = nackers.begin(); i_n != nackers.end(); ++i_n) {
-        numRefetched[*i_n]++;
+    numRefetched[pid]++;
+}
+Pid_t TMFirstRetryCoherence::removeNack(Pid_t pid) {
+    Pid_t by = INVALID_PID;
+    if(nackedBy.find(pid) != nackedBy.end()) {
+        by = nackedBy.at(pid);
     }
+    nackedBy.erase(pid);
+    nackerUtid.erase(pid);
+
+    return by;
 }
 bool TMFirstRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     return transStates[other].getState() == TM_NACKED;
@@ -2211,22 +2223,21 @@ void TMFirstRetryCoherence::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conf
     for(i_m = toAbort.begin(); i_m != toAbort.end(); ++i_m) {
         if(transStates[*i_m].getState() == TM_NACKED) {
             futileNacks.inc();
-            nackedBy.erase(pid);
-            nackerUtid.erase(pid);
+            removeNack(*i_m);
         }
         markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 }
 void TMFirstRetryCoherence::selfAbort(Pid_t pid, VAddr caddr) {
     Pid_t aborter = nackedBy.at(pid);
-    markTransAborted(pid, aborter, nackerUtid.at(pid), caddr, TM_ATYPE_NACKOVERFLOW);
-    nackedBy.erase(pid);
-    nackerUtid.erase(pid);
+    uint64_t aborterUtid = nackerUtid.at(pid);
+    removeNack(pid);
+
+    markTransAborted(pid, aborter, aborterUtid, caddr, TM_ATYPE_NACKOVERFLOW);
 }
 void TMFirstRetryCoherence::selfResume(Pid_t pid) {
     transStates[pid].resumeAfterNack();
-    nackedBy.erase(pid);
-    nackerUtid.erase(pid);
+    removeNack(pid);
 }
 
 TMRWStatus TMFirstRetryCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
@@ -2296,11 +2307,46 @@ TMRWStatus TMFirstRetryCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     }
 }
 
+void TMFirstRetryCoherence::nackOthers(Pid_t pid, set<Pid_t>& conflicting) {
+    uint64_t utid = transStates[pid].getUtid();
+
+    // Collect transactions that are in NACKED state and remove from m
+    set<Pid_t> toAbort;
+    set<Pid_t>::iterator i_m;
+    for(i_m = conflicting.begin(); i_m != conflicting.end(); ++i_m) {
+        nackTrans(*i_m);
+        numNacked[*i_m]++;
+
+        nackedBy[*i_m] = pid;
+        nackerUtid[*i_m] = utid;
+        numRefetched[*i_m]++;
+    }
+}
+
+TMRWStatus TMFirstRetryCoherence::nonTMread(Pid_t pid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
+
+    I(!hadRead(caddr, pid));
+    I(!hadWrote(caddr, pid));
+
+    // Abort writers once we try to read
+    set<Pid_t> conflicting;
+    getWritersExcept(caddr, pid, conflicting);
+
+    abortOthers(pid, raddr, conflicting);
+
+    if(conflicting.size() > 0) {
+        // If anyone refuses to abort, they'll refetch the line later
+    }
+
+    return TMRW_SUCCESS;
+}
+
 TMBCStatus TMFirstRetryCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     numNacked[pid] = 0;
     numRefetched[pid] = 0;
-    nackedBy.erase(pid);
-    nackerUtid.erase(pid);
+
+    removeNack(pid);
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }

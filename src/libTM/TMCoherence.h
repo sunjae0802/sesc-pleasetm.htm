@@ -360,6 +360,7 @@ public:
     virtual ~TMFirstWinsCoherence() { }
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus nonTMread(Pid_t pid, VAddr raddr);
 private:
     Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
 };
@@ -428,9 +429,12 @@ public:
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual void myCompleteAbort(Pid_t pid);
+    virtual TMRWStatus nonTMread(Pid_t pid, VAddr raddr);
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     void getNacked(Pid_t pid, std::set<Pid_t>& nackers);
+    void nackOthers(Pid_t pid, std::set<Pid_t>& conflicting);
+    Pid_t removeNack(Pid_t pid);
     void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
     void selfAbort(Pid_t pid, VAddr caddr);
     void selfResume(Pid_t pid);
