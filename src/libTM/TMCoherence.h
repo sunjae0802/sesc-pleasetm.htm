@@ -362,41 +362,36 @@ public:
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
     virtual TMRWStatus nonTMread(Pid_t pid, VAddr raddr);
 private:
-    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
 };
 
-class TMOlderCoherence: public TMCoherence {
+class TMOlderCoherence: public TMFirstWinsCoherence {
 public:
     TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMOlderCoherence() { }
-    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
-    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
 private:
-    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
-    std::map<Pid_t, Time_t> started;
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
-class TMOlderAllCoherence: public TMCoherence {
+class TMOlderAllCoherence: public TMFirstWinsCoherence {
 public:
     TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMOlderAllCoherence() { }
-    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
-    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
 private:
-    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
-    std::map<Pid_t, Time_t> started;
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+
+    std::map<Pid_t, Time_t> startedAt;
 };
 
-class TMMoreCoherence: public TMCoherence {
+class TMMoreCoherence: public TMFirstWinsCoherence {
 public:
     TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMMoreCoherence() { }
-    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
-    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
 private:
-    Pid_t shouldAbort(std::set<Pid_t>& m, Pid_t pid);
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
 class TMFirstNotifyCoherence: public TMCoherence {

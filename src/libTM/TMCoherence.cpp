@@ -1776,17 +1776,25 @@ TMFirstWinsCoherence::TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lin
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
 
-Pid_t TMFirstWinsCoherence::shouldAbort(std::set<Pid_t>& m, Pid_t pid) {
-    Pid_t aborter = INVALID_PID;
+bool TMFirstWinsCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return transStates[other].getState() != TM_RUNNING;
+}
 
-    set<Pid_t>::iterator i_m;
-    for(i_m = m.begin(); i_m != m.end(); ++i_m) {
-        if(transStates[*i_m].getState() == TM_RUNNING) {
-            aborter = *i_m;
-            break;
+void TMFirstWinsCoherence::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
+	VAddr caddr = addrToCacheLine(raddr);
+    uint64_t utid = transStates[pid].getUtid();
+
+    // Collect transactions that would be aborted and remove from conflicting
+    set<Pid_t> toAbort;
+    set<Pid_t>::iterator i_m = conflicting.begin();
+    while(i_m != conflicting.end()) {
+        if(shouldAbort(pid, raddr, *i_m)) {
+            markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            conflicting.erase(i_m++);
+        } else {
+            ++i_m;
         }
     }
-    return aborter;
 }
 
 TMRWStatus TMFirstWinsCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
@@ -1797,11 +1805,12 @@ TMRWStatus TMFirstWinsCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     set<Pid_t> m;
     getWritersExcept(caddr, pid, m);
 
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
+    abortOthers(pid, raddr, m);
+    if(m.size() > 0) {
+        // If there are any still alive, I need to self abort
+        Pid_t aborter = *(m.begin());
         markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
     } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
         readTrans(pid, tid, raddr, caddr);
     }
     return TMRW_SUCCESS;
@@ -1816,11 +1825,12 @@ TMRWStatus TMFirstWinsCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     getReadersExcept(caddr, pid, m);
     getWritersExcept(caddr, pid, m);
 
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
+    abortOthers(pid, raddr, m);
+    if(m.size() > 0) {
+        // If there are any still alive, I need to self abort
+        Pid_t aborter = *(m.begin());
         markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
     } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
         writeTrans(pid, tid, raddr, caddr);
     }
     return TMRW_SUCCESS;
@@ -1835,138 +1845,45 @@ TMRWStatus TMFirstWinsCoherence::nonTMread(Pid_t pid, VAddr raddr) {
 // Lazy-eager coherence with older wins
 /////////////////////////////////////////////////////////////////////////////////////////
 TMOlderCoherence::TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMCoherence(nProcs, lineSize, lines, argType) {
+        TMFirstWinsCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with older wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
 
-Pid_t TMOlderCoherence::shouldAbort(std::set<Pid_t>& m, Pid_t pid) {
-    Pid_t aborter = INVALID_PID;
-    Time_t iStartedAt = started[pid];
-
-    set<Pid_t>::iterator i_m;
-    for(i_m = m.begin(); i_m != m.end(); ++i_m) {
-        if(transStates[*i_m].getState() == TM_RUNNING) {
-            if(started[*i_m] < iStartedAt) {
-                aborter = *i_m;
-            }
-        }
-    }
-    return aborter;
-}
-
-TMRWStatus TMOlderCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
-	VAddr caddr = addrToCacheLine(raddr);
-    uint64_t utid = transStates[pid].getUtid();
-
-    // Abort writers once we try to read
-    set<Pid_t> m;
-    getWritersExcept(caddr, pid, m);
-
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
-        markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
-    } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
-        readTrans(pid, tid, raddr, caddr);
-    }
-    return TMRW_SUCCESS;
-}
-
-TMRWStatus TMOlderCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
-	VAddr caddr = addrToCacheLine(raddr);
-    uint64_t utid = transStates[pid].getUtid();
-
-    // Abort everyone once we try to write
-    set<Pid_t> m;
-    getReadersExcept(caddr, pid, m);
-    getWritersExcept(caddr, pid, m);
-
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
-        markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
-    } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
-        writeTrans(pid, tid, raddr, caddr);
-    }
-    return TMRW_SUCCESS;
-}
-TMBCStatus TMOlderCoherence::myBegin(Pid_t pid, InstDesc* inst) {
-    started[pid] = globalClock;
-
-    beginTrans(pid, inst);
-    return TMBC_SUCCESS;
+bool TMOlderCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return
+        (transStates[other].getState() == TM_RUNNING &&
+            transStates[other].getTimestamp() > transStates[pid].getTimestamp());
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with older instance wins
 /////////////////////////////////////////////////////////////////////////////////////////
 TMOlderAllCoherence::TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMCoherence(nProcs, lineSize, lines, argType) {
-	cout<<"[TM] Lazy/Eager with older instance wins Transactional Memory System" << endl;
+        TMFirstWinsCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with older wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
 
-Pid_t TMOlderAllCoherence::shouldAbort(std::set<Pid_t>& m, Pid_t pid) {
-    Pid_t aborter = INVALID_PID;
-    Time_t iStartedAt = started[pid];
-
-    set<Pid_t>::iterator i_m;
-    for(i_m = m.begin(); i_m != m.end(); ++i_m) {
-        if(transStates[*i_m].getState() == TM_RUNNING) {
-            if(started[*i_m] < iStartedAt) {
-                aborter = *i_m;
-            }
-        }
-    }
-    return aborter;
-}
-TMRWStatus TMOlderAllCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
-	VAddr caddr = addrToCacheLine(raddr);
-    uint64_t utid = transStates[pid].getUtid();
-
-    // Abort writers once we try to read
-    set<Pid_t> m;
-    getWritersExcept(caddr, pid, m);
-
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
-        markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
-    } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
-        readTrans(pid, tid, raddr, caddr);
-    }
-    return TMRW_SUCCESS;
-}
-
-TMRWStatus TMOlderAllCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
-	VAddr caddr = addrToCacheLine(raddr);
-    uint64_t utid = transStates[pid].getUtid();
-
-    // Abort everyone once we try to write
-    set<Pid_t> m;
-    getReadersExcept(caddr, pid, m);
-    getWritersExcept(caddr, pid, m);
-
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
-        markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
-    } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
-        writeTrans(pid, tid, raddr, caddr);
-    }
-    return TMRW_SUCCESS;
+bool TMOlderAllCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return
+        (transStates[other].getState() == TM_RUNNING && startedAt[other] > startedAt[pid]);
 }
 
 TMBCStatus TMOlderAllCoherence::myBegin(Pid_t pid, InstDesc* inst) {
-    beginTrans(pid, inst);
-    if(started[pid] == 0) {
-        started[pid] = globalClock;
+    if(startedAt[pid] == 0) {
+        startedAt[pid] = globalClock;
     }
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+TMBCStatus TMOlderAllCoherence::myCommit(Pid_t pid, int tid) {
+    startedAt[pid] = 0;
+    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
@@ -1974,61 +1891,17 @@ TMBCStatus TMOlderAllCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 // Lazy-eager coherence with more writes wins
 /////////////////////////////////////////////////////////////////////////////////////////
 TMMoreCoherence::TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMCoherence(nProcs, lineSize, lines, argType) {
+        TMFirstWinsCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with more reads wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
 	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
-Pid_t TMMoreCoherence::shouldAbort(std::set<Pid_t>& m, Pid_t pid) {
-    Pid_t aborter = INVALID_PID;
-    size_t myNumReads = linesRead[pid].size();
 
-    set<Pid_t>::iterator i_m;
-    for(i_m = m.begin(); i_m != m.end(); ++i_m) {
-        if(transStates[*i_m].getState() == TM_RUNNING) {
-            if(linesRead[*i_m].size() > myNumReads) {
-                aborter = *i_m;
-            }
-        }
-    }
-    return aborter;
-}
-TMRWStatus TMMoreCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
-	VAddr caddr = addrToCacheLine(raddr);
-    uint64_t utid = transStates[pid].getUtid();
-
-    // Abort writers once we try to read
-    set<Pid_t> m;
-    getWritersExcept(caddr, pid, m);
-
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
-        markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
-    } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
-        readTrans(pid, tid, raddr, caddr);
-    }
-    return TMRW_SUCCESS;
-}
-
-TMRWStatus TMMoreCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
-	VAddr caddr = addrToCacheLine(raddr);
-    uint64_t utid = transStates[pid].getUtid();
-
-    // Abort everyone once we try to write
-    set<Pid_t> m;
-    getReadersExcept(caddr, pid, m);
-    getWritersExcept(caddr, pid, m);
-
-    Pid_t aborter = shouldAbort(m, pid);
-    if(aborter != INVALID_PID) {
-        markTransAborted(pid, aborter, transStates[aborter].getUtid(), caddr, TM_ATYPE_DEFAULT);
-    } else {
-        markTransAborted(m, pid, utid, caddr, TM_ATYPE_DEFAULT);
-        writeTrans(pid, tid, raddr, caddr);
-    }
-    return TMRW_SUCCESS;
+bool TMMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return
+        (transStates[other].getState() == TM_RUNNING &&
+            linesRead[other].size() <= linesRead[pid].size());
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -2407,7 +2280,7 @@ TMOlderRetryCoherence::TMOlderRetryCoherence(int32_t nProcs, int lineSize, int l
 bool TMOlderRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     size_t myTimestamp = transStates[pid].getTimestamp();
     return transStates[other].getState() == TM_NACKED ||
-        (transStates[other].getState() == TM_RUNNING && transStates[pid].getTimestamp() > myTimestamp);
+        (transStates[other].getState() == TM_RUNNING && transStates[other].getTimestamp() > myTimestamp);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -2423,7 +2296,8 @@ TMOlderAllRetryCoherence::TMOlderAllRetryCoherence(int32_t nProcs, int lineSize,
 bool TMOlderAllRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     size_t myTimestamp = startedAt[pid];
     return transStates[other].getState() == TM_NACKED ||
-        (transStates[other].getState() == TM_RUNNING && startedAt[other] > myTimestamp);
+        (transStates[other].getState() == TM_RUNNING &&
+            startedAt[other] > myTimestamp);
 }
 TMBCStatus TMOlderAllRetryCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     if(startedAt[pid] == 0) {
