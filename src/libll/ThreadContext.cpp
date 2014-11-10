@@ -54,6 +54,7 @@ void ThreadContext::initialize(bool child) {
 #if (defined TM)
     tmStallUntil= 0;
     tmNumNacks  = 0;
+    tmAbortArg  = 0;
     tmBCFlag    = INVALID_TM;
     tmAbortIAddr= 0;
     tmEndRA     = 0;
