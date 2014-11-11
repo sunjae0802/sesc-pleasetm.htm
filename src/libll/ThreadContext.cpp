@@ -192,16 +192,6 @@ void ThreadContext::abortTransaction(TMAbortType_e abortType) {
         rootTMContext->restoreContext();
 
         tmAbortIAddr= iAddr;
-
-        TimeDelta_t opActive = 0;
-        std::vector<MemOp>::iterator i_tmMemOp = tmMemOps.begin();
-        for(; i_tmMemOp != tmMemOps.end(); ++i_tmMemOp) {
-            if(i_tmMemOp->addr >= tmCohManager->getTransState(pid).getAbortBy() &&
-                    i_tmMemOp->addr < tmCohManager->getTransState(pid).getAbortBy() + 64) {
-                opActive = (globalClock - i_tmMemOp->time);
-            }
-        }
-
         VAddr beginIAddr = rootTMContext->getBeginIAddr();
 
         tmContext = NULL;

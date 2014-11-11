@@ -605,13 +605,6 @@ void Resource::traceEvent(DInst *dinst) {
 
     // XXX
     context->incNRetiredInsts();
-    if(dinst->isTMOp()) {
-        if(inst->tmcode == TMBegin) {
-            context->initTMMemOps();
-        } else {
-            context->retireTMMemOp(dinst->getVaddr(), inst->isStore());
-        }
-    }
 
     // Handle Memop Nack Stall tracking
     if(dinst->wasTMNacked()) {

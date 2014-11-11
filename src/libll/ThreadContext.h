@@ -55,16 +55,6 @@ private:
     VAddr  tmAbortIAddr;
     // Count how many cycles we're being nacked from tm.begin
     size_t tmBeginNackCycles;
-
-    struct MemOp {
-        MemOp(VAddr a, bool store, Time_t t): addr(a), isStore(store), time(t) {}
-        VAddr   addr;
-        bool    isStore;
-        Time_t  time;
-    };
-
-
-    std::vector<MemOp> tmMemOps;
 #endif
 
     // Memory Mapping
@@ -128,8 +118,6 @@ public:
     bool markedForAbort()   const { return tmCohManager->markedForAbort(pid); }
     bool tmNacked()         const { return tmCohManager->checkNacked(pid); }
 
-    void retireTMMemOp(VAddr addr, bool isStore) { tmMemOps.push_back(MemOp(addr, isStore, globalClock)); }
-    void initTMMemOps() { tmMemOps.clear(); }
     VAddr tmEndRA;
 
     TMContext* getTMContext() const { return tmContext; }
