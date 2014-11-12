@@ -53,6 +53,10 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMOlderAllCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "More") {
         newCohManager = new TMMoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "Log2More") {
+        newCohManager = new TMLog2MoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "CappedMore") {
+        newCohManager = new TMCappedMoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "FirstNotify") {
         newCohManager = new TMFirstNotifyCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "MoreNotify") {
@@ -83,6 +87,8 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType),
         nackStallBaseCycles(1), nackStallCap(1), maxNacks(0),
         numCommits("tm:numCommits"), numAborts("tm:numAborts"), abortTypes("tm:abortTypes"),
+        numAbortsCausedBeforeAbort("tm:numAbortsCausedBeforeAbort"),
+        numAbortsCausedBeforeCommit("tm:numAbortsCausedBeforeCommit"),
         avgLinesRead("tm:avgLinesRead"), avgLinesWritten("tm:avgLinesWritten"),
         linesReadHist("tm:linesReadHist"), linesWrittenHist("tm:linesWrittenHist") {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
@@ -186,11 +192,13 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
         // This is a new transaction instance
     } // Else a restarted transaction
 	cacheLines[pid].clear();
+    numAbortsCaused[pid] = 0;
     removeTransaction(pid);
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 void TMCoherence::commitTrans(Pid_t pid) {
     numCommits.inc();
+    numAbortsCausedBeforeCommit.add(numAbortsCaused[pid]);
     avgLinesRead.sample(linesRead[pid].size());
     avgLinesWritten.sample(linesWritten[pid].size());
     linesReadHist.sample(linesRead[pid].size());
@@ -205,6 +213,9 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t a
     if(transStates[victimPid].getState() != TM_ABORTING) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
         removeTransaction(victimPid);
+        if(victimPid != aborterPid && transStates[aborterPid].getState() == TM_RUNNING) {
+            numAbortsCaused[aborterPid]++;
+        }
     } // Else victim is already aborting, so leave it alone
 }
 
@@ -266,6 +277,7 @@ TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
 TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
     if(transStates[pid].getState() == TM_ABORTING) {
         numAborts.inc();
+        numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
         abortTypes.sample(transStates[pid].getAbortType());
         avgLinesRead.sample(linesRead[pid].size());
         avgLinesWritten.sample(linesWritten[pid].size());
@@ -714,19 +726,16 @@ TMBCStatus TMLESOKCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     if(inRunQueue(pid)) {
         return TMBC_NACK;
     } else {
-        abortCause[pid] = 0;
         beginTrans(pid, inst);
         return TMBC_SUCCESS;
     }
 }
 
 void TMLESOKCoherence::myCompleteAbort(Pid_t pid) {
-    abortCount[pid]++;
     Pid_t aborter = transStates[pid].getAborterPid();
 
     if(transStates[aborter].getState() != TM_INVALID) {
         runQueues[aborter].push_back(pid);
-        abortCause[pid] = transStates[pid].getAbortBy();
     }
 }
 
@@ -1905,6 +1914,50 @@ bool TMMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more writes wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMLog2MoreCoherence::TMLog2MoreCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstWinsCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with log2(more reads) wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+
+bool TMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    uint32_t log2Num = log2(linesRead[pid].size());
+    uint32_t log2OtherNum = log2(linesRead[other].size());
+    return
+        (transStates[other].getState() == TM_RUNNING &&
+            log2OtherNum <= log2Num);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more writes wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMCappedMoreCoherence::TMCappedMoreCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstWinsCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with more reads capped wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+
+bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    uint32_t cappedMyNum = linesRead[pid].size();
+    uint32_t cappedOtherNum = linesRead[other].size();
+    if(cappedMyNum > 128) {
+        cappedMyNum = 128;
+    }
+    if(cappedOtherNum > 128) {
+        cappedOtherNum = 128;
+    }
+    return
+        (transStates[other].getState() == TM_RUNNING &&
+            cappedOtherNum <= cappedMyNum);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with first wins with nacked transactions resume after notify
 /////////////////////////////////////////////////////////////////////////////////////////
 TMFirstNotifyCoherence::TMFirstNotifyCoherence(int32_t nProcs, int lineSize, int lines, int argType):
@@ -2270,6 +2323,46 @@ bool TMMoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with more reads wins, with nacked transactions retrying
 /////////////////////////////////////////////////////////////////////////////////////////
+TMLog2MoreRetryCoherence::TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with log2(more reads) wins with nacked transactions retrying Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+bool TMLog2MoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    uint32_t log2Num = log2(linesRead[pid].size());
+    uint32_t log2OtherNum = log2(linesRead[other].size());
+    return transStates[other].getState() == TM_NACKED ||
+        (transStates[other].getState() == TM_RUNNING && log2OtherNum < log2Num);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more reads wins, with nacked transactions retrying
+/////////////////////////////////////////////////////////////////////////////////////////
+TMCappedMoreRetryCoherence::TMCappedMoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with capped more reads wins with nacked transactions retrying Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+bool TMCappedMoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    uint32_t cappedMyNum = linesRead[pid].size();
+    uint32_t cappedOtherNum = linesRead[other].size();
+    if(cappedMyNum > 128) {
+        cappedMyNum = 128;
+    }
+    if(cappedOtherNum > 128) {
+        cappedOtherNum = 128;
+    }
+    return transStates[other].getState() == TM_NACKED ||
+        (transStates[other].getState() == TM_RUNNING && cappedOtherNum < cappedMyNum);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more reads wins, with nacked transactions retrying
+/////////////////////////////////////////////////////////////////////////////////////////
 TMOlderRetryCoherence::TMOlderRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager with older all wins with nacked transactions retrying Transactional Memory System" << endl;
@@ -2310,21 +2403,5 @@ TMBCStatus TMOlderAllRetryCoherence::myCommit(Pid_t pid, int tid) {
     startedAt[pid] = 0;
     commitTrans(pid);
     return TMBC_SUCCESS;
-}
-/////////////////////////////////////////////////////////////////////////////////////////
-// Lazy-eager coherence with more reads wins, with nacked transactions retrying
-/////////////////////////////////////////////////////////////////////////////////////////
-TMLog2MoreRetryCoherence::TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
-	cout<<"[TM] Lazy/Eager with log2(more reads) wins with nacked transactions retrying Transactional Memory System" << endl;
-
-	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
-	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
-}
-bool TMLog2MoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    uint32_t log2Num = log2(linesRead[pid].size());
-    uint32_t log2OtherNum = log2(linesRead[other].size());
-    return transStates[other].getState() == TM_NACKED ||
-        (transStates[other].getState() == TM_RUNNING && log2OtherNum < log2Num);
 }
 

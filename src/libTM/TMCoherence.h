@@ -111,11 +111,14 @@ protected:
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
+    GStatsCntr      numAbortsCausedBeforeAbort;
+    GStatsCntr      numAbortsCausedBeforeCommit;
     GStatsAvg       avgLinesRead;
     GStatsAvg       avgLinesWritten;
     GStatsHist      linesReadHist;
     GStatsHist      linesWrittenHist;
 
+    std::map<VAddr, size_t> numAbortsCaused;
     std::map<Pid_t, std::set<VAddr> > linesRead;
     std::map<Pid_t, std::set<VAddr> > linesWritten;
     std::map<VAddr, std::list<Pid_t> > writers2;
@@ -188,7 +191,6 @@ private:
     bool inRunQueue(Pid_t pid);
 
     std::map<Pid_t, size_t> abortCount;
-    std::map<Pid_t, VAddr>  abortCause;
     std::map<Pid_t, std::list<Pid_t> > runQueues;
 };
 
@@ -394,6 +396,22 @@ private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
+class TMLog2MoreCoherence: public TMFirstWinsCoherence {
+public:
+    TMLog2MoreCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMLog2MoreCoherence() { }
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
+class TMCappedMoreCoherence: public TMFirstWinsCoherence {
+public:
+    TMCappedMoreCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMCappedMoreCoherence() { }
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
 class TMFirstNotifyCoherence: public TMCoherence {
 public:
     TMFirstNotifyCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
@@ -462,6 +480,22 @@ protected:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
+class TMLog2MoreRetryCoherence: public TMFirstRetryCoherence {
+public:
+    TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMLog2MoreRetryCoherence() { }
+protected:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
+class TMCappedMoreRetryCoherence: public TMFirstRetryCoherence {
+public:
+    TMCappedMoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMCappedMoreRetryCoherence() { }
+protected:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
 class TMOlderRetryCoherence: public TMFirstRetryCoherence {
 public:
     TMOlderRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
@@ -479,14 +513,6 @@ public:
 protected:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     std::map<Pid_t, Time_t> startedAt;
-};
-
-class TMLog2MoreRetryCoherence: public TMFirstRetryCoherence {
-public:
-    TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
-    virtual ~TMLog2MoreRetryCoherence() { }
-protected:
-    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
 extern TMCoherence *tmCohManager;
