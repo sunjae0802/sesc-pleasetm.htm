@@ -3,6 +3,7 @@
 #include <iostream>
 #include "libsuc/nanassert.h"
 #include "SescConf.h"
+#include "libll/Instruction.h"
 #include "TMCoherence.h"
 
 using namespace std;
@@ -57,6 +58,8 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMLog2MoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "CappedMore") {
         newCohManager = new TMCappedMoreCoherence(nProcs, cacheLineSize, numLines, returnArgType);
+    } else if(method == "NumAborts") {
+        newCohManager = new TMNumAbortsCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "FirstNotify") {
         newCohManager = new TMFirstNotifyCoherence(nProcs, cacheLineSize, numLines, returnArgType);
     } else if(method == "MoreNotify") {
@@ -1948,6 +1951,36 @@ bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more aborts wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMNumAbortsCoherence::TMNumAbortsCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstWinsCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with more aborts wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+
+bool TMNumAbortsCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return numAbortsSeen[other] <= numAbortsSeen[pid];
+}
+TMBCStatus TMNumAbortsCoherence::myBegin(Pid_t pid, InstDesc *inst) {
+    VAddr currentIAddr = inst->getSescInst()->getAddr();
+    if(lastBegin[pid] != currentIAddr) {
+        lastBegin[pid] = currentIAddr;
+        numAbortsSeen[pid] = 0;
+    }
+
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+TMBCStatus TMNumAbortsCoherence::myCommit(Pid_t pid, int tid) {
+    numAbortsSeen[pid] = 0;
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with first wins with nacked transactions resume after notify
 /////////////////////////////////////////////////////////////////////////////////////////
 TMFirstNotifyCoherence::TMFirstNotifyCoherence(int32_t nProcs, int lineSize, int lines, int argType):
@@ -2383,6 +2416,37 @@ TMBCStatus TMOlderAllRetryCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 TMBCStatus TMOlderAllRetryCoherence::myCommit(Pid_t pid, int tid) {
     startedAt[pid] = 0;
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more aborts wins, with nacked transactions retrying
+/////////////////////////////////////////////////////////////////////////////////////////
+TMNumAbortsRetryCoherence::TMNumAbortsRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
+        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
+	cout<<"[TM] Lazy/Eager with more aborts wins Transactional Memory System" << endl;
+
+	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
+	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
+}
+
+bool TMNumAbortsRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return numAbortsSeen[other] <= numAbortsSeen[pid];
+}
+TMBCStatus TMNumAbortsRetryCoherence::myBegin(Pid_t pid, InstDesc *inst) {
+    VAddr currentIAddr = inst->getSescInst()->getAddr();
+    if(lastBegin[pid] != currentIAddr) {
+        lastBegin[pid] = currentIAddr;
+        numAbortsSeen[pid] = 0;
+    }
+
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+TMBCStatus TMNumAbortsRetryCoherence::myCommit(Pid_t pid, int tid) {
+    numAbortsSeen[pid] = 0;
     commitTrans(pid);
     return TMBC_SUCCESS;
 }

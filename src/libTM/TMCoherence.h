@@ -412,6 +412,18 @@ private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
+class TMNumAbortsCoherence: public TMFirstWinsCoherence {
+public:
+    TMNumAbortsCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMNumAbortsCoherence() { }
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    std::map<Pid_t, VAddr>  lastBegin;
+    std::map<Pid_t, size_t> numAbortsSeen;
+};
+
 class TMFirstNotifyCoherence: public TMCoherence {
 public:
     TMFirstNotifyCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
@@ -513,6 +525,19 @@ public:
 protected:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     std::map<Pid_t, Time_t> startedAt;
+};
+
+class TMNumAbortsRetryCoherence: public TMFirstRetryCoherence {
+public:
+    TMNumAbortsRetryCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
+    virtual ~TMNumAbortsRetryCoherence() { }
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+
+    std::map<Pid_t, VAddr>  lastBegin;
+    std::map<Pid_t, size_t> numAbortsSeen;
 };
 
 extern TMCoherence *tmCohManager;
