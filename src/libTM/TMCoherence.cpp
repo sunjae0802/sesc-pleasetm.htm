@@ -1786,7 +1786,7 @@ TMFirstWinsCoherence::TMFirstWinsCoherence(int32_t nProcs, int lineSize, int lin
 }
 
 bool TMFirstWinsCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return transStates[other].getState() != TM_RUNNING;
+    return false;
 }
 
 void TMFirstWinsCoherence::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
@@ -1794,7 +1794,6 @@ void TMFirstWinsCoherence::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& confl
     uint64_t utid = transStates[pid].getUtid();
 
     // Collect transactions that would be aborted and remove from conflicting
-    set<Pid_t> toAbort;
     set<Pid_t>::iterator i_m = conflicting.begin();
     while(i_m != conflicting.end()) {
         if(shouldAbort(pid, raddr, *i_m)) {
@@ -1862,9 +1861,7 @@ TMOlderCoherence::TMOlderCoherence(int32_t nProcs, int lineSize, int lines, int 
 }
 
 bool TMOlderCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return
-        (transStates[other].getState() == TM_RUNNING &&
-            transStates[other].getTimestamp() > transStates[pid].getTimestamp());
+    return (transStates[other].getTimestamp() / 16) > (transStates[pid].getTimestamp() / 16);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1879,8 +1876,7 @@ TMOlderAllCoherence::TMOlderAllCoherence(int32_t nProcs, int lineSize, int lines
 }
 
 bool TMOlderAllCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return
-        (transStates[other].getState() == TM_RUNNING && startedAt[other] > startedAt[pid]);
+    return startedAt[other] > startedAt[pid];
 }
 
 TMBCStatus TMOlderAllCoherence::myBegin(Pid_t pid, InstDesc* inst) {
@@ -1908,9 +1904,7 @@ TMMoreCoherence::TMMoreCoherence(int32_t nProcs, int lineSize, int lines, int ar
 }
 
 bool TMMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return
-        (transStates[other].getState() == TM_RUNNING &&
-            linesRead[other].size() <= linesRead[pid].size());
+    return linesRead[other].size() <= linesRead[pid].size();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1927,9 +1921,7 @@ TMLog2MoreCoherence::TMLog2MoreCoherence(int32_t nProcs, int lineSize, int lines
 bool TMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     uint32_t log2Num = log2(linesRead[pid].size());
     uint32_t log2OtherNum = log2(linesRead[other].size());
-    return
-        (transStates[other].getState() == TM_RUNNING &&
-            log2OtherNum <= log2Num);
+    return log2OtherNum <= log2Num;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1952,9 +1944,7 @@ bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     if(cappedOtherNum > 128) {
         cappedOtherNum = 128;
     }
-    return
-        (transStates[other].getState() == TM_RUNNING &&
-            cappedOtherNum <= cappedMyNum);
+    return cappedOtherNum <= cappedMyNum;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -2127,31 +2117,28 @@ Pid_t TMFirstRetryCoherence::removeNack(Pid_t pid) {
     return by;
 }
 bool TMFirstRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return transStates[other].getState() == TM_NACKED;
+    return false;
 }
 void TMFirstRetryCoherence::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 
     // Collect transactions that are in NACKED state and remove from m
-    set<Pid_t> toAbort;
     set<Pid_t>::iterator i_m = conflicting.begin();
     while(i_m != conflicting.end()) {
-        if(shouldAbort(pid, raddr, *i_m)) {
-            toAbort.insert(*i_m);
+        if(checkNacked(pid)) {
+            futileNacks.inc();
+            removeNack(*i_m);
+            markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_CIRCULAR);
+
+            conflicting.erase(i_m++);
+        } else if(shouldAbort(pid, raddr, *i_m)) {
+            markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
+
             conflicting.erase(i_m++);
         } else {
             ++i_m;
         }
-    }
-
-    // Abort them
-    for(i_m = toAbort.begin(); i_m != toAbort.end(); ++i_m) {
-        if(transStates[*i_m].getState() == TM_NACKED) {
-            futileNacks.inc();
-            removeNack(*i_m);
-        }
-        markTransAborted(*i_m, pid, utid, caddr, TM_ATYPE_DEFAULT);
     }
 }
 void TMFirstRetryCoherence::selfAbort(Pid_t pid, VAddr caddr) {
@@ -2316,8 +2303,7 @@ TMMoreRetryCoherence::TMMoreRetryCoherence(int32_t nProcs, int lineSize, int lin
 }
 bool TMMoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     size_t myNumReads = linesRead[pid].size();
-    return transStates[other].getState() == TM_NACKED ||
-        (transStates[other].getState() == TM_RUNNING && linesRead[other].size() < myNumReads);
+    return linesRead[other].size() < myNumReads;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -2333,8 +2319,7 @@ TMLog2MoreRetryCoherence::TMLog2MoreRetryCoherence(int32_t nProcs, int lineSize,
 bool TMLog2MoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     uint32_t log2Num = log2(linesRead[pid].size());
     uint32_t log2OtherNum = log2(linesRead[other].size());
-    return transStates[other].getState() == TM_NACKED ||
-        (transStates[other].getState() == TM_RUNNING && log2OtherNum < log2Num);
+    return log2OtherNum < log2Num;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -2356,8 +2341,7 @@ bool TMCappedMoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other
     if(cappedOtherNum > 128) {
         cappedOtherNum = 128;
     }
-    return transStates[other].getState() == TM_NACKED ||
-        (transStates[other].getState() == TM_RUNNING && cappedOtherNum < cappedMyNum);
+    return cappedOtherNum < cappedMyNum;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -2388,9 +2372,7 @@ TMOlderAllRetryCoherence::TMOlderAllRetryCoherence(int32_t nProcs, int lineSize,
 }
 bool TMOlderAllRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     size_t myTimestamp = startedAt[pid];
-    return transStates[other].getState() == TM_NACKED ||
-        (transStates[other].getState() == TM_RUNNING &&
-            startedAt[other] > myTimestamp);
+    return startedAt[other] > myTimestamp;
 }
 TMBCStatus TMOlderAllRetryCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     if(startedAt[pid] == 0) {
