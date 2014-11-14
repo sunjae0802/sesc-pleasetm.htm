@@ -418,6 +418,7 @@ public:
     virtual ~TMNumAbortsCoherence() { }
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual void myCompleteAbort(Pid_t pid);
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     std::map<Pid_t, VAddr>  lastBegin;
@@ -533,6 +534,7 @@ public:
     virtual ~TMNumAbortsRetryCoherence() { }
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual void myCompleteAbort(Pid_t pid);
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 

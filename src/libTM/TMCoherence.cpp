@@ -1979,6 +1979,9 @@ TMBCStatus TMNumAbortsCoherence::myCommit(Pid_t pid, int tid) {
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
+void TMNumAbortsCoherence::myCompleteAbort(Pid_t pid) {
+    numAbortsSeen[pid]++;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence with first wins with nacked transactions resume after notify
@@ -2449,5 +2452,8 @@ TMBCStatus TMNumAbortsRetryCoherence::myCommit(Pid_t pid, int tid) {
     numAbortsSeen[pid] = 0;
     commitTrans(pid);
     return TMBC_SUCCESS;
+}
+void TMNumAbortsRetryCoherence::myCompleteAbort(Pid_t pid) {
+    numAbortsSeen[pid]++;
 }
 
