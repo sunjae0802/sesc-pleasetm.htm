@@ -1962,7 +1962,7 @@ TMNumAbortsCoherence::TMNumAbortsCoherence(int32_t nProcs, int lineSize, int lin
 }
 
 bool TMNumAbortsCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return numAbortsSeen[other] <= numAbortsSeen[pid];
+    return numAbortsSeen[other] < numAbortsSeen[pid];
 }
 TMBCStatus TMNumAbortsCoherence::myBegin(Pid_t pid, InstDesc *inst) {
     VAddr currentIAddr = inst->getSescInst()->getAddr();
@@ -1976,6 +1976,7 @@ TMBCStatus TMNumAbortsCoherence::myBegin(Pid_t pid, InstDesc *inst) {
 }
 TMBCStatus TMNumAbortsCoherence::myCommit(Pid_t pid, int tid) {
     numAbortsSeen[pid] = 0;
+    lastBegin[pid] = 0;
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
@@ -2436,7 +2437,7 @@ TMNumAbortsRetryCoherence::TMNumAbortsRetryCoherence(int32_t nProcs, int lineSiz
 }
 
 bool TMNumAbortsRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return numAbortsSeen[other] <= numAbortsSeen[pid];
+    return numAbortsSeen[other] < numAbortsSeen[pid];
 }
 TMBCStatus TMNumAbortsRetryCoherence::myBegin(Pid_t pid, InstDesc *inst) {
     VAddr currentIAddr = inst->getSescInst()->getAddr();
@@ -2450,6 +2451,7 @@ TMBCStatus TMNumAbortsRetryCoherence::myBegin(Pid_t pid, InstDesc *inst) {
 }
 TMBCStatus TMNumAbortsRetryCoherence::myCommit(Pid_t pid, int tid) {
     numAbortsSeen[pid] = 0;
+    lastBegin[pid] = 0;
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
