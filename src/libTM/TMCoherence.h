@@ -410,6 +410,7 @@ public:
     virtual ~TMCappedMoreCoherence() { }
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    size_t      m_cap;
 };
 
 class TMNumAbortsCoherence: public TMFirstWinsCoherence {
@@ -507,6 +508,7 @@ public:
     virtual ~TMCappedMoreRetryCoherence() { }
 protected:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    size_t      m_cap;
 };
 
 class TMOlderRetryCoherence: public TMFirstRetryCoherence {

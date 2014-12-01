@@ -1931,7 +1931,7 @@ bool TMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
 // Lazy-eager coherence with more writes wins
 /////////////////////////////////////////////////////////////////////////////////////////
 TMCappedMoreCoherence::TMCappedMoreCoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMFirstWinsCoherence(nProcs, lineSize, lines, argType) {
+        TMFirstWinsCoherence(nProcs, lineSize, lines, argType), m_cap(64) {
 	cout<<"[TM] Lazy/Eager with more reads capped wins Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -1941,11 +1941,11 @@ TMCappedMoreCoherence::TMCappedMoreCoherence(int32_t nProcs, int lineSize, int l
 bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     uint32_t cappedMyNum = linesRead[pid].size();
     uint32_t cappedOtherNum = linesRead[other].size();
-    if(cappedMyNum > 128) {
-        cappedMyNum = 128;
+    if(cappedMyNum > m_cap) {
+        cappedMyNum = m_cap;
     }
-    if(cappedOtherNum > 128) {
-        cappedOtherNum = 128;
+    if(cappedOtherNum > m_cap) {
+        cappedOtherNum = m_cap;
     }
     return cappedOtherNum <= cappedMyNum;
 }
@@ -2363,7 +2363,7 @@ bool TMLog2MoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) 
 // Lazy-eager coherence with more reads wins, with nacked transactions retrying
 /////////////////////////////////////////////////////////////////////////////////////////
 TMCappedMoreRetryCoherence::TMCappedMoreRetryCoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMFirstRetryCoherence(nProcs, lineSize, lines, argType) {
+        TMFirstRetryCoherence(nProcs, lineSize, lines, argType), m_cap(64) {
 	cout<<"[TM] Lazy/Eager with capped more reads wins with nacked transactions retrying Transactional Memory System" << endl;
 
 	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
@@ -2372,11 +2372,11 @@ TMCappedMoreRetryCoherence::TMCappedMoreRetryCoherence(int32_t nProcs, int lineS
 bool TMCappedMoreRetryCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     uint32_t cappedMyNum = linesRead[pid].size();
     uint32_t cappedOtherNum = linesRead[other].size();
-    if(cappedMyNum > 128) {
-        cappedMyNum = 128;
+    if(cappedMyNum > m_cap) {
+        cappedMyNum = m_cap;
     }
-    if(cappedOtherNum > 128) {
-        cappedOtherNum = 128;
+    if(cappedOtherNum > m_cap) {
+        cappedOtherNum = m_cap;
     }
     return cappedOtherNum < cappedMyNum;
 }
