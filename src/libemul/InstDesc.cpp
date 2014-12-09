@@ -48,6 +48,8 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // (Remove this when ThreadContext stays in one place on thread switching)
 #include "libcore/OSSim.h"
 
+// This is to keep track of L1 caches internally
+#include "libll/PrivateCaches.h"
 #if (defined TM)
 #include "libTM/TMContext.h"
 #endif
@@ -807,22 +809,12 @@ public:
         if(addr == 0) {
             fail("Null pointer exception\n");
         }
-        if(privateCacheManager) {
-            // Update private L1 cache state
-            // Need this since OSSim starts too early
-            privateCacheManager->doLoad(context->getPid(), addr);
-        }
         return fixEndian(context->readMemRaw<T>(addr));
     }
     template<typename T>
     static inline void writeMem(ThreadContext *context, Taddr_t addr, const T &val) {
         if(addr == 0) {
             fail("Null pointer exception\n");
-        }
-        if(privateCacheManager) {
-            // Update private L1 cache state
-            // Need this since OSSim starts too early
-            privateCacheManager->doStore(context->getPid(), addr);
         }
         context->writeMemRaw(addr,fixEndian(val));
         if(!linkset.empty()) {
@@ -1511,7 +1503,14 @@ public:
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
 // 	  printf("Ld %d bytes 0x%016llx from 0x%08x (instr 0x%08x %s)\n",
 // 		 sizeof(MemT),(unsigned long long)(readMem<MemT>(context,addr)),addr,inst->addr,inst->name);
+            bool l1Hit = false;
+            if(privateCacheManager) {
+                // Update private L1 cache state
+                // Need this since OSSim starts too early
+                l1Hit = privateCacheManager->doLoad(context->getPid(), addr);
+            }
             context->setDAddr(addr);
+            context->setL1Hit(l1Hit);
             if(kind==LdStLlSc) {
                 setReg<Taddr_t,RegTypeSpc>(context,static_cast<RegName>(RegLink),addr-(addr&0x7));
                 linkset.insert(context->getPid());
@@ -1591,7 +1590,14 @@ public:
             if((kind==LdStLlSc)&&(getReg<Taddr_t,RegTypeSpc>(context,RegLink)!=(addr-(addr&0x7)))) {
                 setReg<Tregv_t,DTyp>(context,inst->regDst,0);
             } else {
+                bool l1Hit = false;
+                if(privateCacheManager) {
+                    // Update private L1 cache state
+                    // Need this since OSSim starts too early
+                    l1Hit = privateCacheManager->doStore(context->getPid(), addr);
+                }
                 context->setDAddr(addr);
+                context->setL1Hit(l1Hit);
                 MemT val=getReg<MemT,S2Typ>(context,inst->regSrc2);
                 if(kind&LdStLR) {
                     size_t tsiz=sizeof(MemT);

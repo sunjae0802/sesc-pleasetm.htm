@@ -29,7 +29,7 @@ bool PrivateCaches::findLine(Pid_t pid, VAddr addr) {
 ///
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
-void PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isWrite) {
+bool PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isWrite) {
     PrivateCache* cache = caches.at(pid);
     Line*         line  = cache->findLineNoEffect(addr);
 
@@ -65,22 +65,26 @@ void PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isWrite) {
             replaced->makeDirty();
         }
         activeAddrs[pid].insert(myTag);
+        return false;
     } else {
-        line->makeDirty();
+        if(isWrite) {
+            line->makeDirty();
+        }
         if(activeAddrs[pid].find(line->getTag()) == activeAddrs[pid].end()) {
             fail("Found line not properly tracked by activeAddrs!\n");
         }
+        return true;
     }
 }
 ///
 // Do a load operation, bringing the line into pid's private cache
-void PrivateCaches::doLoad(Pid_t pid, VAddr addr) {
-    doFillLine(pid, addr, false);
+bool PrivateCaches::doLoad(Pid_t pid, VAddr addr) {
+    return doFillLine(pid, addr, false);
 }
 ///
 // Do a store operation, invalidating all sharers and bringing the line into
 // pid's private cache
-void PrivateCaches::doStore(Pid_t pid, VAddr addr) {
+bool PrivateCaches::doStore(Pid_t pid, VAddr addr) {
     // Invalidate all sharers
     for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
         if(p != pid) {
@@ -92,6 +96,6 @@ void PrivateCaches::doStore(Pid_t pid, VAddr addr) {
         }
     }
     // Add myself
-    doFillLine(pid, addr, true);
+    return doFillLine(pid, addr, true);
 }
 

@@ -44,11 +44,11 @@ class PrivateCaches {
 public:
     PrivateCaches(const char *section, size_t n);
     ~PrivateCaches();
-    void doLoad(Pid_t pid, VAddr addr);
-    void doStore(Pid_t pid, VAddr addr);
+    bool doLoad(Pid_t pid, VAddr addr);
+    bool doStore(Pid_t pid, VAddr addr);
     bool findLine(Pid_t pid, VAddr addr);
 private:
-    void doFillLine(Pid_t pid, VAddr addr, bool isWrite);
+    bool doFillLine(Pid_t pid, VAddr addr, bool isWrite);
 
     typedef CacheGeneric<CState1, VAddr>            PrivateCache;
     typedef CacheGeneric<CState1, VAddr>::CacheLine Line;

@@ -227,6 +227,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->cId        = cId;
     i->wakeUpTime = 0;
     i->vaddr      = va;
+    i->l1Hit      = context->getL1Hit();
     i->first      = 0;
 #ifdef DEBUG
     i->ID = currentID++;

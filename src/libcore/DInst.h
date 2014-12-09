@@ -195,6 +195,7 @@ private:
 
     const Instruction *inst;
     VAddr vaddr;
+    bool  l1Hit;
     Resource    *resource;
     DInst      **RATEntry;
     FetchEngine *fetch;
