@@ -807,12 +807,22 @@ public:
         if(addr == 0) {
             fail("Null pointer exception\n");
         }
+        if(privateCacheManager) {
+            // Update private L1 cache state
+            // Need this since OSSim starts too early
+            privateCacheManager->doLoad(context->getPid(), addr);
+        }
         return fixEndian(context->readMemRaw<T>(addr));
     }
     template<typename T>
     static inline void writeMem(ThreadContext *context, Taddr_t addr, const T &val) {
         if(addr == 0) {
             fail("Null pointer exception\n");
+        }
+        if(privateCacheManager) {
+            // Update private L1 cache state
+            // Need this since OSSim starts too early
+            privateCacheManager->doStore(context->getPid(), addr);
         }
         context->writeMemRaw(addr,fixEndian(val));
         if(!linkset.empty()) {
