@@ -60,6 +60,7 @@ void ThreadContext::initialize(bool child) {
     tmContext   = NULL;
     tmCallsite  = 0;
     tmBeginNackCycles = 0;
+    tmlibUserTid= -1;
 #endif
     retireContext.nRetiredInsts =0;
     retireContext.nackStallStart= 0;

@@ -111,6 +111,9 @@ public:
     void stopMemopTrace()   { traceMemOps = false; }
     bool memopTrace() const { return traceMemOps; }
 #if (defined TM)
+    // Debug flag for making sure we have consistent view of SW tid and HW tid
+    int32_t tmlibUserTid;
+
     // Transactional Helper Methods
     int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
     bool isInTM()           const { return getTMdepth() > 0; }

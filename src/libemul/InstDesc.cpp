@@ -2304,9 +2304,9 @@ void handleTMBeginCall(InstDesc *inst, ThreadContext *context) {
         uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
         uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
 
-        if(context->userTid == -1) {
-            context->userTid = arg;
-        } else if(context->userTid != (int32_t)arg) {
+        if(context->tmlibUserTid == -1) {
+            context->tmlibUserTid = arg;
+        } else if(context->tmlibUserTid != (int32_t)arg) {
             fail("tm_begin tid arg changed?\n");
         }
         out << context->getPid() << " S 0x" << hex << ra << " 0x" << arg << dec;
