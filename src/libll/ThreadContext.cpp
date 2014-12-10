@@ -57,11 +57,9 @@ void ThreadContext::initialize(bool child) {
     tmAbortArg  = 0;
     tmBCFlag    = INVALID_TM;
     tmAbortIAddr= 0;
-    tmEndRA     = 0;
     tmContext   = NULL;
     tmCallsite  = 0;
     tmBeginNackCycles = 0;
-    userTid     = -1;
 #endif
     retireContext.nRetiredInsts =0;
     retireContext.nackStallStart= 0;

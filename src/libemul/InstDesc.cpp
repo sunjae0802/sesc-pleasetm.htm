@@ -1431,9 +1431,6 @@ public:
                 // Try to handle tm_begin_fallback and tm_wait before tm_begin, tm_end
                 context->handleReturns(destIAddr, inst);
 
-                if(destIAddr == context->tmEndRA) {
-                    handleTMEndRet(inst, context);
-                }
                 context->setIAddr(destIAddr);
             } else if(NxtTyp==NextCont) {
                 context->updIDesc(1);
@@ -2400,8 +2397,7 @@ void handleTMWaitRet(InstDesc *inst, ThreadContext *context) {
 // TM Lib End Tracing
 void handleTMEndCall(InstDesc *inst, ThreadContext *context) {
     uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-    I(context->tmEndRA == 0);
-    context->tmEndRA = ra;
+    context->addCall(ra, &handleTMEndRet);
 }
 
 void handleTMEndRet(InstDesc *inst, ThreadContext *context) {
@@ -2411,7 +2407,6 @@ void handleTMEndRet(InstDesc *inst, ThreadContext *context) {
 
         out << context->getPid() << " s 0x" << hex << ra << dec;
         context->outTrace = out.str();
-        context->tmEndRA = 0;
     }
 }
 

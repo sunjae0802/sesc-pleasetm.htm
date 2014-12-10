@@ -91,8 +91,6 @@ private:
 private:
 
 public:
-    int32_t userTid;
-
     void addCall(VAddr ra, retHandler_t handler) {
         retHandlers.push_back(std::make_pair(ra, handler));
     }
@@ -119,8 +117,6 @@ public:
     bool isTMAborting()     const { return tmCohManager->checkAborting(pid); }
     bool markedForAbort()   const { return tmCohManager->markedForAbort(pid); }
     bool tmNacked()         const { return tmCohManager->checkNacked(pid); }
-
-    VAddr tmEndRA;
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
