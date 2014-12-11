@@ -86,7 +86,6 @@ private:
     // HACK to balance calls/returns
     typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
     std::vector<std::pair<VAddr, retHandler_t> > retHandlers;
-private:
 
 public:
     void addCall(VAddr ra, retHandler_t handler) {
@@ -108,6 +107,8 @@ public:
 #if (defined TM)
     // Debug flag for making sure we have consistent view of SW tid and HW tid
     int32_t tmlibUserTid;
+    // Count how many times we NACKed a memop, so that we can implement linear backoff
+    size_t tmNumNacks;
 
     // Transactional Helper Methods
     int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
@@ -134,7 +135,8 @@ public:
     uint32_t getBeginArg();
     uint32_t getAbortArg(const TransState& transState);
     void completeFallback();
-    size_t tmNumNacks;
+
+    // memop NACK handling methods
     void startNackStalling() {
         tmNumNacks++;
         startStalling(tmCohManager->getNackStallCycles(tmNumNacks));
