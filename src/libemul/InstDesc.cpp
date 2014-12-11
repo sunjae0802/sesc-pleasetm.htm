@@ -1556,13 +1556,6 @@ public:
                 context->tmNumNacks = 0;
             }
 #endif
-            if (context->memopTrace() && context->isLocalStackData(addr) == false) {
-                std::ostringstream out;
-                out<<context->getPid()<<" R"
-                            <<" 0x"<<std::hex<<inst->getSescInst()->getAddr()<<std::dec
-                            <<" 0x"<<std::hex<<addr<<std::dec;
-                context->instTrace10 = out.str();
-            }
             return nextInst<NTyp>(inst,context);
         }
         DecodeRegs(emulLd);
@@ -1622,14 +1615,6 @@ public:
                 context->tmNumNacks = 0;
             }
 #endif    
-
-            if (context->memopTrace() && context->isLocalStackData(addr) == false) {
-                std::ostringstream out;
-                out<<context->getPid()<<" W"
-                            <<" 0x"<<std::hex<<inst->getSescInst()->getAddr()<<std::dec
-                            <<" 0x"<<std::hex<<addr<<std::dec;
-                context->instTrace10 = out.str();
-            }
             return nextInst<NTyp>(inst,context);
         }
         DecodeRegs(emulSt);

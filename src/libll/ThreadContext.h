@@ -83,8 +83,6 @@ private:
     bool      l1Hit;
     size_t    nDInsts;
 
-    bool  traceMemOps;
-
     // HACK to balance calls/returns
     typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
     std::vector<std::pair<VAddr, retHandler_t> > retHandlers;
@@ -107,9 +105,6 @@ public:
     }
     bool retsEmpty() const { return retHandlers.empty(); }
 
-    void startMemopTrace()  { traceMemOps = true; }
-    void stopMemopTrace()   { traceMemOps = false; }
-    bool memopTrace() const { return traceMemOps; }
 #if (defined TM)
     // Debug flag for making sure we have consistent view of SW tid and HW tid
     int32_t tmlibUserTid;

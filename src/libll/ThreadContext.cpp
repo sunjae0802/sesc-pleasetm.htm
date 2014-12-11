@@ -49,7 +49,6 @@ void ThreadContext::initialize(bool child) {
     s_barrierRA = 0;
     s_barrierArg = 0;
     spinning    = false;
-    traceMemOps = false;
 
 #if (defined TM)
     tmStallUntil= 0;
