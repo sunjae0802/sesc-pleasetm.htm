@@ -125,6 +125,7 @@ void Cluster::buildUnit(const char *clusterName
     switch(type) {
     case iOpInvalid:
     case iALU:
+    case iTM:
         strtmp = strdup("iALUEnergy");
     case iMult:
         if(!strtmp) strtmp = strdup("iMultEnergy");
@@ -139,6 +140,9 @@ void Cluster::buildUnit(const char *clusterName
         free(strtmp);
 
         r = new FUGeneric(cluster, gen, lat, eng);
+        if(res[iTM]==0) {
+            res[iTM] = new FUGeneric(cluster, gen, lat, eng);
+        }
         break;
     case fpALU:
         strtmp = strdup("fpALUEnergy");

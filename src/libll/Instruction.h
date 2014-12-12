@@ -73,9 +73,6 @@ private:
     static InstHash instHash;
 
 public:
-#if (defined TM)
-	TMInstType tmcode;
-#endif
     InstType opcode;
     RegType src1;
     RegType src2;
@@ -215,6 +212,10 @@ public:
         // modeled as returns, not as memory
         return (subCode == iMemory || opcode == iFence
                 || subCode == iFetchOp || subCode == iAtomicMemory);
+    }
+
+    bool isTM() const {
+        return opcode == iTM;
     }
 
     bool isFence() const {

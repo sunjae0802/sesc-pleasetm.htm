@@ -41,6 +41,7 @@ enum InstType {
     fpDiv,              //!< floating point division and sqrt
     iFence,             //!< Fetch&Op, iMemFence, iAcquire, iRelease (Not iLoad or iStore)
     iEvent,             //!< Fake user event instruction
+    iTM,                //!< Transaction begin/abort/commit
     MaxInstType
 };
 
@@ -57,27 +58,14 @@ enum InstSubType {
     BJCall,        // iBJ opcode
     BJRet,         // iBJ opcode
     BJCond,        // iBJ opcode
-    iFake,       // Internally generated instruction (store-address...)
+#if (defined TM)
+	TMBegin,       // Transactional Begin Instruction
+	TMCommit,      // Transactional Commit Instruction
+	TMAbort,       // Transactional Abort Instruction
+	TMTest,        // Returns whether we are in TM
+#endif
+    iFake,         // Internally generated instruction (store-address...)
     InstSubTypeMax
 };
-
-#if (defined TM)
-enum TMInstType {
-	TMLoad = 0,    // Transactional Load Instruction
-	TMStore,   // Transactional Store Instruction
-	TMInt,     // Transactional Integer Instruction
-	TMFp,      // Transactional Floating Point
-	TMBJ,      // Transactional Branches/Jumps
-	TMFence,   // Transactional Fetch&Op, iMemFence, iAcquire, iRelease (Not iLoad or iStore)
-	TMNT,  // All Non transactional instructions
-	TMBegin,   // Transactional Begin Instruction
-	TMCommit,  // Transactional Commit Instruction
-	TMAbort,   // Transactional Abort Instruction
-	TMTest,    // Returns whether we are in TM
-	TMOther,   // All Other Transactional Instructions
-};
-#define TMNTMax 6
-
-#endif
 
 #endif

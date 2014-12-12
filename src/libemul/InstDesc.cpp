@@ -1087,9 +1087,6 @@ public:
         InstType    iType    =iOpInvalid;
         InstSubType iSubType =iSubInvalid;
         MemDataSize iDataSize=0;
-#if (defined TM)
-        sescInst->tmcode = TMNT;
-#endif
         switch(typ&TypOpMask) {
         case TypNop:
             sescInst->opcode=iALU;
@@ -1097,20 +1094,20 @@ public:
             break;
 #if (defined TM)
         case TypTMOp:
-            sescInst->opcode=iALU;
+            sescInst->opcode=iTM;
             sescInst->subCode=iSubInvalid;
             switch(typ&TypSubMask) {
                 case TMOpBegin:
-                    sescInst->tmcode=TMBegin;
+                    sescInst->subCode=TMBegin;
                     break;
                 case TMOpAbort:
-                    sescInst->tmcode=TMAbort;
+                    sescInst->subCode=TMAbort;
                     break;
                 case TMOpCommit:
-                    sescInst->tmcode=TMCommit;
+                    sescInst->subCode=TMCommit;
                     break;
                 case TMOpTest:
-                    sescInst->tmcode=TMTest;
+                    sescInst->subCode=TMTest;
                     break;
             }
             break;

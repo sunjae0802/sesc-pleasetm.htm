@@ -258,6 +258,8 @@ void GProcessor::buildInstStats(GStatsCntr *i[MaxInstType], const char *txt)
     i[iFence] = new GStatsCntr("%s(%d)_other:n", txt, Id);
     i[iEvent] = i[iFence];
 
+    i[iTM]    = new GStatsCntr("%s(%d)_iTM:n", txt, Id);
+
     IN(forall((int32_t a=1; a<(int)MaxInstType; a++), i[a] != 0));
 }
 

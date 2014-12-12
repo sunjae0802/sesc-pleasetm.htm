@@ -119,7 +119,6 @@ private:
 
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
-    bool tmOp;
     bool tmNacked;
     bool tmAborted;
 
@@ -416,7 +415,7 @@ public:
 	}
 
     bool isTMOp() const {
-        return tmOp;
+        return inst->isTM();
     }
 
     bool wasTMNacked() const {
