@@ -81,7 +81,8 @@ GStatsHist *DInst::brdistHist1 = 0;
 #endif
 
 DInst::DInst()
-    :doAtSimTimeCB(this)
+    :tmState(INVALID_PID)
+    ,doAtSimTimeCB(this)
     ,doAtSelectCB(this)
     ,doAtExecutedCB(this)
 {
@@ -266,6 +267,21 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
 #endif
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);
+    i->tmCallsite   = 0;
+    i->tmAbortIAddr = 0;
+    i->tmAbortArg   = 0;
+    i->tmState      = TransState(INVALID_PID);
+
+    if(inst->isTM()) {
+        i->tmState = tmCohManager->getTransState(context->getPid());
+        if(inst->getSubCode() == TMBegin) {
+            i->tmCallsite= context->getTMCallsite();
+            i->tmAbortIAddr= context->getTMAbortIAddr();
+            i->tmAbortArg = context->getTMAbortArg();
+        } else if(inst->getSubCode() == TMCommit) {
+            i->tmCallsite= context->getTMCallsite();
+        }
+    }
     i->tmNacked     = context->tmNacked();
     i->tmAborted    = context->isTMAborting();
 

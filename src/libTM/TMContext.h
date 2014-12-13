@@ -6,8 +6,6 @@
 #include "TMCoherence.h"
 #include "TMStorage.h"
 
-enum BCFlag { INVALID_TM = -1, DEFAULT_TM = 0, ABORTED_TM, SUBSUMED_TM, COMPLETING_ABORT, NACKED_BEGIN };
-
 class TMContext
 {
 public:

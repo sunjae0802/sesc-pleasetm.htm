@@ -43,8 +43,6 @@ private:
     uint64_t tmUtid;
     // Stall thread if we get a NACK
     Time_t  tmStallUntil;
-    // Transaction begin/commit flags
-    BCFlag  tmBCFlag;
     // Saved thread context
     TMContext *tmContext;
     // Where user had called HTM "instructions"
@@ -123,6 +121,9 @@ public:
     void setTMCallsite(VAddr ra) { tmCallsite = ra; }
     VAddr getTMCallsite() const { return tmCallsite; }
 
+    uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
+    uint32_t getTMAbortArg() const{ return tmAbortArg; }
+
     // Transactional Methods
     uint32_t beginTransaction(InstDesc* inst);
     void commitTransaction(InstDesc* inst);
@@ -132,8 +133,8 @@ public:
     }
     void abortTransaction(TMAbortType_e abortType = TM_ATYPE_DEFAULT);
     uint32_t completeAbort(InstDesc* inst);
-    uint32_t getBeginArg();
-    uint32_t getAbortArg(const TransState& transState);
+    uint32_t getBeginRV(TMBCStatus status);
+    uint32_t getAbortRV(const TransState& transState);
     void completeFallback();
 
     // memop NACK handling methods

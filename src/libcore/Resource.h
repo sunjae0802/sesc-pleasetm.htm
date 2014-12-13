@@ -102,6 +102,7 @@ public:
     virtual void executed(DInst *dinst);
     virtual RetOutcome retire(DInst *dinst);
 
+    void traceTM(DInst *dinst);
     void traceEvent(DInst *dinst);
 };
 

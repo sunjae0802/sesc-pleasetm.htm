@@ -10,28 +10,28 @@ enum TMAbortType_e { TM_ATYPE_NONTM = 255, TM_ATYPE_DEFAULT = 0, TM_ATYPE_USER =
 static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
 static const uint64_t INVALID_UTID = -1;
 
+struct TMAbortState {
+    TMAbortState(): aborterPid(-1), aborterUtid(INVALID_UTID),
+                abortByAddr(0), abortType(TM_ATYPE_DEFAULT) {}
+    void clear() {
+        aborterPid  = -1;
+        aborterUtid = INVALID_UTID;
+        abortByAddr = 0;
+        abortType   = TM_ATYPE_DEFAULT;
+    }
+    void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e type) {
+        aborterPid  = byPid;
+        aborterUtid = byUtid;
+        abortByAddr = byCaddr;
+        abortType   = type;
+    }
+    Pid_t           aborterPid;
+    uint64_t        aborterUtid;
+    VAddr           abortByAddr;
+    TMAbortType_e   abortType;
+};
 class TransState {
 public:
-    struct AbortState {
-        AbortState(): aborterPid(-1), aborterUtid(INVALID_UTID),
-                    abortByAddr(0), abortType(TM_ATYPE_DEFAULT) {}
-        void clear() {
-            aborterPid  = -1;
-            aborterUtid = INVALID_UTID;
-            abortByAddr = 0;
-            abortType   = TM_ATYPE_DEFAULT;
-        }
-        void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e type) {
-            aborterPid  = byPid;
-            aborterUtid = byUtid;
-            abortByAddr = byCaddr;
-            abortType   = type;
-        }
-        Pid_t           aborterPid;
-        uint64_t        aborterUtid;
-        VAddr           abortByAddr;
-        TMAbortType_e   abortType;
-    };
 
     TransState(Pid_t pid);
 
@@ -52,6 +52,7 @@ public:
     Time_t      getTimestamp()  const { return timestamp; }
     size_t      getDepth()      const { return depth; }
     bool        getRestartPending() const { return restartPending; }
+    const TMAbortState& getAbortState() const { return abortState; }
     TMAbortType_e getAbortType() const { return abortState.abortType; }
     Pid_t       getAborterPid() const { return abortState.aborterPid; }
     uint64_t    getAborterUtid() const { return abortState.aborterUtid; }
@@ -64,7 +65,7 @@ private:
     uint64_t utid;
     size_t  depth;
     bool    restartPending;
-    AbortState abortState;
+    TMAbortState abortState;
 };
 
 #endif

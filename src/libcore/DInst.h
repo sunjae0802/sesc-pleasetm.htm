@@ -121,6 +121,12 @@ private:
     bool localStackData;
     bool tmNacked;
     bool tmAborted;
+public:
+    VAddr       tmCallsite;
+    VAddr       tmAbortIAddr;
+    TransState  tmState;
+    uint32_t    tmAbortArg;
+private:
 
 #ifdef SESC_MISPATH
     bool fake;
@@ -413,10 +419,6 @@ public:
 	InstType getOpcode() const {
 		return inst->getOpcode();
 	}
-
-    bool isTMOp() const {
-        return inst->isTM();
-    }
 
     bool wasTMNacked() const {
         return tmNacked;

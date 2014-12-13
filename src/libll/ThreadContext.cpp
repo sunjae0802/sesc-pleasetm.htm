@@ -54,7 +54,6 @@ void ThreadContext::initialize(bool child) {
     tmStallUntil= 0;
     tmNumNacks  = 0;
     tmAbortArg  = 0;
-    tmBCFlag    = INVALID_TM;
     tmAbortIAddr= 0;
     tmContext   = NULL;
     tmCallsite  = 0;
@@ -74,8 +73,8 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
     TMBCStatus status = tmCohManager->begin(pid, inst);
     if(status == TMBC_SUCCESS) {
         const TransState& transState = tmCohManager->getTransState(pid);
-        tmBCFlag    = DEFAULT_TM;
         tmAbortIAddr= 0;
+        tmAbortArg  = 0;
         if(tmBeginNackCycles > 0) {
             // Trace NACK end
             std::ostringstream out0;
@@ -88,23 +87,15 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         tmContext   = new TMContext(this, inst, utid);
         tmContext->saveContext();
 
-        // Trace this instruction
-        std::ostringstream out;
-        out<<pid<<" T"
-                    <<" 0x"<<std::hex<<tmCallsite<<std::dec
-                    <<" "<<utid;
-        instTrace10 = out.str();
-
         // Move instruction pointer to next instruction
         updIAddr(inst->aupdate,1);
 
-        return getBeginArg();
+        return getBeginRV(status);
     } else if(status == TMBC_IGNORE) {
         fail("Nesting not tested yet");
-        tmBCFlag = SUBSUMED_TM;
         updIAddr(inst->aupdate,1);
 
-        return getBeginArg();
+        return getBeginRV(status);
     } else if(status == TMBC_NACK) {
         if(tmBeginNackCycles == 0) {
             // Trace NACK begin
@@ -113,11 +104,10 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
             instTrace10 = out.str();
         }
         tmBeginNackCycles++;
-        tmBCFlag = NACKED_BEGIN;
-        // And "return" from TM Begin, returning 4|1 from getBeginArg
+        // And "return" from TM Begin, returning 4|1 from getBeginRV
         updIAddr(inst->aupdate,1);
 
-        return getBeginArg();
+        return getBeginRV(status);
     } else {
         fail("Unhanded TM begin");
     }
@@ -131,19 +121,16 @@ void ThreadContext::commitTransaction(InstDesc* inst) {
     TMBCStatus status = tmCohManager->commit(pid, tmContext->getId());
     if(status == TMBC_IGNORE) {
         fail("Nesting not tested yet");
-        tmBCFlag = SUBSUMED_TM;
         updIAddr(inst->aupdate,1);
     } else if(status == TMBC_NACK) {
         // In the case of a Lazy model that can not commit yet
     } else if(status == TMBC_ABORT) {
         // In the case of a Lazy model where we are forced to Abort
         abortTransaction();
-        tmBCFlag = ABORTED_TM;
     } else if(status == TMBC_SUCCESS) {
         // If we have already delayed, go ahead and finalize commit in memory
         tmContext->flushMemory();
 
-        tmBCFlag    = DEFAULT_TM;
         tmAbortIAddr= 0;
         tmAbortArg  = 0;
         assert(tmBeginNackCycles == 0);
@@ -154,13 +141,6 @@ void ThreadContext::commitTransaction(InstDesc* inst) {
         } else {
             tmContext = NULL;
         }
-
-        // Trace this instruction
-        std::ostringstream out;
-        out<<pid<<" C"
-                <<" 0x"<<std::hex<<tmCallsite<<std::dec
-                <<" 0";
-        instTrace10 = out.str();
 
         // Move instruction pointer to next instruction
         updIAddr(inst->aupdate,1);
@@ -204,46 +184,12 @@ void ThreadContext::abortTransaction(TMAbortType_e abortType) {
 
 uint32_t ThreadContext::completeAbort(InstDesc* inst) {
     tmCohManager->completeAbort(pid);
-    tmBCFlag = COMPLETING_ABORT;
 
     // Get abort state
     const TransState &transState = tmCohManager->getTransState(pid);
-    Pid_t aborter = transState.getAborterPid();
-    TMAbortType_e abortType = transState.getAbortType();
-
-    // Trace this instruction
-    std::ostringstream out;
-    if(abortType == TM_ATYPE_USER) {
-        out<<pid<<" Z"
-                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" "<<abortType
-                        <<" "<<tmAbortArg;
-    } else if(abortType == TM_ATYPE_NONTM) {
-        if(transState.getAbortBy() == 0) {
-            fail("Why abort addr NULL?\n");
-        }
-        out<<pid<<" a"
-                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" 0x"<<std::hex<<transState.getAbortBy()<<std::dec
-                        <<" "<<aborter;
-    } else if(abortType == TM_ATYPE_DEFAULT) {
-        if(transState.getAbortBy() == 0) {
-            fail("Why abort addr NULL?\n");
-        }
-        out<<pid<<" A"
-                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" 0x"<<std::hex<<transState.getAbortBy()<<std::dec
-                        <<" "<<aborter;
-    } else {
-        out<<pid<<" Z"
-                        <<" 0x"<<std::hex<<tmAbortIAddr<<std::dec
-                        <<" "<<abortType
-                        <<" 0";
-    }
-    instTrace10 = out.str();
 
     // set return arg
-    uint32_t returnArg = getAbortArg(transState);
+    uint32_t returnArg = getAbortRV(transState);
 
     // And "return" from TM Begin
     updIAddr(inst->aupdate,1);
@@ -251,21 +197,20 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
     return returnArg;
 }
 
-uint32_t ThreadContext::getAbortArg(const TransState& transState) {
-    uint32_t abortArg = 1;
-    abortArg |= tmAbortArg << 8; // bottom 8 bits are reserved
-    tmAbortArg  = 0;
+uint32_t ThreadContext::getAbortRV(const TransState& transState) {
+    uint32_t abortRV = 1;
+    abortRV |= tmAbortArg << 8; // bottom 8 bits are reserved
 
     // Set per-type return arg in upper bits
     switch(tmCohManager->getReturnArgType()) {
         case 0:
-            abortArg |= (transState.getAborterPid()) << 12;
+            abortRV |= (transState.getAborterPid()) << 12;
             break;
         case 1:
-            abortArg |= (transState.getAbortBy());
+            abortRV |= (transState.getAbortBy());
             break;
         case 2:
-            abortArg |= (transState.getAborterPid()) << 12;
+            abortRV |= (transState.getAborterPid()) << 12;
             break;
         default:
             fail("TM Abort return arg type not specified");
@@ -273,24 +218,24 @@ uint32_t ThreadContext::getAbortArg(const TransState& transState) {
     TMAbortType_e abortType = transState.getAbortType();
     switch(abortType) {
         case TM_ATYPE_SYSCALL:
-            abortArg |= 2;
+            abortRV |= 2;
             break;
         case TM_ATYPE_CAPACITY:
-            abortArg |= 8;
+            abortRV |= 8;
             break;
         case TM_ATYPE_NACKOVERFLOW:
-            abortArg |= 16;
+            abortRV |= 16;
             break;
         default:
             // Do nothing
             break;
     }
 
-    return abortArg;
+    return abortRV;
 }
 
-uint32_t ThreadContext::getBeginArg() {
-    if(tmBCFlag == NACKED_BEGIN) {
+uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
+    if(status == TMBC_NACK) {
         return 4 | 1;
     } else {
         return 0;
@@ -300,7 +245,6 @@ uint32_t ThreadContext::getBeginArg() {
 void ThreadContext::completeFallback() {
     tmCohManager->completeFallback(pid);
 
-    tmBCFlag    = DEFAULT_TM;
     tmAbortIAddr= 0;
     tmAbortArg  = 0;
     tmBeginNackCycles = 0;
