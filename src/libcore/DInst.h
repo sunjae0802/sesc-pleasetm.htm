@@ -126,6 +126,7 @@ public:
     VAddr       tmAbortIAddr;
     TransState  tmState;
     uint32_t    tmAbortArg;
+    size_t      tmLat;
 private:
 
 #ifdef SESC_MISPATH
@@ -426,6 +427,18 @@ public:
 
     bool wasTMAborted() const {
         return tmAborted;
+    }
+
+    bool tmBeginOp() const {
+        return inst->getSubCode() == TMBegin && tmState.getState() == TM_RUNNING;
+    }
+
+    bool tmAbortCompleteOp() const {
+        return inst->getSubCode() == TMBegin && tmState.getState() == TM_INVALID;
+    }
+
+    bool tmCommitOp() const {
+        return inst->getSubCode() == TMCommit && tmState.getState() == TM_INVALID;
     }
 
     VAddr getVaddr() const {

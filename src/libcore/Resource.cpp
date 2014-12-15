@@ -72,13 +72,13 @@ void Resource::traceTM(DInst* dinst)
     std::ofstream& out = context->getDatafile();
     Pid_t pid = context->getPid();
 
-    if(inst->getSubCode() == TMBegin && dinst->tmState.getState() == TM_RUNNING) {
+    if(dinst->tmBeginOp()) {
         out<<pid<<" T"
                     <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
                     <<" "<<dinst->tmState.getUtid()
                     <<" "<< (context->getNRetiredInsts() + 1)
                     <<" "<< globalClock << std::endl;
-    } else if(inst->getSubCode() == TMBegin && dinst->tmState.getState() == TM_INVALID) {
+    } else if(dinst->tmAbortCompleteOp()) {
         // Get abort state
         Pid_t aborter = dinst->tmState.getAborterPid();
         TMAbortType_e abortType = dinst->tmState.getAbortType();
@@ -121,7 +121,7 @@ void Resource::traceTM(DInst* dinst)
                             <<" "<< (context->getNRetiredInsts() + 1)
                             <<" "<< globalClock << std::endl;
         }
-    } else if(inst->getSubCode() == TMCommit && dinst->tmState.getState() == TM_INVALID) {
+    } else if(dinst->tmCommitOp()) {
         out<<pid<<" C"
                     <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
                     <<" 0"
@@ -133,6 +133,10 @@ void Resource::traceTM(DInst* dinst)
 RetOutcome Resource::retire(DInst *dinst)
 {
     if(dinst->getInst()->isTM()) {
+        if(dinst->tmLat > 0) {
+            dinst->tmLat--;
+            return WaitForFence;
+        }
         traceTM(dinst);
     }
 

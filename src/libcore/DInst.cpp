@@ -271,15 +271,17 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->tmAbortIAddr = 0;
     i->tmAbortArg   = 0;
     i->tmState      = TransState(INVALID_PID);
+    i->tmLat        = 0;
 
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
-        if(inst->getSubCode() == TMBegin) {
-            i->tmCallsite= context->getTMCallsite();
-            i->tmAbortIAddr= context->getTMAbortIAddr();
-            i->tmAbortArg = context->getTMAbortArg();
-        } else if(inst->getSubCode() == TMCommit) {
-            i->tmCallsite= context->getTMCallsite();
+        if(i->tmBeginOp()) {
+            i->tmCallsite   = context->getTMCallsite();
+            i->tmAbortIAddr = context->getTMAbortIAddr();
+            i->tmAbortArg   = context->getTMAbortArg();
+        } else if(i->tmCommitOp()) {
+            i->tmCallsite   = context->getTMCallsite();
+            i->tmLat        = 16;
         }
     }
     i->tmNacked     = context->tmNacked();
