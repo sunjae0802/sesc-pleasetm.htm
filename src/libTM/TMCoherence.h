@@ -52,6 +52,12 @@ public:
         }
         return stallCycles;
     }
+    size_t getNumReads(Pid_t pid) const {
+        return linesRead.at(pid).size();
+    }
+    size_t getNumWrites(Pid_t pid) const {
+        return linesWritten.at(pid).size();
+    }
 
 protected:
     std::map<Pid_t, Pid_t> nackOwner;

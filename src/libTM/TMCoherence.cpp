@@ -96,7 +96,10 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         linesReadHist("tm:linesReadHist"), linesWrittenHist("tm:linesWrittenHist") {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
-        cacheLines[pid].clear();        // Initialize map to enable at() use
+        // Initialize maps to enable at() use
+        cacheLines[pid].clear();
+        linesRead[pid].clear();
+        linesWritten[pid].clear();
     }
 }
 
@@ -202,10 +205,10 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 void TMCoherence::commitTrans(Pid_t pid) {
     numCommits.inc();
     numAbortsCausedBeforeCommit.add(numAbortsCaused[pid]);
-    avgLinesRead.sample(linesRead[pid].size());
-    avgLinesWritten.sample(linesWritten[pid].size());
-    linesReadHist.sample(linesRead[pid].size());
-    linesWrittenHist.sample(linesWritten[pid].size());
+    avgLinesRead.sample(getNumReads(pid));
+    avgLinesWritten.sample(getNumWrites(pid));
+    linesReadHist.sample(getNumReads(pid));
+    linesWrittenHist.sample(getNumWrites(pid));
     transStates[pid].commit();
     removeTransaction(pid);
 }
@@ -282,10 +285,10 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
         numAborts.inc();
         numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
         abortTypes.sample(transStates[pid].getAbortType());
-        avgLinesRead.sample(linesRead[pid].size());
-        avgLinesWritten.sample(linesWritten[pid].size());
-        linesReadHist.sample(linesRead[pid].size());
-        linesWrittenHist.sample(linesWritten[pid].size());
+        avgLinesRead.sample(getNumReads(pid));
+        avgLinesWritten.sample(getNumWrites(pid));
+        linesReadHist.sample(getNumReads(pid));
+        linesWrittenHist.sample(getNumWrites(pid));
 
         transStates[pid].completeAbort();
         removeTransaction(pid);
