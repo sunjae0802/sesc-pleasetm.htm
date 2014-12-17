@@ -53,6 +53,7 @@ void ThreadContext::initialize(bool child) {
 #if (defined TM)
     tmStallUntil= 0;
     tmNumNacks  = 0;
+    tmNumWrites = 0;
     tmAbortArg  = 0;
     tmAbortIAddr= 0;
     tmContext   = NULL;
@@ -75,6 +76,7 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         const TransState& transState = tmCohManager->getTransState(pid);
         tmAbortIAddr= 0;
         tmAbortArg  = 0;
+        tmNumWrites = 0;
         if(tmBeginNackCycles > 0) {
             // Trace NACK end
             std::ostringstream out0;
@@ -117,6 +119,7 @@ void ThreadContext::commitTransaction(InstDesc* inst) {
 
     // Save UTID before committing
     uint64_t utid = tmCohManager->getUtid(pid);
+    size_t numWrites = tmCohManager->getNumWrites(pid);
 
     TMBCStatus status = tmCohManager->commit(pid, tmContext->getId());
     if(status == TMBC_IGNORE) {
@@ -133,6 +136,7 @@ void ThreadContext::commitTransaction(InstDesc* inst) {
 
         tmAbortIAddr= 0;
         tmAbortArg  = 0;
+        tmNumWrites = numWrites;
         assert(tmBeginNackCycles == 0);
 
         TMContext* oldTMContext = tmContext;

@@ -281,7 +281,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
             i->tmAbortArg   = context->getTMAbortArg();
         } else if(i->tmCommitOp()) {
             i->tmCallsite   = context->getTMCallsite();
-            i->tmLat        = 16;
+            i->tmLat        = context->getTMNumWrites();
         }
     }
     i->tmNacked     = context->tmNacked();

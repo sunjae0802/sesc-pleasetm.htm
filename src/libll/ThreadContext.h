@@ -47,6 +47,8 @@ private:
     TMContext *tmContext;
     // Where user had called HTM "instructions"
     VAddr tmCallsite;
+    // Number of transactional writes done on tm.commit
+    size_t tmNumWrites;
     // User-passed abort arg
     uint32_t tmAbortArg;
     // The IAddr when we found out TM has aborted
@@ -122,7 +124,8 @@ public:
     VAddr getTMCallsite() const { return tmCallsite; }
 
     uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
-    uint32_t getTMAbortArg() const{ return tmAbortArg; }
+    uint32_t getTMAbortArg()  const { return tmAbortArg; }
+    size_t   getTMNumWrites() const { return tmNumWrites; }
 
     // Transactional Methods
     uint32_t beginTransaction(InstDesc* inst);
