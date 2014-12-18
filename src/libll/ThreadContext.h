@@ -86,8 +86,15 @@ private:
     // HACK to balance calls/returns
     typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
     std::vector<std::pair<VAddr, retHandler_t> > retHandlers;
+    std::vector<std::pair<VAddr, retHandler_t> > retHandlersSaved;
 
 public:
+    void saveCallRetStack() {
+        retHandlersSaved = retHandlers;
+    }
+    void restoreCallRetStack() {
+        retHandlers = retHandlersSaved;
+    }
     void addCall(VAddr ra, retHandler_t handler) {
         retHandlers.push_back(std::make_pair(ra, handler));
     }

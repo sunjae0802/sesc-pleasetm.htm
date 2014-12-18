@@ -57,6 +57,9 @@ void handleTMWaitCall(InstDesc *inst, ThreadContext *context);
 void handleTMWaitRet(InstDesc *inst, ThreadContext *context);
 void handleTMEndCall(InstDesc *inst, ThreadContext *context);
 void handleTMEndRet(InstDesc* inst, ThreadContext* context);
+void handleTMSeqInitCall(InstDesc *inst, ThreadContext *context);
+void handleTMSeqTermCall(InstDesc *inst, ThreadContext *context);
+void handleTMSeqTermRet(InstDesc *inst, ThreadContext *context);
 // HTM call/return
 void handleHTMStartCall(InstDesc *inst, ThreadContext *context);
 void handleHTMCommitCall(InstDesc *inst, ThreadContext *context);

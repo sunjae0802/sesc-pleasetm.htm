@@ -1422,17 +1422,16 @@ public:
                 setReg<Tcond_t,RegTypeSpc>(context,inst->regDst,cond?1:0);
             // Update the PC and next instruction
             if(NxtTyp==NextBReg) {
-                // Handle lost fallback calls
                 VAddr destIAddr = getReg<Taddr_t,RegTypeGpr>(context,inst->regSrc1);
 
-                // Try to handle tm_begin_fallback and tm_wait before tm_begin, tm_end
+                // Handle lost call returns
                 context->handleReturns(destIAddr, inst);
-
                 context->setIAddr(destIAddr);
             } else if(NxtTyp==NextCont) {
                 context->updIDesc(1);
             } else if(NxtTyp==NextBImm) {
                 if(cond) {
+                    context->handleReturns(Taddr_t(inst->imm), inst);
                     context->setIAddr(Taddr_t(inst->imm));
                 } else {
                     context->updIAddr(inst->aupdate,inst->iupdate);
@@ -2378,8 +2377,10 @@ void handleTMWaitRet(InstDesc *inst, ThreadContext *context) {
 
 // TM Lib End Tracing
 void handleTMEndCall(InstDesc *inst, ThreadContext *context) {
-    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-    context->addCall(ra, &handleTMEndRet);
+    if(ThreadContext::inMain) {
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        context->addCall(ra, &handleTMEndRet);
+    }
 }
 
 void handleTMEndRet(InstDesc *inst, ThreadContext *context) {

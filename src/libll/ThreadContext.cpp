@@ -88,6 +88,7 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         uint64_t utid = transState.getUtid();
         tmContext   = new TMContext(this, inst, utid);
         tmContext->saveContext();
+        saveCallRetStack();
 
         // Move instruction pointer to next instruction
         updIAddr(inst->aupdate,1);
@@ -178,6 +179,8 @@ void ThreadContext::abortTransaction(TMAbortType_e abortType) {
 
         tmContext = NULL;
         delete rootTMContext;
+
+        restoreCallRetStack();
 
         // Move instruction pointer to BEGIN
         setIAddr(beginIAddr);
