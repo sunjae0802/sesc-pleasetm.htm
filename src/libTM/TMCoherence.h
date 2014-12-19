@@ -36,6 +36,7 @@ public:
     TMRWStatus nonTMread(Pid_t pid, VAddr raddr);
     TMRWStatus nonTMwrite(Pid_t pid, VAddr raddr);
     void completeFallback(Pid_t pid);
+    void markEvicted(Pid_t evicterPid, VAddr raddr, std::set<Pid_t>& evicted);
 
     const TransState& getTransState(Pid_t pid) { return transStates.at(pid); }
     int getReturnArgType()          const { return returnArgType; }
@@ -129,6 +130,7 @@ protected:
     std::map<Pid_t, std::set<VAddr> > linesWritten;
     std::map<VAddr, std::list<Pid_t> > writers2;
     std::map<VAddr, std::list<Pid_t> > readers2;
+    std::map<Pid_t, std::vector<VAddr> > linesAccessed;
 };
 
 class TMEECoherence: public TMCoherence {

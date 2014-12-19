@@ -29,6 +29,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include <functional>
 // We need std::vector
 #include <vector>
+#include <set>
 #include <sstream>
 
 #include "GStats.h"
@@ -1496,10 +1497,11 @@ public:
 // 	  printf("Ld %d bytes 0x%016llx from 0x%08x (instr 0x%08x %s)\n",
 // 		 sizeof(MemT),(unsigned long long)(readMem<MemT>(context,addr)),addr,inst->addr,inst->name);
             bool l1Hit = false;
+            std::set<Pid_t> evicted;
             if(privateCacheManager) {
                 // Update private L1 cache state
                 // Need this since OSSim starts too early
-                l1Hit = privateCacheManager->doLoad(context->getPid(), addr);
+                l1Hit = privateCacheManager->doLoad(context->getPid(), addr, evicted);
             }
             context->setDAddr(addr);
             context->setL1Hit(l1Hit);
@@ -1544,6 +1546,7 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
+            tmCohManager->markEvicted(context->getPid(), addr, evicted);
             if(context->tmNacked()) {
                 context->startNackStalling();
                 return inst;
@@ -1572,6 +1575,7 @@ public:
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
 // 	  printf("St %d bytes 0x%016llx from 0x%08x (instr 0x%08x %s)\n",
 // 		 sizeof(MemT),(unsigned long long)(getReg<MemT,S2Typ>(context,inst->regSrc2)),addr,inst->addr,inst->name);
+            std::set<Pid_t> evicted;
             if((kind==LdStLlSc)&&(getReg<Taddr_t,RegTypeSpc>(context,RegLink)!=(addr-(addr&0x7)))) {
                 setReg<Tregv_t,DTyp>(context,inst->regDst,0);
             } else {
@@ -1579,7 +1583,7 @@ public:
                 if(privateCacheManager) {
                     // Update private L1 cache state
                     // Need this since OSSim starts too early
-                    l1Hit = privateCacheManager->doStore(context->getPid(), addr);
+                    l1Hit = privateCacheManager->doStore(context->getPid(), addr, evicted);
                 }
                 context->setDAddr(addr);
                 context->setL1Hit(l1Hit);
@@ -1603,6 +1607,7 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
+            tmCohManager->markEvicted(context->getPid(), addr, evicted);
             if(context->tmNacked()) {
                 context->startNackStalling();
                 return inst;

@@ -5,7 +5,7 @@ PrivateCaches* privateCacheManager = 0;
 
 PrivateCaches::PrivateCaches(const char *section, size_t n): nCores(n) {
     for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
-        PrivateCache* cache = PrivateCache::create(8*1024,4,64,1,"LRU",false);
+        PrivateCache* cache = PrivateCache::create(32*1024,8,64,1,"LRU",false);
         caches.push_back(cache);
     }
 }
@@ -29,7 +29,7 @@ bool PrivateCaches::findLine(Pid_t pid, VAddr addr) {
 ///
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
-bool PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isWrite) {
+bool PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isWrite, std::set<Pid_t>& evicted) {
     PrivateCache* cache = caches.at(pid);
     Line*         line  = cache->findLineNoEffect(addr);
 
@@ -55,6 +55,7 @@ bool PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isWrite) {
                 fail("Replacing line not there anymore!\n");
             }
             activeAddrs[pid].erase(replTag);
+            evicted.insert(pid);
         }
 
         replaced->invalidate();
@@ -78,13 +79,13 @@ bool PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isWrite) {
 }
 ///
 // Do a load operation, bringing the line into pid's private cache
-bool PrivateCaches::doLoad(Pid_t pid, VAddr addr) {
-    return doFillLine(pid, addr, false);
+bool PrivateCaches::doLoad(Pid_t pid, VAddr addr, std::set<Pid_t>& evicted) {
+    return doFillLine(pid, addr, false, evicted);
 }
 ///
 // Do a store operation, invalidating all sharers and bringing the line into
 // pid's private cache
-bool PrivateCaches::doStore(Pid_t pid, VAddr addr) {
+bool PrivateCaches::doStore(Pid_t pid, VAddr addr, std::set<Pid_t>& evicted) {
     // Invalidate all sharers
     for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
         if(p != pid) {
@@ -92,10 +93,11 @@ bool PrivateCaches::doStore(Pid_t pid, VAddr addr) {
             if(line) {
                 activeAddrs[p].erase(line->getTag());
                 line->invalidate();
+                evicted.insert(p);
             }
         }
     }
     // Add myself
-    return doFillLine(pid, addr, true);
+    return doFillLine(pid, addr, true, evicted);
 }
 

@@ -104,6 +104,7 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
 }
 
 void TMCoherence::addWrite(VAddr caddr, Pid_t pid) {
+    linesAccessed[pid].push_back(caddr);
     if(!hadWrote(caddr, pid)) {
         linesWritten[pid].insert(caddr);
         writers2[caddr].push_back(pid);
@@ -115,6 +116,7 @@ void TMCoherence::addWrite(VAddr caddr, Pid_t pid) {
     }
 }
 void TMCoherence::addRead(VAddr caddr, Pid_t pid) {
+    linesAccessed[pid].push_back(caddr);
     if(!hadRead(caddr, pid)) {
         linesRead[pid].insert(caddr);
         readers2[caddr].push_back(pid);
@@ -200,8 +202,10 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 	cacheLines[pid].clear();
     numAbortsCaused[pid] = 0;
     removeTransaction(pid);
+    linesAccessed[pid].clear();
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
+
 void TMCoherence::commitTrans(Pid_t pid) {
     numCommits.inc();
     numAbortsCausedBeforeCommit.add(numAbortsCaused[pid]);
@@ -215,6 +219,20 @@ void TMCoherence::commitTrans(Pid_t pid) {
 void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
 }
+void TMCoherence::markEvicted(Pid_t evicterPid, VAddr raddr, std::set<Pid_t>& evicted) {
+	VAddr caddr = addrToCacheLine(raddr);
+	set<Pid_t>::iterator i_evicted;
+    for(i_evicted = evicted.begin(); i_evicted != evicted.end(); ++i_evicted) {
+        if(transStates[*i_evicted].getState() == TM_RUNNING) {
+            if(evicterPid == *i_evicted) {
+                markTransAborted(*i_evicted, evicterPid, getUtid(evicterPid), caddr, TM_ATYPE_SETCONFLICT);
+            } else {
+                markTransAborted(*i_evicted, evicterPid, getUtid(evicterPid), caddr, TM_ATYPE_EVICTION);
+            }
+        }
+	}
+}
+
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType) {
     if(transStates[victimPid].getState() != TM_ABORTING) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
