@@ -705,10 +705,11 @@ void Resource::traceEvent(DInst *dinst) {
         context->clearRetireNack();
     }
 
-    if(!dinst->outTrace.empty()) {
-        out << dinst->outTrace << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
-        out.flush();
+    for(std::vector<string>::iterator i_funcTrace = dinst->funcTrace.begin();
+            i_funcTrace != dinst->funcTrace.end(); ++i_funcTrace) {
+        out << *i_funcTrace << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
     }
+    out.flush();
     if(!dinst->instTrace0.empty()) {
         out << dinst->instTrace0 << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
     }

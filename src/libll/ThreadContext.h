@@ -594,7 +594,7 @@ public:
     void clearCallStack(void);
 
 public:
-    std::string outTrace;
+    std::vector<std::string> funcTrace;
     std::string instTrace0;
     std::string instTrace10;
 

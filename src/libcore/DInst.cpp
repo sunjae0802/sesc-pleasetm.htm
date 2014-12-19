@@ -287,8 +287,8 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->tmNacked     = context->tmNacked();
     i->tmAborted    = context->isTMAborting();
 
-    i->outTrace = context->outTrace;
-    context->outTrace.clear();
+    i->funcTrace = context->funcTrace;
+    context->funcTrace.clear();
 
     i->instTrace10 = context->instTrace10;
     context->instTrace10 = "";

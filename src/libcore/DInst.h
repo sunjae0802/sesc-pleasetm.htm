@@ -211,7 +211,7 @@ private:
     char nDeps;              // 0, 1 or 2 for RISC processors
 
 public:
-    std::string outTrace;
+    std::vector<std::string> funcTrace;
     std::string instTrace0;
     std::string instTrace10;
 
