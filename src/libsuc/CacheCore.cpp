@@ -307,7 +307,7 @@ typename CacheAssoc<State, Addr_t, Energy>::Line *CacheAssoc<State, Addr_t, Ener
 
 template<class State, class Addr_t, bool Energy>
 typename CacheAssoc<State, Addr_t, Energy>::Line
-*CacheAssoc<State, Addr_t, Energy>::findLine2Replace(Addr_t addr, bool ignoreLocked)
+*CacheAssoc<State, Addr_t, Energy>::findLine2Replace(Addr_t addr, bool ignoreLocked, bool isTransactional)
 {
     Addr_t tag    = this->calcTag(addr);
     Line **theSet = &content[this->calcIndex4Tag(tag)];
@@ -347,6 +347,23 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
         return *lineHit;
 
     I(lineHit==0);
+
+#if defined(TM)
+    // Hack around isLocked
+    if(isTransactional)
+    {
+        lineFree = 0;
+        Line **l = setEnd -1;
+        while(l >= theSet) {
+            if (!(*l)->isValid())
+                lineFree = l;
+            if (lineFree == 0 && !(*l)->isTransactional())
+                lineFree = l;
+
+            l--;
+        }
+    }
+#endif
 
     if(lineFree == 0 && !ignoreLocked)
         return 0;
@@ -393,6 +410,17 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
     return tmp;
 }
 
+#if defined(TM)
+template<class State, class Addr_t, bool Energy>
+void
+CacheAssoc<State, Addr_t, Energy>::clearTransactional()
+{
+    for(uint32_t i = 0; i < numLines; i++) {
+        mem[i].clearTransactional();
+    }
+}
+#endif
+
 /*********************************************************
  *  CacheDM
  *********************************************************/
@@ -436,7 +464,7 @@ typename CacheDM<State, Addr_t, Energy>::Line *CacheDM<State, Addr_t, Energy>::f
 
 template<class State, class Addr_t, bool Energy>
 typename CacheDM<State, Addr_t, Energy>::Line
-*CacheDM<State, Addr_t, Energy>::findLine2Replace(Addr_t addr, bool ignoreLocked)
+*CacheDM<State, Addr_t, Energy>::findLine2Replace(Addr_t addr, bool ignoreLocked, bool isTransactional)
 {
     Addr_t tag = this->calcTag(addr);
     Line *line = content[this->calcIndex4Tag(tag)];
@@ -454,6 +482,17 @@ typename CacheDM<State, Addr_t, Energy>::Line
 
     return line;
 }
+
+#if defined(TM)
+template<class State, class Addr_t, bool Energy>
+void
+CacheDM<State, Addr_t, Energy>::clearTransactional()
+{
+    for(uint32_t i = 0; i < numLines; i++) {
+        mem[i].clearTransactional();
+    }
+}
+#endif
 
 /*********************************************************
  *  CacheDMSkew
@@ -508,7 +547,7 @@ typename CacheDMSkew<State, Addr_t, Energy>::Line *CacheDMSkew<State, Addr_t, En
 
 template<class State, class Addr_t, bool Energy>
 typename CacheDMSkew<State, Addr_t, Energy>::Line
-*CacheDMSkew<State, Addr_t, Energy>::findLine2Replace(Addr_t addr, bool ignoreLocked)
+*CacheDMSkew<State, Addr_t, Energy>::findLine2Replace(Addr_t addr, bool ignoreLocked, bool isTransactional)
 {
     Addr_t tag = this->calcTag(addr);
     Line *line = content[this->calcIndex4Tag(tag)];
@@ -541,3 +580,14 @@ typename CacheDMSkew<State, Addr_t, Energy>::Line
 
     return line;
 }
+
+#if defined(TM)
+template<class State, class Addr_t, bool Energy>
+void
+CacheDMSkew<State, Addr_t, Energy>::clearTransactional()
+{
+    for(uint32_t i = 0; i < numLines; i++) {
+        mem[i].clearTransactional();
+    }
+}
+#endif

@@ -569,6 +569,11 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     Pid_t pid = context->getPid();
     if(tmCohManager->checkAborting(pid)) {
         uint32_t abortArg = context->completeAbort(inst);
+        if(privateCacheManager) {
+            // Clear transactional bits
+            // Need this since OSSim starts too early
+            privateCacheManager->clearTransactional(context->getPid());
+        }
         ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, abortArg);
     } else {
         uint32_t beginArg = context->beginTransaction(inst);
@@ -588,6 +593,11 @@ InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
 
 InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context) {
     context->commitTransaction(inst);
+    if(privateCacheManager) {
+        // Clear transactional bits
+        // Need this since OSSim starts too early
+        privateCacheManager->clearTransactional(context->getPid());
+    }
     return inst;
 }
 
@@ -1501,7 +1511,7 @@ public:
             if(privateCacheManager) {
                 // Update private L1 cache state
                 // Need this since OSSim starts too early
-                l1Hit = privateCacheManager->doLoad(context->getPid(), addr, evicted);
+                l1Hit = privateCacheManager->doLoad(context->getPid(), addr, context->isInTM(), evicted);
             }
             context->setDAddr(addr);
             context->setL1Hit(l1Hit);
@@ -1583,7 +1593,7 @@ public:
                 if(privateCacheManager) {
                     // Update private L1 cache state
                     // Need this since OSSim starts too early
-                    l1Hit = privateCacheManager->doStore(context->getPid(), addr, evicted);
+                    l1Hit = privateCacheManager->doStore(context->getPid(), addr, context->isInTM(), evicted);
                 }
                 context->setDAddr(addr);
                 context->setL1Hit(l1Hit);

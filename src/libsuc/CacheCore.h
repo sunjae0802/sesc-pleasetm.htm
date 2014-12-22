@@ -116,7 +116,12 @@ public:
     //
     // when locked parameter is false, it would try to remove even locked lines
 
-    virtual CacheLine *findLine2Replace(Addr_t addr, bool ignoreLocked=false)=0;
+    virtual CacheLine *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false)=0;
+
+#if defined(TM)
+    // Clear all transactional bits
+    virtual void clearTransactional()=0;
+#endif
 
     // TO DELETE if flush from Cache.cpp is cleared.  At least it should have a
     // cleaner interface so that Cache.cpp does not touch the internals.
@@ -296,7 +301,10 @@ public:
         return content[l];
     }
 
-    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false);
+    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+#if defined(TM)
+    void clearTransactional();
+#endif
 };
 
 #ifdef SESC_ENERGY
@@ -334,7 +342,10 @@ public:
         return content[l];
     }
 
-    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false);
+    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+#if defined(TM)
+    void clearTransactional();
+#endif
 };
 
 #ifdef SESC_ENERGY
@@ -372,7 +383,10 @@ public:
         return content[l];
     }
 
-    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false);
+    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+#if defined(TM)
+    void clearTransactional();
+#endif
 };
 
 
@@ -380,10 +394,12 @@ template<class Addr_t=uint32_t>
 class StateGeneric {
 private:
     Addr_t tag;
+    bool transactional;
 
 public:
     virtual ~StateGeneric() {
         tag = 0;
+        transactional = false;
     }
 
     Addr_t getTag() const {
@@ -395,6 +411,7 @@ public:
     }
     void clearTag() {
         tag = 0;
+        transactional = false;
     }
     void initialize(void *c) {
         clearTag();
@@ -411,6 +428,20 @@ public:
     virtual bool isLocked() const {
         return false;
     }
+
+#if defined(TM)
+    bool isTransactional() const {
+        return transactional;
+    }
+
+    void markTransactional() {
+        transactional = true;
+    }
+
+    void clearTransactional() {
+        transactional = false;
+    }
+#endif
 
     virtual void dump(const char *str) {
     }
