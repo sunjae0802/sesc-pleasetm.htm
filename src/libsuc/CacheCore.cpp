@@ -348,6 +348,9 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
 
     I(lineHit==0);
 
+    if(lineFree == 0 && !ignoreLocked && !isTransactional)
+        return 0;
+
 #if defined(TM)
     // Hack around isLocked
     if(isTransactional)
@@ -364,9 +367,6 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
         }
     }
 #endif
-
-    if(lineFree == 0 && !ignoreLocked)
-        return 0;
 
     if (lineFree == 0) {
         I(ignoreLocked);

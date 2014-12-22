@@ -43,7 +43,7 @@ bool PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTransactional, bool
         }
 
         // Find line to replace
-        Line* replaced  = cache->findLine2Replace(addr, false, isTransactional);
+        Line* replaced  = cache->findLine2Replace(addr, true, isTransactional);
         if(replaced == nullptr) {
             fail("Replacing line is NULL!\n");
         }
