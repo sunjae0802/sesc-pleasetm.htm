@@ -672,6 +672,9 @@ void FUEvent::simTime(DInst *dinst)
 }
 
 void Resource::traceEvent(DInst *dinst) {
+    if(ThreadContext::inMain == false) {
+        return;
+    }
     const Instruction *inst = dinst->getInst();
     ThreadContext *context = dinst->context;
     std::ofstream& out = context->getDatafile();
