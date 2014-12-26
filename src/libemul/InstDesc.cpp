@@ -1512,6 +1512,7 @@ public:
                 // Update private L1 cache state
                 // Need this since OSSim starts too early
                 l1Hit = privateCacheManager->doLoad(context->getPid(), addr, context->isInTM(), evicted);
+                tmCohManager->markEvicted(context->getPid(), addr, evicted);
             }
             context->setDAddr(addr);
             context->setL1Hit(l1Hit);
@@ -1556,7 +1557,6 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
-            tmCohManager->markEvicted(context->getPid(), addr, evicted);
             if(context->tmNacked()) {
                 context->startNackStalling();
                 return inst;
@@ -1594,6 +1594,7 @@ public:
                     // Update private L1 cache state
                     // Need this since OSSim starts too early
                     l1Hit = privateCacheManager->doStore(context->getPid(), addr, context->isInTM(), evicted);
+                    tmCohManager->markEvicted(context->getPid(), addr, evicted);
                 }
                 context->setDAddr(addr);
                 context->setL1Hit(l1Hit);
@@ -1617,7 +1618,6 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
-            tmCohManager->markEvicted(context->getPid(), addr, evicted);
             if(context->tmNacked()) {
                 context->startNackStalling();
                 return inst;
