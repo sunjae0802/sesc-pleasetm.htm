@@ -35,11 +35,6 @@ PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTra
     Line*         line  = cache->findLineNoEffect(addr);
     I(line == NULL);
 
-    // do next line prefetch
-    Line*   next = cache->findLineNoEffect(addr+cache->getLineSize());
-    if(next == nullptr) {
-    }
-
     // The "tag" contains both the set and the real tag
     VAddr myTag = cache->calcTag(addr);
     if(activeAddrs[pid].find(myTag) != activeAddrs[pid].end()) {
