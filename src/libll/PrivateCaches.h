@@ -50,10 +50,10 @@ public:
         cache->clearTransactional();
     }
 private:
-    bool doFillLine(Pid_t pid, VAddr addr, bool isTransactional, bool isWrite, std::set<Pid_t>& tmEvicted);
-
     typedef CacheGeneric<CState1, VAddr>            PrivateCache;
     typedef CacheGeneric<CState1, VAddr>::CacheLine Line;
+
+    Line* doFillLine(Pid_t pid, VAddr addr, bool isTransactional, std::set<Pid_t>& tmEvicted);
 
     const size_t                        nCores;
     std::vector<PrivateCache*>          caches;
