@@ -47,6 +47,10 @@ PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTra
         fail("Replacing line is NULL!\n");
     }
 
+    if(isTransactional && replaced->isTransactional() && cache->countValid(addr) < cache->getAssoc()) {
+        fail("Evicted transactional line: \n");
+    }
+
     // Invalidate old line
     if(replaced->isValid()) {
         VAddr replTag = replaced->getTag();

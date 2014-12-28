@@ -117,9 +117,11 @@ public:
     // when locked parameter is false, it would try to remove even locked lines
 
     virtual CacheLine *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false)=0;
+    virtual size_t countValid(Addr_t addr) = 0;
 
 #if defined(TM)
     // Clear all transactional bits
+    virtual size_t countTransactional(Addr_t addr) = 0;
     virtual void clearTransactional()=0;
 #endif
 
@@ -302,7 +304,9 @@ public:
     }
 
     Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+    size_t countValid(Addr_t addr);
 #if defined(TM)
+    size_t countTransactional(Addr_t addr);
     void clearTransactional();
 #endif
 };
@@ -343,7 +347,9 @@ public:
     }
 
     Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+    size_t countValid(Addr_t addr);
 #if defined(TM)
+    size_t countTransactional(Addr_t addr);
     void clearTransactional();
 #endif
 };
@@ -384,7 +390,9 @@ public:
     }
 
     Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+    size_t countValid(Addr_t addr);
 #if defined(TM)
+    size_t countTransactional(Addr_t addr);
     void clearTransactional();
 #endif
 };

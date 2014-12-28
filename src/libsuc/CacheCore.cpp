@@ -351,24 +351,7 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
     if(lineFree == 0 && !ignoreLocked && !isTransactional)
         return 0;
 
-#if defined(TM)
-    // Hack around isLocked
-    if(isTransactional)
-    {
-        lineFree = 0;
-        Line **l = setEnd -1;
-        while(l >= theSet) {
-            if (!(*l)->isValid())
-                lineFree = l;
-            if (lineFree == 0 && !(*l)->isTransactional())
-                lineFree = l;
-
-            l--;
-        }
-    }
-#endif
-
-    if (lineFree == 0) {
+    if (lineFree == 0 && isTransactional == false) {
         I(ignoreLocked);
         if (policy == RANDOM) {
             lineFree = &theSet[irand];
@@ -378,6 +361,37 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
             // Get the oldest line possible
             lineFree = setEnd-1;
         }
+#if defined(TM)
+    } else if (lineFree == 0 && isTransactional && countTransactional(addr) == assoc) {
+        I(ignoreLocked);
+        if (policy == RANDOM) {
+            lineFree = &theSet[irand];
+            irand = (irand + 1) & maskAssoc;
+        } else {
+            I(policy == LRU);
+            // Get the oldest line possible
+            lineFree = setEnd-1;
+        }
+    } else if (lineFree == 0 && isTransactional) {
+        if (policy == RANDOM) {
+            do {
+                lineFree = &theSet[irand];
+                irand = (irand + 1) & maskAssoc;
+            } while((*lineFree)->isTransactional() == false);
+        } else {
+            I(policy == LRU);
+            Line **l = setEnd -1;
+            // Find oldest non-transactional valid line
+            while(l >= theSet) {
+                if (!(*l)->isTransactional()) {
+                    lineFree = l;
+                    break;
+                }
+
+                l--;
+            }
+        }
+#endif
     } else if(ignoreLocked) {
         if (policy == RANDOM && (*lineFree)->isValid()) {
             lineFree = &theSet[irand];
@@ -410,7 +424,51 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
     return tmp;
 }
 
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheAssoc<State, Addr_t, Energy>::countValid(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+    Line **setEnd = theSet + assoc;
+
+    size_t count = 0;
+    {
+        Line **l = theSet;
+        while(l < setEnd) {
+            if ((*l)->isValid()) {
+                count++;
+            }
+            l++;
+        }
+    }
+    return count;
+}
+
 #if defined(TM)
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheAssoc<State, Addr_t, Energy>::countTransactional(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+    Line **setEnd = theSet + assoc;
+
+    size_t count = 0;
+    {
+        Line **l = theSet;
+        while(l < setEnd) {
+            if ((*l)->isTransactional()) {
+                count++;
+            }
+            l++;
+        }
+    }
+    return count;
+}
+
 template<class State, class Addr_t, bool Energy>
 void
 CacheAssoc<State, Addr_t, Energy>::clearTransactional()
@@ -483,7 +541,27 @@ typename CacheDM<State, Addr_t, Energy>::Line
     return line;
 }
 
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheDM<State, Addr_t, Energy>::countValid(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+    Line *line = content[this->calcIndex4Tag(tag)];
+
+    return line->isValid() ? 1 : 0;
+}
+
 #if defined(TM)
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheDM<State, Addr_t, Energy>::countTransactional(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+    Line *line = content[this->calcIndex4Tag(tag)];
+
+    return line->isTransactional() ? 1 : 0;
+}
+
 template<class State, class Addr_t, bool Energy>
 void
 CacheDM<State, Addr_t, Energy>::clearTransactional()
@@ -581,7 +659,30 @@ typename CacheDMSkew<State, Addr_t, Energy>::Line
     return line;
 }
 
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheDMSkew<State, Addr_t, Energy>::countValid(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+    Line *line = content[this->calcIndex4Tag(tag)];
+    // XXX: Skew cache?
+
+    return line->isValid() ? 1 : 0;
+
+}
+
 #if defined(TM)
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheDMSkew<State, Addr_t, Energy>::countTransactional(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+    Line *line = content[this->calcIndex4Tag(tag)];
+    // XXX: Skew cache?
+
+    return line->isTransactional() ? 1 : 0;
+
+}
 template<class State, class Addr_t, bool Energy>
 void
 CacheDMSkew<State, Addr_t, Energy>::clearTransactional()
