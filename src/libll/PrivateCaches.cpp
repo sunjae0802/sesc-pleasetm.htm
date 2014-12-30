@@ -1,6 +1,7 @@
 #include <utility>
 #include "PrivateCaches.h"
 #include "libll/ThreadContext.h"
+#include "libll/Instruction.h"
 #include "libTM/TMCoherence.h"
 #include "libcore/ProcessId.h"
 
@@ -13,7 +14,8 @@ PrivateCaches::PrivateCaches(const char *section, size_t n): nCores(n) {
         PrivateCache* cache = PrivateCache::create(32*1024,8,64,1,"LRU",false);
         caches.push_back(cache);
     }
-    nextLinePrefetch = true;
+    prefetchers.push_back(new MyNextLinePrefetcher);
+    prefetchers.push_back(new MyStridePrefetcher);
 }
 
 PrivateCaches::~PrivateCaches() {
@@ -86,32 +88,40 @@ PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTra
 
     return replaced;
 }
-void PrivateCaches::doNextLinePrefetch(Pid_t pid, VAddr addr, bool isTransactional, std::map<Pid_t, EvictCause>& tmEvicted) {
-    PrivateCache* cache = caches.at(pid);
+VAddr MyNextLinePrefetcher::getAddr(InstDesc* inst, ThreadContext* context, PrivateCaches::PrivateCache* cache, VAddr addr) {
+    Pid_t pid = context->getPid();
     VAddr nextAddr = addr + cache->getLineSize();
+    return nextAddr;
+}
 
-    Line*   next = cache->findLineNoEffect(nextAddr);
-    if(next == nullptr) {
-        next = doFillLine(pid, nextAddr, isTransactional, true, tmEvicted);
-        next->markPrefetch();
+VAddr MyStridePrefetcher::getAddr(InstDesc* inst, ThreadContext* context, PrivateCaches::PrivateCache* cache, VAddr addr) {
+    int32_t pcValue = inst->getSescInst()->getAddr();
+    VAddr prev = prevTable[pcValue];
+    int32_t stride = strideTable[pcValue];
+
+    VAddr nextAddr = 0;
+    if(prev + stride == addr) {
+        nextAddr = addr + stride;
+    }
+
+    prevTable[pcValue] = addr;
+    strideTable[pcValue] = addr - prev;
+    return nextAddr;
+}
+
+void PrivateCaches::doPrefetches(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    Pid_t pid = context->getPid();
+    PrivateCache* cache = caches.at(pid);
+    std::vector<MyPrefetcher*>::iterator i_prefetcher;
+
+    for(i_prefetcher = prefetchers.begin(); i_prefetcher != prefetchers.end(); ++i_prefetcher) {
+        VAddr prefetchAddr = (*i_prefetcher)->getAddr(inst, context, cache, addr);
+        if(prefetchAddr && cache->findLineNoEffect(prefetchAddr) == nullptr) {
+            Line* prefetch = doFillLine(pid, prefetchAddr, context->isInTM(), true, tmEvicted);
+            prefetch->markPrefetch();
+        }
     }
 }
-#if 0
-void PrivateCaches::doStridePrefetch(Pid_t pid, VAddr addr, bool isTransactional, std::map<Pid_t, EvictCause>& tmEvicted) {
-    VAddr prev = prev_table[pc_value];
-    int32_t stride = stride_table[pc_value];
-
-    if(prev + stride == addr) {
-        Line*   next = cache->findLineNoEffect(addr + stride);
-        if(next == nullptr) {
-            next = doFillLine(pid, nextAddr, isTransactional, true, tmEvicted);
-        }
-        next->markPrefetch();
-    } 
-    prev_table[pc_value] = iAddr;
-    stride[pc_value] = addr - prev;
-}
-#endif
 
 ///
 // Do a load operation, bringing the line into pid's private cache
@@ -125,9 +135,7 @@ bool PrivateCaches::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, s
         wasHit = false;
         line = doFillLine(pid, addr, isTransactional, false, tmEvicted);
 
-        if(nextLinePrefetch) {
-            doNextLinePrefetch(pid, addr, isTransactional, tmEvicted);
-        }
+        doPrefetches(inst, context, addr, tmEvicted);
     } else if(activeAddrs[pid].find(line->getTag()) == activeAddrs[pid].end()) {
         fail("Found line not properly tracked by activeAddrs!\n");
     }
@@ -139,6 +147,7 @@ bool PrivateCaches::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, s
     line->clearPrefetch();
     return wasHit;
 }
+
 ///
 // Do a store operation, invalidating all sharers and bringing the line into
 // pid's private cache
@@ -168,9 +177,7 @@ bool PrivateCaches::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, 
         wasHit = false;
         line = doFillLine(pid, addr, isTransactional, false, tmEvicted);
 
-        if(nextLinePrefetch) {
-            doNextLinePrefetch(pid, addr, isTransactional, tmEvicted);
-        }
+        doPrefetches(inst, context, addr, tmEvicted);
     } else if(activeAddrs[pid].find(line->getTag()) == activeAddrs[pid].end()) {
         fail("Found line not properly tracked by activeAddrs!\n");
     }
