@@ -9,6 +9,7 @@
 #include "Snippets.h"
 #include "GStats.h"
 #include "libemul/InstDesc.h"
+#include "libll/PrivateCaches.h"
 #include "TMState.h"
 #include "HWGate.h"
 
@@ -36,7 +37,7 @@ public:
     TMRWStatus nonTMread(Pid_t pid, VAddr raddr);
     TMRWStatus nonTMwrite(Pid_t pid, VAddr raddr);
     void completeFallback(Pid_t pid);
-    void markEvicted(Pid_t evicterPid, VAddr raddr, std::set<Pid_t>& evicted);
+    void markEvicted(Pid_t evicterPid, VAddr raddr, std::map<Pid_t, EvictCause>& evicted);
 
     const TransState& getTransState(Pid_t pid) { return transStates.at(pid); }
     int getReturnArgType()          const { return returnArgType; }

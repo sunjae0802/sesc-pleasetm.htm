@@ -219,16 +219,18 @@ void TMCoherence::commitTrans(Pid_t pid) {
 void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
 }
-void TMCoherence::markEvicted(Pid_t evicterPid, VAddr raddr, std::set<Pid_t>& evicted) {
+void TMCoherence::markEvicted(Pid_t evicterPid, VAddr raddr, std::map<Pid_t, EvictCause>& evicted) {
 	VAddr caddr = addrToCacheLine(raddr);
-	set<Pid_t>::iterator i_evicted;
+	map<Pid_t, EvictCause>::iterator i_evicted;
     for(i_evicted = evicted.begin(); i_evicted != evicted.end(); ++i_evicted) {
-        if(transStates[*i_evicted].getState() == TM_RUNNING) {
-            if(evicterPid == *i_evicted) {
-                markTransAborted(*i_evicted, evicterPid, getUtid(evicterPid), caddr, TM_ATYPE_SETCONFLICT);
-            } else {
-                markTransAborted(*i_evicted, evicterPid, getUtid(evicterPid), caddr, TM_ATYPE_EVICTION);
+        if(transStates[i_evicted->first].getState() == TM_RUNNING) {
+            TMAbortType_e abortType = TM_ATYPE_EVICTION;
+            if(i_evicted->second == EvictSetConflict) {
+                abortType = TM_ATYPE_SETCONFLICT;
+            } else if(i_evicted->second == EvictPrefetch) {
+                abortType = TM_ATYPE_PREFETCH;
             }
+            markTransAborted(i_evicted->first, evicterPid, getUtid(evicterPid), caddr, abortType);
         }
 	}
 }

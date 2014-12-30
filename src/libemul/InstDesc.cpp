@@ -1507,11 +1507,11 @@ public:
 // 	  printf("Ld %d bytes 0x%016llx from 0x%08x (instr 0x%08x %s)\n",
 // 		 sizeof(MemT),(unsigned long long)(readMem<MemT>(context,addr)),addr,inst->addr,inst->name);
             bool l1Hit = false;
-            std::set<Pid_t> evicted;
+            std::map<Pid_t, EvictCause> evicted;
             if(privateCacheManager) {
                 // Update private L1 cache state
                 // Need this since OSSim starts too early
-                l1Hit = privateCacheManager->doLoad(context->getPid(), addr, context->isInTM(), evicted);
+                l1Hit = privateCacheManager->doLoad(inst, context, addr, evicted);
                 tmCohManager->markEvicted(context->getPid(), addr, evicted);
             }
             context->setDAddr(addr);
@@ -1585,7 +1585,7 @@ public:
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
 // 	  printf("St %d bytes 0x%016llx from 0x%08x (instr 0x%08x %s)\n",
 // 		 sizeof(MemT),(unsigned long long)(getReg<MemT,S2Typ>(context,inst->regSrc2)),addr,inst->addr,inst->name);
-            std::set<Pid_t> evicted;
+            std::map<Pid_t, EvictCause> evicted;
             if((kind==LdStLlSc)&&(getReg<Taddr_t,RegTypeSpc>(context,RegLink)!=(addr-(addr&0x7)))) {
                 setReg<Tregv_t,DTyp>(context,inst->regDst,0);
             } else {
@@ -1593,7 +1593,7 @@ public:
                 if(privateCacheManager) {
                     // Update private L1 cache state
                     // Need this since OSSim starts too early
-                    l1Hit = privateCacheManager->doStore(context->getPid(), addr, context->isInTM(), evicted);
+                    l1Hit = privateCacheManager->doStore(inst, context, addr, evicted);
                     tmCohManager->markEvicted(context->getPid(), addr, evicted);
                 }
                 context->setDAddr(addr);

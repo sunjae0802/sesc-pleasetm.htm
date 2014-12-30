@@ -1,5 +1,10 @@
+#include <utility>
 #include "PrivateCaches.h"
+#include "libll/ThreadContext.h"
+#include "libTM/TMCoherence.h"
 #include "libcore/ProcessId.h"
+
+using namespace std;
 
 PrivateCaches* privateCacheManager = 0;
 
@@ -8,6 +13,7 @@ PrivateCaches::PrivateCaches(const char *section, size_t n): nCores(n) {
         PrivateCache* cache = PrivateCache::create(32*1024,8,64,1,"LRU",false);
         caches.push_back(cache);
     }
+    nextLinePrefetch = true;
 }
 
 PrivateCaches::~PrivateCaches() {
@@ -30,7 +36,7 @@ bool PrivateCaches::findLine(Pid_t pid, VAddr addr) {
 ///
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
-PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTransactional, std::set<Pid_t>& tmEvicted) {
+PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTransactional, bool isPrefetch, std::map<Pid_t, EvictCause>& tmEvicted) {
     PrivateCache* cache = caches.at(pid);
     Line*         line  = cache->findLineNoEffect(addr);
     I(line == NULL);
@@ -62,7 +68,11 @@ PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTra
         }
         activeAddrs[pid].erase(replTag);
         if(isTransactional && replaced->isTransactional()) {
-            tmEvicted.insert(pid);
+            if(isPrefetch) {
+                tmEvicted.insert(make_pair(pid, EvictPrefetch));
+            } else {
+                tmEvicted.insert(make_pair(pid, EvictSetConflict));
+            }
         }
 
         replaced->invalidate();
@@ -76,15 +86,48 @@ PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTra
 
     return replaced;
 }
+void PrivateCaches::doNextLinePrefetch(Pid_t pid, VAddr addr, bool isTransactional, std::map<Pid_t, EvictCause>& tmEvicted) {
+    PrivateCache* cache = caches.at(pid);
+    VAddr nextAddr = addr + cache->getLineSize();
+
+    Line*   next = cache->findLineNoEffect(nextAddr);
+    if(next == nullptr) {
+        next = doFillLine(pid, nextAddr, isTransactional, true, tmEvicted);
+        next->markPrefetch();
+    }
+}
+#if 0
+void PrivateCaches::doStridePrefetch(Pid_t pid, VAddr addr, bool isTransactional, std::map<Pid_t, EvictCause>& tmEvicted) {
+    VAddr prev = prev_table[pc_value];
+    int32_t stride = stride_table[pc_value];
+
+    if(prev + stride == addr) {
+        Line*   next = cache->findLineNoEffect(addr + stride);
+        if(next == nullptr) {
+            next = doFillLine(pid, nextAddr, isTransactional, true, tmEvicted);
+        }
+        next->markPrefetch();
+    } 
+    prev_table[pc_value] = iAddr;
+    stride[pc_value] = addr - prev;
+}
+#endif
+
 ///
 // Do a load operation, bringing the line into pid's private cache
-bool PrivateCaches::doLoad(Pid_t pid, VAddr addr, bool isTransactional, std::set<Pid_t>& tmEvicted) {
+bool PrivateCaches::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    Pid_t pid = context->getPid();
+    bool isTransactional = context->isInTM();
     bool wasHit = true;
     PrivateCache* cache = caches.at(pid);
     Line*         line  = cache->findLineNoEffect(addr);
     if(line == nullptr) {
         wasHit = false;
-        line = doFillLine(pid, addr, isTransactional, tmEvicted);
+        line = doFillLine(pid, addr, isTransactional, false, tmEvicted);
+
+        if(nextLinePrefetch) {
+            doNextLinePrefetch(pid, addr, isTransactional, tmEvicted);
+        }
     } else if(activeAddrs[pid].find(line->getTag()) == activeAddrs[pid].end()) {
         fail("Found line not properly tracked by activeAddrs!\n");
     }
@@ -93,12 +136,16 @@ bool PrivateCaches::doLoad(Pid_t pid, VAddr addr, bool isTransactional, std::set
     if(isTransactional) {
         line->markTransactional();
     }
+    line->clearPrefetch();
     return wasHit;
 }
 ///
 // Do a store operation, invalidating all sharers and bringing the line into
 // pid's private cache
-bool PrivateCaches::doStore(Pid_t pid, VAddr addr, bool isTransactional, std::set<Pid_t>& tmEvicted) {
+bool PrivateCaches::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    Pid_t pid = context->getPid();
+    bool isTransactional = context->isInTM();
+
     // Invalidate all sharers
     for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
         if(p != pid) {
@@ -106,7 +153,7 @@ bool PrivateCaches::doStore(Pid_t pid, VAddr addr, bool isTransactional, std::se
             if(line) {
                 activeAddrs[p].erase(line->getTag());
                 if(isTransactional && line->isTransactional()) {
-                    tmEvicted.insert(p);
+                    tmEvicted.insert(make_pair(p, EvictByWrite));
                 }
                 line->invalidate();
             }
@@ -119,7 +166,11 @@ bool PrivateCaches::doStore(Pid_t pid, VAddr addr, bool isTransactional, std::se
     Line*         line  = cache->findLineNoEffect(addr);
     if(line == nullptr) {
         wasHit = false;
-        line = doFillLine(pid, addr, isTransactional, tmEvicted);
+        line = doFillLine(pid, addr, isTransactional, false, tmEvicted);
+
+        if(nextLinePrefetch) {
+            doNextLinePrefetch(pid, addr, isTransactional, tmEvicted);
+        }
     } else if(activeAddrs[pid].find(line->getTag()) == activeAddrs[pid].end()) {
         fail("Found line not properly tracked by activeAddrs!\n");
     }
@@ -129,6 +180,7 @@ bool PrivateCaches::doStore(Pid_t pid, VAddr addr, bool isTransactional, std::se
         line->markTransactional();
     }
     line->makeDirty();
+    line->clearPrefetch();
 
     return wasHit;
 }
