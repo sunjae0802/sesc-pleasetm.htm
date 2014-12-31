@@ -572,11 +572,15 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
         if(privateCacheManager) {
             // Clear transactional bits
             // Need this since OSSim starts too early
-            privateCacheManager->clearTransactional(context->getPid());
+            privateCacheManager->stopTransaction(context->getPid());
         }
         ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, abortArg);
     } else {
         uint32_t beginArg = context->beginTransaction(inst);
+        if(privateCacheManager) {
+            // Need this since OSSim starts too early
+            privateCacheManager->startTransaction(context->getPid());
+        }
         ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, beginArg);
     }
 
@@ -596,7 +600,7 @@ InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context) {
     if(privateCacheManager) {
         // Clear transactional bits
         // Need this since OSSim starts too early
-        privateCacheManager->clearTransactional(context->getPid());
+        privateCacheManager->stopTransaction(context->getPid());
     }
     return inst;
 }

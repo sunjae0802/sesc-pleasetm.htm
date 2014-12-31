@@ -9,45 +9,100 @@ using namespace std;
 
 PrivateCaches* privateCacheManager = 0;
 
-PrivateCaches::PrivateCaches(const char *section, size_t n): nCores(n) {
+PrivateCaches::PrivateCaches(const char *section, size_t n)
+        : nCores(n)
+{
     for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
-        PrivateCache* cache = PrivateCache::create(32*1024,8,64,1,"LRU",false);
-        caches.push_back(cache);
+        caches.push_back(new PrivateCache("privateCache", p));
     }
-    prefetchers.push_back(new MyNextLinePrefetcher);
-    prefetchers.push_back(new MyStridePrefetcher);
 }
-
-PrivateCaches::~PrivateCaches() {
-    for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
+PrivateCaches::~PrivateCaches()
+{
+    while(caches.size() > 0) {
         PrivateCache* cache = caches.back();
         caches.pop_back();
-        cache->destroy();
+        delete cache;
     }
 }
 
 ///
-// Return true if the line is found within pid's private cache
-bool PrivateCaches::findLine(Pid_t pid, VAddr addr) {
+// Do a load operation, bringing the line into pid's private cache
+bool PrivateCaches::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    Pid_t pid = context->getPid();
     PrivateCache* cache = caches.at(pid);
-    Line*         line  = cache->findLineNoEffect(addr);
 
-    return line != nullptr;
+    bool wasHit = cache->doLoad(inst, context, addr, tmEvicted);
+    if(wasHit == false) {
+        cache->doPrefetches(inst, context, addr, tmEvicted);
+    } else {
+        cache->updatePrefetchers(inst, context, addr, tmEvicted);
+    }
+    return wasHit;
+}
+
+///
+// Do a store operation, invalidating all sharers and bringing the line into
+// pid's private cache
+bool PrivateCaches::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    Pid_t pid = context->getPid();
+
+    // Invalidate all sharers
+    for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
+        if(p != pid) {
+            caches.at(p)->doInvalidate(inst, context, addr, tmEvicted);
+        }
+    }
+
+    PrivateCache* cache = caches.at(pid);
+    bool wasHit = cache->doStore(inst, context, addr, tmEvicted);
+    if(wasHit == false) {
+        cache->doPrefetches(inst, context, addr, tmEvicted);
+    } else {
+        cache->updatePrefetchers(inst, context, addr, tmEvicted);
+    }
+
+    return wasHit;
+}
+
+///
+// Constructor for PrivateCache. Allocate members and GStat counters
+PrivateCache::PrivateCache(const char* name, Pid_t p)
+        : pid(p)
+        , isTransactional(false)
+        , readHit("%s_%d:readHit", name, p)
+        , writeHit("%s_%d:writeHit", name, p)
+        , readMiss("%s_%d:readMiss", name, p)
+        , writeMiss("%s_%d:writeMiss", name, p)
+        , usefulPrefetch("%s_%d:usefulPrefetch", name, p)
+        , lostPrefetch("%s_%d:lostPrefetch", name, p)
+{
+    cache = Cache::create(32*1024,8,64,1,"LRU",false);
+    prefetchers.push_back(new MyNextLinePrefetcher);
+    prefetchers.push_back(new MyStridePrefetcher);
+}
+
+///
+// Destructor for PrivateCache. Delete all allocated members
+PrivateCache::~PrivateCache() {
+    cache->destroy();
+    cache = 0;
+
+    while(prefetchers.size() > 0) {
+        MyPrefetcher* prefetcher = prefetchers.back();
+        prefetchers.pop_back();
+        delete prefetcher;
+    }
 }
 
 ///
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
-PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTransactional, bool isPrefetch, std::map<Pid_t, EvictCause>& tmEvicted) {
-    PrivateCache* cache = caches.at(pid);
+PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, bool isPrefetch, std::map<Pid_t, EvictCause>& tmEvicted) {
     Line*         line  = cache->findLineNoEffect(addr);
     I(line == NULL);
 
     // The "tag" contains both the set and the real tag
     VAddr myTag = cache->calcTag(addr);
-    if(activeAddrs[pid].find(myTag) != activeAddrs[pid].end()) {
-        fail("Trying to add tag already there!\n");
-    }
 
     // Find line to replace
     Line* replaced  = cache->findLine2Replace(addr, true, isTransactional);
@@ -65,10 +120,10 @@ PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTra
         if(replTag == myTag) {
             fail("Replaced line matches tag!\n");
         }
-        if(activeAddrs[pid].find(replTag) == activeAddrs[pid].end()) {
-            fail("Replacing line not there anymore!\n");
+        if(replaced->wasPrefetch()) {
+            lostPrefetch.inc();
         }
-        activeAddrs[pid].erase(replTag);
+
         if(isTransactional && replaced->isTransactional()) {
             if(isPrefetch) {
                 tmEvicted.insert(make_pair(pid, EvictPrefetch));
@@ -84,17 +139,106 @@ PrivateCaches::Line* PrivateCaches::doFillLine(Pid_t pid, VAddr addr, bool isTra
     replaced->setTag(myTag);
     replaced->validate();
 
-    activeAddrs[pid].insert(myTag);
-
     return replaced;
 }
-VAddr MyNextLinePrefetcher::getAddr(InstDesc* inst, ThreadContext* context, PrivateCaches::PrivateCache* cache, VAddr addr) {
-    Pid_t pid = context->getPid();
+
+///
+// Loop through each prefetcher and try each
+void PrivateCache::doPrefetches(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    std::vector<MyPrefetcher*>::iterator i_prefetcher;
+    for(i_prefetcher = prefetchers.begin(); i_prefetcher != prefetchers.end(); ++i_prefetcher) {
+        // Access the prefetcher
+        VAddr prefetchAddr = (*i_prefetcher)->getAddr(inst, context, this, addr);
+        (*i_prefetcher)->update(inst, context, this, addr);
+
+        // If we get a valid prefetch address
+        if(prefetchAddr) {
+            Line* prefetch = cache->findLineNoEffect(prefetchAddr);
+            if(prefetch == nullptr) {
+                Line* prefetch = doFillLine(prefetchAddr, true, tmEvicted);
+                prefetch->markPrefetch();
+            } else {
+                // Prefetch target already in the cache
+            }
+        }
+    }
+}
+void PrivateCache::updatePrefetchers(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    // Loop through each prefetcher and try each
+    std::vector<MyPrefetcher*>::iterator i_prefetcher;
+    for(i_prefetcher = prefetchers.begin(); i_prefetcher != prefetchers.end(); ++i_prefetcher) {
+        (*i_prefetcher)->update(inst, context, this, addr);
+    }
+}
+
+
+
+bool PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    // Lookup line
+    bool        wasHit = true;
+    Line*       line  = cache->findLineNoEffect(addr);
+    if(line == nullptr) {
+        wasHit = false;
+        readMiss.inc();
+        line = doFillLine(addr, false, tmEvicted);
+    } else {
+        readHit.inc();
+    }
+
+    // Update line
+    if(isTransactional) {
+        line->markTransactional();
+    }
+    if(line->wasPrefetch()) {
+        usefulPrefetch.inc();
+        line->clearPrefetch();
+    }
+    return wasHit;
+}
+
+void PrivateCache::doInvalidate(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    // Lookup line
+    Line* line = cache->findLineNoEffect(addr);
+    if(line) {
+        if(isTransactional && line->isTransactional()) {
+            tmEvicted.insert(make_pair(pid, EvictByWrite));
+        }
+        line->invalidate();
+    }
+}
+
+bool PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+    // Lookup line
+    bool    wasHit = true;
+    Line*   line  = cache->findLineNoEffect(addr);
+    if(line == nullptr) {
+        wasHit = false;
+        writeMiss.inc();
+        line = doFillLine(addr, false, tmEvicted);
+    } else {
+        writeHit.inc();
+    }
+
+    // Update line
+    if(isTransactional) {
+        line->markTransactional();
+    }
+    line->makeDirty();
+    if(line->wasPrefetch()) {
+        usefulPrefetch.inc();
+        line->clearPrefetch();
+    }
+    return wasHit;
+}
+
+VAddr MyNextLinePrefetcher::getAddr(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) {
     VAddr nextAddr = addr + cache->getLineSize();
     return nextAddr;
 }
+void MyNextLinePrefetcher::update(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) {
+}
 
-VAddr MyStridePrefetcher::getAddr(InstDesc* inst, ThreadContext* context, PrivateCaches::PrivateCache* cache, VAddr addr) {
+VAddr MyStridePrefetcher::getAddr(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) {
     int32_t pcValue = inst->getSescInst()->getAddr();
     VAddr prev = prevTable[pcValue];
     int32_t stride = strideTable[pcValue];
@@ -104,91 +248,12 @@ VAddr MyStridePrefetcher::getAddr(InstDesc* inst, ThreadContext* context, Privat
         nextAddr = addr + stride;
     }
 
-    prevTable[pcValue] = addr;
-    strideTable[pcValue] = addr - prev;
     return nextAddr;
 }
+void MyStridePrefetcher::update(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) {
+    int32_t pcValue = inst->getSescInst()->getAddr();
+    VAddr prev = prevTable[pcValue];
 
-void PrivateCaches::doPrefetches(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
-    Pid_t pid = context->getPid();
-    PrivateCache* cache = caches.at(pid);
-    std::vector<MyPrefetcher*>::iterator i_prefetcher;
-
-    for(i_prefetcher = prefetchers.begin(); i_prefetcher != prefetchers.end(); ++i_prefetcher) {
-        VAddr prefetchAddr = (*i_prefetcher)->getAddr(inst, context, cache, addr);
-        if(prefetchAddr && cache->findLineNoEffect(prefetchAddr) == nullptr) {
-            Line* prefetch = doFillLine(pid, prefetchAddr, context->isInTM(), true, tmEvicted);
-            prefetch->markPrefetch();
-        }
-    }
+    prevTable[pcValue] = addr;
+    strideTable[pcValue] = addr - prev;
 }
-
-///
-// Do a load operation, bringing the line into pid's private cache
-bool PrivateCaches::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
-    Pid_t pid = context->getPid();
-    bool isTransactional = context->isInTM();
-    bool wasHit = true;
-    PrivateCache* cache = caches.at(pid);
-    Line*         line  = cache->findLineNoEffect(addr);
-    if(line == nullptr) {
-        wasHit = false;
-        line = doFillLine(pid, addr, isTransactional, false, tmEvicted);
-
-        doPrefetches(inst, context, addr, tmEvicted);
-    } else if(activeAddrs[pid].find(line->getTag()) == activeAddrs[pid].end()) {
-        fail("Found line not properly tracked by activeAddrs!\n");
-    }
-
-    // Update line
-    if(isTransactional) {
-        line->markTransactional();
-    }
-    line->clearPrefetch();
-    return wasHit;
-}
-
-///
-// Do a store operation, invalidating all sharers and bringing the line into
-// pid's private cache
-bool PrivateCaches::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
-    Pid_t pid = context->getPid();
-    bool isTransactional = context->isInTM();
-
-    // Invalidate all sharers
-    for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
-        if(p != pid) {
-            Line* line = caches.at(p)->findLineNoEffect(addr);
-            if(line) {
-                activeAddrs[p].erase(line->getTag());
-                if(isTransactional && line->isTransactional()) {
-                    tmEvicted.insert(make_pair(p, EvictByWrite));
-                }
-                line->invalidate();
-            }
-        }
-    }
-
-    // Add myself
-    bool wasHit = true;
-    PrivateCache* cache = caches.at(pid);
-    Line*         line  = cache->findLineNoEffect(addr);
-    if(line == nullptr) {
-        wasHit = false;
-        line = doFillLine(pid, addr, isTransactional, false, tmEvicted);
-
-        doPrefetches(inst, context, addr, tmEvicted);
-    } else if(activeAddrs[pid].find(line->getTag()) == activeAddrs[pid].end()) {
-        fail("Found line not properly tracked by activeAddrs!\n");
-    }
-
-    // Update line
-    if(isTransactional) {
-        line->markTransactional();
-    }
-    line->makeDirty();
-    line->clearPrefetch();
-
-    return wasHit;
-}
-

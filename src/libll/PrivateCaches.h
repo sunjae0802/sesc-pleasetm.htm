@@ -4,6 +4,7 @@
 #include <vector>
 #include <set>
 #include <map>
+#include "GStats.h"
 #include "libemul/AddressSpace.h"
 #include "libemul/InstDesc.h"
 #include "CacheCore.h"
@@ -61,43 +62,70 @@ public:
     }
 };
 
+class PrivateCache {
+public:
+    PrivateCache(const char* name, Pid_t p);
+    ~PrivateCache();
+
+    bool doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    bool doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    void doInvalidate(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    void doPrefetches(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    void updatePrefetchers(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    bool findLine(VAddr addr) const { return cache->findLineNoEffect(addr) != NULL; }
+
+    void startTransaction() { isTransactional = true; }
+    void stopTransaction() { cache->clearTransactional(); isTransactional = false; }
+    size_t getLineSize() const { return cache->getLineSize(); }
+private:
+    typedef CacheGeneric<CState1, VAddr>            Cache;
+    typedef CacheGeneric<CState1, VAddr>::CacheLine Line;
+
+    Line* doFillLine(VAddr addr, bool isPrefetch, std::map<Pid_t, EvictCause>& tmEvicted);
+
+    Pid_t                       pid;
+    bool                        isTransactional;
+    Cache                      *cache;
+    std::vector<MyPrefetcher*>  prefetchers;
+    GStatsCntr                  readHit;
+    GStatsCntr                  writeHit;
+    GStatsCntr                  readMiss;
+    GStatsCntr                  writeMiss;
+    GStatsCntr                  usefulPrefetch;
+    GStatsCntr                  lostPrefetch;
+};
+
 class PrivateCaches {
 public:
     PrivateCaches(const char *section, size_t n);
     ~PrivateCaches();
     bool doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
     bool doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
-    bool findLine(Pid_t pid, VAddr addr);
-    void clearTransactional(Pid_t pid) {
-        PrivateCache* cache = caches.at(pid);
-        cache->clearTransactional();
-    }
-    typedef CacheGeneric<CState1, VAddr>            PrivateCache;
-    typedef CacheGeneric<CState1, VAddr>::CacheLine Line;
+    void startTransaction(Pid_t pid) { caches.at(pid)->startTransaction();}
+    void stopTransaction(Pid_t pid) { caches.at(pid)->stopTransaction(); }
+
 private:
-
-    Line* doFillLine(Pid_t pid, VAddr addr, bool isTransactional, bool isPrefetch, std::map<Pid_t, EvictCause>& tmEvicted);
-    void doPrefetches(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
-
-    const size_t                        nCores;
-    std::vector<PrivateCache*>          caches;
-    std::vector<MyPrefetcher*>            prefetchers;
-    std::map<Pid_t, std::set<VAddr> >   activeAddrs;
+    const size_t                   nCores;
+    std::vector<PrivateCache*>     caches;
 };
 
 class MyPrefetcher {
 public:
-    virtual VAddr getAddr(InstDesc* inst, ThreadContext* context, PrivateCaches::PrivateCache* cache, VAddr addr) = 0;
+    virtual ~MyPrefetcher() {}
+    virtual VAddr getAddr(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) = 0;
+    virtual void update(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) = 0;
 };
 
 class MyNextLinePrefetcher: public MyPrefetcher {
 public:
-    VAddr getAddr(InstDesc* inst, ThreadContext* context, PrivateCaches::PrivateCache* cache, VAddr addr);
+    VAddr getAddr(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr);
+    void update(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr);
 };
 
 class MyStridePrefetcher: public MyPrefetcher {
 public:
-    VAddr getAddr(InstDesc* inst, ThreadContext* context, PrivateCaches::PrivateCache* cache, VAddr addr);
+    VAddr getAddr(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr);
+    void update(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr);
 private:
     std::map<VAddr, int32_t>    prevTable;
     std::map<VAddr, int32_t>    strideTable;
