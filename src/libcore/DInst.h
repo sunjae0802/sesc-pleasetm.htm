@@ -445,6 +445,10 @@ public:
         return vaddr;
     }
 
+    bool wasL1Hit() const {
+        return l1Hit;
+    }
+
     int32_t getContextId() const {
         return cId;
     }
