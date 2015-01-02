@@ -320,7 +320,7 @@ typename CacheAssocTM<State, Addr_t, Energy>::Line
     }
 
     Line **lineHit=0;
-    Line **lineFree=0; // Order of preference, invalid, locked
+    Line **lineFree=0; // Order of preference, invalid
     Line **setEnd = theSet + assoc;
 
     {
@@ -332,8 +332,6 @@ typename CacheAssocTM<State, Addr_t, Energy>::Line
             }
             if (!(*l)->isValid())
                 lineFree = l;
-
-            // If line is invalid, isLocked must be false
             GI(!(*l)->isValid(), !(*l)->isLocked());
             l--;
         }
@@ -345,41 +343,62 @@ typename CacheAssocTM<State, Addr_t, Energy>::Line
 
     I(lineHit==0);
 
-    if (lineFree == 0 && isTransactional == false) {
-        if (policy == RANDOM) {
-            lineFree = &theSet[irand];
-            irand = (irand + 1) & maskAssoc;
-        } else {
-            I(policy == LRU);
-            // Get the oldest line possible
-            lineFree = setEnd-1;
-        }
-    } else if (lineFree == 0 && isTransactional && countTransactional(addr) == assoc) {
-        if (policy == RANDOM) {
-            lineFree = &theSet[irand];
-            irand = (irand + 1) & maskAssoc;
-        } else {
-            I(policy == LRU);
-            // Get the oldest line possible
-            lineFree = setEnd-1;
-        }
-    } else if (lineFree == 0 && isTransactional) {
-        if (policy == RANDOM) {
-            do {
+    if (lineFree == 0) {
+        if(isTransactional == false || (isTransactional && countTransactional(addr) == assoc)) {
+            if (policy == RANDOM) {
                 lineFree = &theSet[irand];
                 irand = (irand + 1) & maskAssoc;
-            } while((*lineFree)->isTransactional() == false);
+            } else {
+                I(policy == LRU);
+                // Get the oldest line possible
+                lineFree = setEnd-1;
+            }
         } else {
-            I(policy == LRU);
-            Line **l = setEnd -1;
-            // Find oldest non-transactional valid line
-            while(l >= theSet) {
-                if (!(*l)->isTransactional()) {
-                    lineFree = l;
-                    break;
+            if (policy == RANDOM) {
+                size_t numDirty = 0;
+                Line **l = setEnd -1;
+                // Find oldest non-transactional valid, clean line
+                while(l >= theSet) {
+                    if ((*l)->isDirty()) {
+                        numDirty++;
+                    }
+                    l--;
                 }
+                if(numDirty == assoc) {
+                    do {
+                        lineFree = &theSet[irand];
+                        irand = (irand + 1) & maskAssoc;
+                    } while((*lineFree)->isTransactional() == false);
+                } else {
+                    do {
+                        lineFree = &theSet[irand];
+                        irand = (irand + 1) & maskAssoc;
+                    } while((*lineFree)->isTransactional() == false && (*lineFree)->isDirty() == false);
+                }
+            } else {
+                I(policy == LRU);
+                Line **l = setEnd -1;
+                // Find oldest non-transactional valid, clean line
+                while(l >= theSet) {
+                    if (!(*l)->isTransactional() && !(*l)->isDirty()) {
+                        lineFree = l;
+                        break;
+                    }
 
-                l--;
+                    l--;
+                }
+                if(lineFree == 0) {
+                    // Give up and find a dirty line
+                    l = setEnd -1;
+                    while(l >= theSet) {
+                        if (!(*l)->isTransactional()) {
+                            lineFree = l;
+                            break;
+                        }
+
+                        l--;
+                    }
+                }
             }
         }
     } else {

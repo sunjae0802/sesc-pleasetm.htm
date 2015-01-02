@@ -152,7 +152,7 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, bool isPrefetch, std::m
             lostPrefetch.inc();
         }
 
-        if(isTransactional && replaced->isTransactional()) {
+        if(isTransactional && replaced->isTransactional() && replaced->isDirty()) {
             if(isPrefetch) {
                 tmEvicted.insert(make_pair(pid, EvictPrefetch));
             } else {
