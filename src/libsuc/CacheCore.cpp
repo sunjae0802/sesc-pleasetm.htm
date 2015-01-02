@@ -216,6 +216,258 @@ CacheGeneric<State, Addr_t, Energy> *CacheGeneric<State, Addr_t, Energy>::create
     return cache;
 }
 
+#if defined(TM)
+/*********************************************************
+ *  CacheAssocTM
+ *********************************************************/
+
+template<class State, class Addr_t, bool Energy>
+CacheAssocTM<State, Addr_t, Energy>::CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr)
+    : CacheGeneric<State, Addr_t, Energy>(size, assoc, blksize, addrUnit)
+{
+    I(numLines>0);
+
+    if (strcasecmp(pStr, k_RANDOM) == 0)
+        policy = RANDOM;
+    else if (strcasecmp(pStr, k_LRU)    == 0)
+        policy = LRU;
+    else {
+        MSG("Invalid cache policy [%s]",pStr);
+        exit(0);
+    }
+
+    mem     = new Line [numLines + 1];
+    content = new Line* [numLines + 1];
+
+    for(uint32_t i = 0; i < numLines; i++) {
+        mem[i].initialize(this);
+        mem[i].invalidate();
+        content[i] = &mem[i];
+    }
+
+    irand = 0;
+}
+
+template<class State, class Addr_t, bool Energy>
+typename CacheAssocTM<State, Addr_t, Energy>::Line *CacheAssocTM<State, Addr_t, Energy>::findLinePrivate(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+
+    GI(Energy, goodInterface); // If modeling energy. Do not use this
+    // interface directly. use readLine and
+    // writeLine instead. If it is called
+    // inside debugging only use
+    // findLineDebug instead
+
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+
+    // Check most typical case
+    if ((*theSet)->getTag() == tag) {
+        //this assertion is not true for SMP; it is valid to return invalid line
+#if !defined(SESC_SMP) && !defined(SESC_CRIT)
+        I((*theSet)->isValid());
+#endif
+        return *theSet;
+    }
+
+    Line **lineHit=0;
+    Line **setEnd = theSet + assoc;
+
+    // For sure that position 0 is not (short-cut)
+    {
+        Line **l = theSet + 1;
+        while(l < setEnd) {
+            if ((*l)->getTag() == tag) {
+                lineHit = l;
+                break;
+            }
+            l++;
+        }
+    }
+
+    if (lineHit == 0)
+        return 0;
+
+    I((*lineHit)->isValid());
+
+    // No matter what is the policy, move lineHit to the *theSet. This
+    // increases locality
+    Line *tmp = *lineHit;
+    {
+        Line **l = lineHit;
+        while(l > theSet) {
+            Line **prev = l - 1;
+            *l = *prev;;
+            l = prev;
+        }
+        *theSet = tmp;
+    }
+
+    return tmp;
+}
+
+template<class State, class Addr_t, bool Energy>
+typename CacheAssocTM<State, Addr_t, Energy>::Line
+*CacheAssocTM<State, Addr_t, Energy>::findLine2Replace(Addr_t addr, bool ignoreLocked, bool isTransactional)
+{
+    Addr_t tag    = this->calcTag(addr);
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+
+    // Check most typical case
+    if ((*theSet)->getTag() == tag) {
+        GI(tag,(*theSet)->isValid());
+        return *theSet;
+    }
+
+    Line **lineHit=0;
+    Line **lineFree=0; // Order of preference, invalid, locked
+    Line **setEnd = theSet + assoc;
+
+    {
+        Line **l = setEnd -1;
+        while(l >= theSet) {
+            if ((*l)->getTag() == tag) {
+                lineHit = l;
+                break;
+            }
+            if (!(*l)->isValid())
+                lineFree = l;
+
+            // If line is invalid, isLocked must be false
+            GI(!(*l)->isValid(), !(*l)->isLocked());
+            l--;
+        }
+    }
+    GI(lineFree, !(*lineFree)->isValid() || !(*lineFree)->isLocked());
+
+    if (lineHit)
+        return *lineHit;
+
+    I(lineHit==0);
+
+    if (lineFree == 0 && isTransactional == false) {
+        if (policy == RANDOM) {
+            lineFree = &theSet[irand];
+            irand = (irand + 1) & maskAssoc;
+        } else {
+            I(policy == LRU);
+            // Get the oldest line possible
+            lineFree = setEnd-1;
+        }
+    } else if (lineFree == 0 && isTransactional && countTransactional(addr) == assoc) {
+        if (policy == RANDOM) {
+            lineFree = &theSet[irand];
+            irand = (irand + 1) & maskAssoc;
+        } else {
+            I(policy == LRU);
+            // Get the oldest line possible
+            lineFree = setEnd-1;
+        }
+    } else if (lineFree == 0 && isTransactional) {
+        if (policy == RANDOM) {
+            do {
+                lineFree = &theSet[irand];
+                irand = (irand + 1) & maskAssoc;
+            } while((*lineFree)->isTransactional() == false);
+        } else {
+            I(policy == LRU);
+            Line **l = setEnd -1;
+            // Find oldest non-transactional valid line
+            while(l >= theSet) {
+                if (!(*l)->isTransactional()) {
+                    lineFree = l;
+                    break;
+                }
+
+                l--;
+            }
+        }
+    } else {
+        if (policy == RANDOM && (*lineFree)->isValid()) {
+            lineFree = &theSet[irand];
+            irand = (irand + 1) & maskAssoc;
+        } else {
+            //      I(policy == LRU);
+            // Do nothing. lineFree is the oldest
+        }
+    }
+
+    I(lineFree);
+
+    if (lineFree == theSet)
+        return *lineFree; // Hit in the first possition
+
+    // No matter what is the policy, move lineHit to the *theSet. This
+    // increases locality
+    Line *tmp = *lineFree;
+    {
+        Line **l = lineFree;
+        while(l > theSet) {
+            Line **prev = l - 1;
+            *l = *prev;;
+            l = prev;
+        }
+        *theSet = tmp;
+    }
+
+    return tmp;
+}
+
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheAssocTM<State, Addr_t, Energy>::countValid(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+    Line **setEnd = theSet + assoc;
+
+    size_t count = 0;
+    {
+        Line **l = theSet;
+        while(l < setEnd) {
+            if ((*l)->isValid()) {
+                count++;
+            }
+            l++;
+        }
+    }
+    return count;
+}
+
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheAssocTM<State, Addr_t, Energy>::countTransactional(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+    Line **setEnd = theSet + assoc;
+
+    size_t count = 0;
+    {
+        Line **l = theSet;
+        while(l < setEnd) {
+            if ((*l)->isTransactional()) {
+                count++;
+            }
+            l++;
+        }
+    }
+    return count;
+}
+
+template<class State, class Addr_t, bool Energy>
+void
+CacheAssocTM<State, Addr_t, Energy>::clearTransactional()
+{
+    for(uint32_t i = 0; i < numLines; i++) {
+        mem[i].clearTransactional();
+    }
+}
+#endif
+
+
 /*********************************************************
  *  CacheAssoc
  *********************************************************/
@@ -348,10 +600,10 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
 
     I(lineHit==0);
 
-    if(lineFree == 0 && !ignoreLocked && !isTransactional)
+    if(lineFree == 0 && !ignoreLocked)
         return 0;
 
-    if (lineFree == 0 && isTransactional == false) {
+    if (lineFree == 0) {
         I(ignoreLocked);
         if (policy == RANDOM) {
             lineFree = &theSet[irand];
@@ -361,37 +613,6 @@ typename CacheAssoc<State, Addr_t, Energy>::Line
             // Get the oldest line possible
             lineFree = setEnd-1;
         }
-#if defined(TM)
-    } else if (lineFree == 0 && isTransactional && countTransactional(addr) == assoc) {
-        I(ignoreLocked);
-        if (policy == RANDOM) {
-            lineFree = &theSet[irand];
-            irand = (irand + 1) & maskAssoc;
-        } else {
-            I(policy == LRU);
-            // Get the oldest line possible
-            lineFree = setEnd-1;
-        }
-    } else if (lineFree == 0 && isTransactional) {
-        if (policy == RANDOM) {
-            do {
-                lineFree = &theSet[irand];
-                irand = (irand + 1) & maskAssoc;
-            } while((*lineFree)->isTransactional() == false);
-        } else {
-            I(policy == LRU);
-            Line **l = setEnd -1;
-            // Find oldest non-transactional valid line
-            while(l >= theSet) {
-                if (!(*l)->isTransactional()) {
-                    lineFree = l;
-                    break;
-                }
-
-                l--;
-            }
-        }
-#endif
     } else if(ignoreLocked) {
         if (policy == RANDOM && (*lineFree)->isValid()) {
             lineFree = &theSet[irand];

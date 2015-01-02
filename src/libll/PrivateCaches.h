@@ -64,7 +64,7 @@ public:
 
 class PrivateCache {
 public:
-    PrivateCache(const char* name, Pid_t p);
+    PrivateCache(const char* section, const char* name, Pid_t p);
     ~PrivateCache();
 
     bool doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
@@ -76,6 +76,7 @@ public:
 
     void startTransaction() { isTransactional = true; }
     void stopTransaction() { cache->clearTransactional(); isTransactional = false; }
+    bool isInTransaction() const { return isTransactional; }
     size_t getLineSize() const { return cache->getLineSize(); }
 private:
     typedef CacheGeneric<CState1, VAddr>            Cache;

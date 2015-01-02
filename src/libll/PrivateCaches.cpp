@@ -1,3 +1,5 @@
+#include <iostream>
+#include <string>
 #include <utility>
 #include "PrivateCaches.h"
 #include "libll/ThreadContext.h"
@@ -13,7 +15,7 @@ PrivateCaches::PrivateCaches(const char *section, size_t n)
         : nCores(n)
 {
     for(Pid_t p = 0; p < (Pid_t)nCores; ++p) {
-        caches.push_back(new PrivateCache("privateCache", p));
+        caches.push_back(new PrivateCache(section, "privateCache", p));
     }
 }
 PrivateCaches::~PrivateCaches()
@@ -66,7 +68,7 @@ bool PrivateCaches::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, 
 
 ///
 // Constructor for PrivateCache. Allocate members and GStat counters
-PrivateCache::PrivateCache(const char* name, Pid_t p)
+PrivateCache::PrivateCache(const char* section, const char* name, Pid_t p)
         : pid(p)
         , isTransactional(false)
         , readHit("%s_%d:readHit", name, p)
@@ -76,9 +78,35 @@ PrivateCache::PrivateCache(const char* name, Pid_t p)
         , usefulPrefetch("%s_%d:usefulPrefetch", name, p)
         , lostPrefetch("%s_%d:lostPrefetch", name, p)
 {
-    cache = Cache::create(32*1024,8,64,1,"LRU",false);
-    prefetchers.push_back(new MyNextLinePrefetcher);
-    prefetchers.push_back(new MyStridePrefetcher);
+    const int size = SescConf->getInt(section, "size");
+    const int assoc = SescConf->getInt(section, "assoc");
+    const int bsize = SescConf->getInt(section, "bsize");
+    cache = new CacheAssocTM<CState1, VAddr>(size, assoc, bsize, 1, "LRU");
+
+    if(SescConf->checkCharPtr(section, "prefetchers")) {
+        string prefetchers_str = SescConf->getCharPtr(section, "prefetchers");
+        size_t start = 0;
+        size_t end = 0;
+        do {
+            string prefType;
+            end = prefetchers_str.find(' ', start);
+            if(end == string::npos) {
+                prefType = prefetchers_str.substr(start, string::npos);
+            } else {
+                size_t len = end - start;
+                prefType = prefetchers_str.substr(start, len);
+                start = end + 1;
+            }
+
+            if(prefType == "NextLine") {
+                prefetchers.push_back(new MyNextLinePrefetcher);
+            } else if(prefType == "Stride") {
+                prefetchers.push_back(new MyStridePrefetcher);
+            } else if(prefType.size() > 0 && prefType.at(0) != ' ') {
+                MSG("Unknown prefetcher type: %s", prefType.c_str());
+            }
+        } while(end != string::npos);
+    }
 }
 
 ///
@@ -110,8 +138,8 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, bool isPrefetch, std::m
         fail("Replacing line is NULL!\n");
     }
 
-    if(isTransactional && replaced->isTransactional() && cache->countValid(addr) < cache->getAssoc()) {
-        fail("Evicted transactional line: \n");
+    if(isTransactional && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
+        fail("%d evicted transactional line to early: %d\n", pid, cache->countTransactional(addr));
     }
 
     // Invalidate old line

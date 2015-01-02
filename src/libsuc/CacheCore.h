@@ -264,6 +264,55 @@ public:
     }
 };
 
+#if defined(TM)
+#ifdef SESC_ENERGY
+template<class State, class Addr_t = uint32_t, bool Energy=true>
+#else
+template<class State, class Addr_t = uint32_t, bool Energy=false>
+#endif
+class CacheAssocTM : public CacheGeneric<State, Addr_t, Energy> {
+    using CacheGeneric<State, Addr_t, Energy>::numLines;
+    using CacheGeneric<State, Addr_t, Energy>::assoc;
+    using CacheGeneric<State, Addr_t, Energy>::maskAssoc;
+    using CacheGeneric<State, Addr_t, Energy>::goodInterface;
+
+private:
+public:
+    typedef typename CacheGeneric<State, Addr_t, Energy>::CacheLine Line;
+
+protected:
+
+    Line *mem;
+    Line **content;
+    ushort irand;
+    ReplacementPolicy policy;
+
+    friend class CacheGeneric<State, Addr_t, Energy>;
+
+    Line *findLinePrivate(Addr_t addr);
+public:
+    CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr);
+    virtual ~CacheAssocTM() {
+        delete [] content;
+        delete [] mem;
+    }
+
+    // TODO: do an iterator. not this junk!!
+    Line *getPLine(uint32_t l) {
+        // Lines [l..l+assoc] belong to the same set
+        I(l<numLines);
+        return content[l];
+    }
+
+    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+    size_t countValid(Addr_t addr);
+#if defined(TM)
+    size_t countTransactional(Addr_t addr);
+    void clearTransactional();
+#endif
+};
+#endif
+
 #ifdef SESC_ENERGY
 template<class State, class Addr_t = uint32_t, bool Energy=true>
 #else
