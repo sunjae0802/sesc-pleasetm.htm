@@ -50,7 +50,6 @@ protected:
     PortGeneric *cachePort;
     TimeDelta_t missDelay;
     TimeDelta_t hitDelay;
-    TimeDelta_t l1CacheHitDelay;
 
     MSHR<PAddr, SMPCache> *outsReq; // buffer for requests coming from upper levels
     static MSHR<PAddr, SMPCache> *mutExclBuffer;
@@ -75,10 +74,6 @@ protected:
     PendInvTable pendInvTable; // pending invalidate table
 
     // BEGIN statistics
-    GStatsCntr l1ReadHit;
-    GStatsCntr l1WriteHit;
-    GStatsCntr l1ReadMiss;
-    GStatsCntr l1WriteMiss;
     GStatsCntr readHit;
     GStatsCntr writeHit;
     GStatsCntr readMiss;
@@ -111,10 +106,7 @@ protected:
     void write(MemRequest *mreq);
     void pushline(MemRequest *mreq);
     void specialOp(MemRequest *mreq);
-    void hitL1Cache(MemRequest *mreq);
 
-    typedef CallbackMember1<SMPCache, MemRequest *,
-            &SMPCache::hitL1Cache> hitL1CacheCB;
     typedef CallbackMember1<SMPCache, MemRequest *,
             &SMPCache::read> readCB;
     typedef CallbackMember1<SMPCache, MemRequest *,

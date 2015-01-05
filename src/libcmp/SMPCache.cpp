@@ -83,6 +83,10 @@ unsigned SMPCache::cacheID = 0;
 
 SMPCache::SMPCache(SMemorySystem *dms, const char *section, const char *name)
     : MemObj(section, name)
+    , l1ReadHit("%s:l1ReadHit", name)
+    , l1WriteHit("%s:l1WriteHit", name)
+    , l1ReadMiss("%s:l1ReadMiss", name)
+    , l1WriteMiss("%s:l1WriteMiss", name)
     , readHit("%s:readHit", name)
     , writeHit("%s:writeHit", name)
     , readMiss("%s:readMiss", name)
@@ -188,6 +192,9 @@ SMPCache::SMPCache(SMemorySystem *dms, const char *section, const char *name)
                         32000,
                         SescConf->getInt(mshrSection, "bsize"));
 #endif
+
+    //SescConf->isInt(section, "l1CacheDelay");
+    l1CacheHitDelay = 3;
 
     SescConf->isInt(section, "hitDelay");
     hitDelay = SescConf->getInt(section, "hitDelay");
@@ -344,6 +351,23 @@ bool SMPCache::canAcceptStore(PAddr addr)
     return outsReq->canAcceptRequest(addr);
 }
 
+void SMPCache::hitL1Cache(MemRequest *mreq)
+{
+    switch(mreq->getMemOperation()) {
+    case MemRead:
+        l1ReadHit.inc();
+        break;
+    case MemWrite:
+    case MemReadW:
+        l1WriteHit.inc();
+        break;
+    default:
+        // do nothing
+        break;
+    }
+    mreq->goUp(l1CacheHitDelay);
+}
+
 void SMPCache::access(MemRequest *mreq)
 {
     PAddr addr;
@@ -399,13 +423,20 @@ void SMPCache::access(MemRequest *mreq)
     //if(globalClock>130660443) sdprint = true; // conj:ocean 130670443
     //sdprint = true;
 
+    if(mreq->getDInst()->wasL1Hit()) {
+        hitL1CacheCB::scheduleAbs(nextSlot(), this, mreq);
+        return;
+    }
+
     switch(mreq->getMemOperation()) {
     case MemRead:
+        l1ReadMiss.inc();
         read(mreq);
         break;
     case MemWrite: /*I(cache->findLine(mreq->getPAddr())); will be transformed
 						 to MemReadW later */
     case MemReadW:
+        l1WriteMiss.inc();
         write(mreq);
         break;
     case MemPush:
