@@ -132,6 +132,17 @@ private:
     std::map<VAddr, int32_t>    strideTable;
 };
 
+class MyMarkovPrefetcher: public MyPrefetcher {
+public:
+    MyMarkovPrefetcher(size_t s): size(s), prevAddress(0) {}
+    VAddr getAddr(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr);
+    void update(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr);
+private:
+    const size_t                        size;
+    VAddr                               prevAddress;
+    std::map<VAddr, std::list<VAddr>>   corrTable;
+};
+
 extern PrivateCaches* privateCacheManager;
 
 #endif

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -34,7 +35,7 @@ bool PrivateCaches::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, s
     PrivateCache* cache = caches.at(pid);
 
     bool wasHit = cache->doLoad(inst, context, addr, tmEvicted);
-    if(wasHit == false) {
+    if(wasHit == false && cache->isInTransaction() == false) {
         cache->doPrefetches(inst, context, addr, tmEvicted);
     } else {
         cache->updatePrefetchers(inst, context, addr, tmEvicted);
@@ -57,7 +58,7 @@ bool PrivateCaches::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, 
 
     PrivateCache* cache = caches.at(pid);
     bool wasHit = cache->doStore(inst, context, addr, tmEvicted);
-    if(wasHit == false) {
+    if(wasHit == false && cache->isInTransaction() == false) {
         cache->doPrefetches(inst, context, addr, tmEvicted);
     } else {
         cache->updatePrefetchers(inst, context, addr, tmEvicted);
@@ -102,6 +103,8 @@ PrivateCache::PrivateCache(const char* section, const char* name, Pid_t p)
                 prefetchers.push_back(new MyNextLinePrefetcher);
             } else if(prefType == "Stride") {
                 prefetchers.push_back(new MyStridePrefetcher);
+            } else if(prefType == "Markov") {
+                prefetchers.push_back(new MyMarkovPrefetcher(2));
             } else if(prefType.size() > 0 && prefType.at(0) != ' ') {
                 MSG("Unknown prefetcher type: %s", prefType.c_str());
             }
@@ -284,4 +287,27 @@ void MyStridePrefetcher::update(InstDesc* inst, ThreadContext* context, PrivateC
 
     prevTable[pcValue] = addr;
     strideTable[pcValue] = addr - prev;
+}
+VAddr MyMarkovPrefetcher::getAddr(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) {
+    VAddr nextAddr = 0;
+    if(corrTable[addr].size() > 0) {
+        nextAddr = corrTable[addr].front();
+    }
+
+    return nextAddr;
+}
+void MyMarkovPrefetcher::update(InstDesc* inst, ThreadContext* context, PrivateCache* cache, VAddr addr) {
+    VAddr prev = prevAddress;
+    prevAddress = addr;
+
+    std::list<VAddr>::iterator i_addr = find(corrTable[prev].begin(), corrTable[prev].end(), addr);
+    if(i_addr == corrTable[prev].end()) {
+        corrTable[prev].push_front(addr);
+    } else {
+        corrTable[prev].erase(i_addr);
+        corrTable[prev].push_front(addr);
+    }
+    if(corrTable[prev].size() > size) {
+        corrTable[prev].pop_back();
+    }
 }
