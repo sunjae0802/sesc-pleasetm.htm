@@ -344,7 +344,8 @@ typename CacheAssocTM<State, Addr_t, Energy>::Line
     I(lineHit==0);
 
     if (lineFree == 0) {
-        if(isTransactional == false || (isTransactional && countTransactional(addr) == assoc)) {
+        if(isTransactional == false || (countTransactional(addr) == assoc && countDirty(addr) == assoc)) {
+            // If not inside a transaction, or if we ran out of non-transactional or clean lines
             if (policy == RANDOM) {
                 lineFree = &theSet[irand];
                 irand = (irand + 1) & maskAssoc;
@@ -355,16 +356,9 @@ typename CacheAssocTM<State, Addr_t, Energy>::Line
             }
         } else {
             if (policy == RANDOM) {
-                size_t numDirty = 0;
                 Line **l = setEnd -1;
                 // Find oldest non-transactional valid, clean line
-                while(l >= theSet) {
-                    if ((*l)->isDirty()) {
-                        numDirty++;
-                    }
-                    l--;
-                }
-                if(numDirty == assoc) {
+                if(countDirty(addr) == assoc) {
                     do {
                         lineFree = &theSet[irand];
                         irand = (irand + 1) & maskAssoc;
@@ -378,18 +372,22 @@ typename CacheAssocTM<State, Addr_t, Energy>::Line
             } else {
                 I(policy == LRU);
                 Line **l = setEnd -1;
-                // Find oldest non-transactional valid, clean line
-                while(l >= theSet) {
-                    if (!(*l)->isTransactional() && !(*l)->isDirty()) {
-                        lineFree = l;
-                        break;
-                    }
+                if(countTransactional(addr) == assoc && countDirty(addr) < assoc) {
+                    // Find oldest transactional but still clean line
+                    while(l >= theSet) {
+                        if (!(*l)->isDirty()) {
+                            lineFree = l;
+                            break;
+                        }
 
-                    l--;
-                }
-                if(lineFree == 0) {
-                    // Give up and find a dirty line
-                    l = setEnd -1;
+                        l--;
+                    }
+                    if(lineFree == 0) {
+                        MSG("Clean replacement policy failed\n");
+                        exit(2);
+                    }
+                } else if(countTransactional(addr) < assoc && countDirty(addr) == assoc) {
+                    // Find oldest dirty, but non-transactional line
                     while(l >= theSet) {
                         if (!(*l)->isTransactional()) {
                             lineFree = l;
@@ -398,6 +396,37 @@ typename CacheAssocTM<State, Addr_t, Energy>::Line
 
                         l--;
                     }
+                    if(lineFree == 0) {
+                        MSG("non-transactional replacement policy failed\n");
+                        exit(2);
+                    }
+                } else if(countTransactional(addr) < assoc && countDirty(addr) < assoc) {
+                    while(l >= theSet) {
+                        if (!(*l)->isTransactional()) {
+                            lineFree = l;
+                            break;
+                        }
+
+                        l--;
+                    }
+                    if(lineFree == 0) {
+                        l = setEnd -1;
+                        while(l >= theSet) {
+                            if (!(*l)->isDirty()) {
+                                lineFree = l;
+                                break;
+                            }
+
+                            l--;
+                        }
+                    }
+                    if(lineFree == 0) {
+                        MSG("Common replacement policy failed\n");
+                        exit(2);
+                    }
+                } else {
+                    MSG("Non-accounted for case\n");
+                    exit(2);
                 }
             }
         }
@@ -446,6 +475,28 @@ CacheAssocTM<State, Addr_t, Energy>::countValid(Addr_t addr)
         Line **l = theSet;
         while(l < setEnd) {
             if ((*l)->isValid()) {
+                count++;
+            }
+            l++;
+        }
+    }
+    return count;
+}
+
+template<class State, class Addr_t, bool Energy>
+size_t
+CacheAssocTM<State, Addr_t, Energy>::countDirty(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+    Line **setEnd = theSet + assoc;
+
+    size_t count = 0;
+    {
+        Line **l = theSet;
+        while(l < setEnd) {
+            if ((*l)->isValid() && (*l)->isDirty()) {
                 count++;
             }
             l++;

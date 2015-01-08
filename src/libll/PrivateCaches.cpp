@@ -35,7 +35,7 @@ bool PrivateCaches::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, s
     PrivateCache* cache = caches.at(pid);
 
     bool wasHit = cache->doLoad(inst, context, addr, tmEvicted);
-    if(wasHit == false && cache->isInTransaction() == false) {
+    if(wasHit == false) {
         cache->doPrefetches(inst, context, addr, tmEvicted);
     } else {
         cache->updatePrefetchers(inst, context, addr, tmEvicted);
@@ -58,7 +58,7 @@ bool PrivateCaches::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, 
 
     PrivateCache* cache = caches.at(pid);
     bool wasHit = cache->doStore(inst, context, addr, tmEvicted);
-    if(wasHit == false && cache->isInTransaction() == false) {
+    if(wasHit == false) {
         cache->doPrefetches(inst, context, addr, tmEvicted);
     } else {
         cache->updatePrefetchers(inst, context, addr, tmEvicted);
@@ -141,12 +141,18 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, bool isPrefetch, std::m
         fail("Replacing line is NULL!\n");
     }
 
-    if(isTransactional && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
-        fail("%d evicted transactional line to early: %d\n", pid, cache->countTransactional(addr));
-    }
-
     // Invalidate old line
     if(replaced->isValid()) {
+        if(isTransactional && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
+            fail("%d evicted transactional line too early: %d\n", pid, cache->countTransactional(addr));
+        }
+        if(isTransactional && replaced->isTransactional() && replaced->isDirty() && cache->countDirty(addr) < cache->getAssoc()) {
+            fail("%d evicted transactional dirty line too early: %d\n", pid, cache->countDirty(addr));
+        }
+        if(isTransactional && replaced->isTransactional() && replaced->isDirty()) {
+            MSG("%d set-conflict: %ld %ld\n", pid, cache->countTransactional(addr), cache->countDirty(addr));
+        }
+
         VAddr replTag = replaced->getTag();
         if(replTag == myTag) {
             fail("Replaced line matches tag!\n");

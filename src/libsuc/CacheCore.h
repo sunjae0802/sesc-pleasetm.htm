@@ -118,6 +118,7 @@ public:
 
     virtual CacheLine *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false)=0;
     virtual size_t countValid(Addr_t addr) = 0;
+    virtual size_t countDirty(Addr_t addr) { return 0; }
 
 #if defined(TM)
     // Clear all transactional bits
@@ -306,6 +307,7 @@ public:
 
     Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
     size_t countValid(Addr_t addr);
+    size_t countDirty(Addr_t addr);
 #if defined(TM)
     size_t countTransactional(Addr_t addr);
     void clearTransactional();
