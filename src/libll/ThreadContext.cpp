@@ -230,8 +230,11 @@ uint32_t ThreadContext::getAbortRV(const TransState& transState) {
         case TM_ATYPE_CAPACITY:
             abortRV |= 8;
             break;
-        case TM_ATYPE_NACKOVERFLOW:
+        case TM_ATYPE_EVICTION:
             abortRV |= 16;
+            break;
+        case TM_ATYPE_SETCONFLICT:
+            abortRV |= 32;
             break;
         default:
             // Do nothing
