@@ -1533,12 +1533,12 @@ public:
                 MemT   mval=readMem<MemT>(context,addr);
 #if (defined TM)
                 if(context->isInTM()) {
-                    TMRWStatus status = tmCohManager->read(context->getPid(), 0, addr);
+                    TMRWStatus status = tmCohManager->read(inst, context, addr);
                     if(status == TMRW_SUCCESS) {
                         mval = readMemTM<MemT>(context, addr, mval);
                     }
                 } else if(tmCohManager) {
-                    tmCohManager->nonTMread(context->getPid(), addr);
+                    tmCohManager->nonTMread(inst, context, addr);
                 }
 #endif
                 MemT   rval=getReg<MemT,DTyp>(context,inst->regDst);
@@ -1562,12 +1562,12 @@ public:
                 MemT  val=readMem<MemT>(context,addr);
 #if (defined TM)
                 if(context->isInTM()) {
-                    TMRWStatus status = tmCohManager->read(context->getPid(), 0, addr);
+                    TMRWStatus status = tmCohManager->read(inst, context, addr);
                     if(status == TMRW_SUCCESS) {
                         val = readMemTM<MemT>(context, addr, val);
                     }
                 } else if(tmCohManager) {
-                    tmCohManager->nonTMread(context->getPid(), addr);
+                    tmCohManager->nonTMread(inst, context, addr);
                 }
 #endif
 #if (defined TM)
@@ -1638,12 +1638,12 @@ public:
                     }
                 } else {
                     if(context->isInTM()) {
-                        tmCohManager->write(context->getPid(), 0, addr);
+                        tmCohManager->write(inst, context, addr);
                         writeMemTM<MemT>(context, addr, val);
                         // Actual write done in cache flush
                     } else {
                         if(tmCohManager) {
-                            tmCohManager->nonTMwrite(context->getPid(), addr);
+                            tmCohManager->nonTMwrite(inst, context, addr);
                         }
                         writeMem<MemT>(context,addr,val);
                     }

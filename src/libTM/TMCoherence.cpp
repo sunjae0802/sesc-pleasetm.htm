@@ -323,7 +323,8 @@ void TMCoherence::completeFallback(Pid_t pid) {
     removeTransaction(pid);
 }
 
-TMRWStatus TMCoherence::read(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
@@ -331,10 +332,11 @@ TMRWStatus TMCoherence::read(Pid_t pid, int tid, VAddr raddr) {
 		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
 		return TMRW_ABORT;
 	} else {
-        return myRead(pid, tid, raddr);
+        return myRead(pid, 0, raddr);
     }
 }
-TMRWStatus TMCoherence::write(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
@@ -342,14 +344,15 @@ TMRWStatus TMCoherence::write(Pid_t pid, int tid, VAddr raddr) {
 		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
 		return TMRW_ABORT;
 	} else {
-        return myWrite(pid, tid, raddr);
+        return myWrite(pid, 0, raddr);
     }
 }
 
 ///
 // When a thread not inside a transaction conflicts with data read as part of
 //  a transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMread(Pid_t pid, VAddr raddr) {
+TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
     I(!hadRead(caddr, pid));
@@ -367,7 +370,8 @@ TMRWStatus TMCoherence::nonTMread(Pid_t pid, VAddr raddr) {
 ///
 // When a thread not inside a transaction conflicts with data is accessed as part of
 //  a transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMwrite(Pid_t pid, VAddr raddr) {
+TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
     I(!hadRead(caddr, pid));
