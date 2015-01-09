@@ -27,15 +27,15 @@ public:
     virtual ~TMCoherence() {}
     static TMCoherence *create(int32_t nProcs);
 
-    TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr);
-    TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr);
+    TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
+    TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
     TMBCStatus abort(Pid_t pid, int tid, TMAbortType_e abortType);
     TMBCStatus commit(Pid_t pid, int tid);
     TMBCStatus begin(Pid_t pid, InstDesc *inst);
 
     TMBCStatus completeAbort(Pid_t pid);
-    TMRWStatus nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr);
-    TMRWStatus nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr);
+    TMRWStatus nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
+    TMRWStatus nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
     void completeFallback(Pid_t pid);
     void markEvicted(Pid_t evicterPid, VAddr raddr, std::map<Pid_t, EvictCause>& evicted);
 

@@ -49,10 +49,8 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // (Remove this when ThreadContext stays in one place on thread switching)
 #include "libcore/OSSim.h"
 
-// This is to keep track of L1 caches internally
-#include "libll/PrivateCaches.h"
 #if (defined TM)
-#include "libTM/TMContext.h"
+#include "libTM/TMCoherence.h"
 #endif
 
 template<size_t siz>
@@ -569,18 +567,9 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     Pid_t pid = context->getPid();
     if(tmCohManager->checkAborting(pid)) {
         uint32_t abortArg = context->completeAbort(inst);
-        if(privateCacheManager) {
-            // Clear transactional bits
-            // Need this since OSSim starts too early
-            privateCacheManager->stopTransaction(context->getPid());
-        }
         ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, abortArg);
     } else {
         uint32_t beginArg = context->beginTransaction(inst);
-        if(privateCacheManager) {
-            // Need this since OSSim starts too early
-            privateCacheManager->startTransaction(context->getPid());
-        }
         ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, beginArg);
     }
 
@@ -597,11 +586,6 @@ InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
 
 InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context) {
     context->commitTransaction(inst);
-    if(privateCacheManager) {
-        // Clear transactional bits
-        // Need this since OSSim starts too early
-        privateCacheManager->stopTransaction(context->getPid());
-    }
     return inst;
 }
 
@@ -1513,16 +1497,7 @@ public:
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
 // 	  printf("Ld %d bytes 0x%016llx from 0x%08x (instr 0x%08x %s)\n",
 // 		 sizeof(MemT),(unsigned long long)(readMem<MemT>(context,addr)),addr,inst->addr,inst->name);
-            bool l1Hit = false;
-            std::map<Pid_t, EvictCause> evicted;
-            if(privateCacheManager) {
-                // Update private L1 cache state
-                // Need this since OSSim starts too early
-                l1Hit = privateCacheManager->doLoad(inst, context, addr, evicted);
-                tmCohManager->markEvicted(context->getPid(), addr, evicted);
-            }
             context->setDAddr(addr);
-            context->setL1Hit(l1Hit);
             if(kind==LdStLlSc) {
                 setReg<Taddr_t,RegTypeSpc>(context,static_cast<RegName>(RegLink),addr-(addr&0x7));
                 linkset.insert(context->getPid());
@@ -1533,12 +1508,16 @@ public:
                 MemT   mval=readMem<MemT>(context,addr);
 #if (defined TM)
                 if(context->isInTM()) {
-                    TMRWStatus status = tmCohManager->read(inst, context, addr);
+                    bool l1Hit = false;
+                    TMRWStatus status = tmCohManager->read(inst, context, addr, &l1Hit);
+                    context->setL1Hit(l1Hit);
                     if(status == TMRW_SUCCESS) {
                         mval = readMemTM<MemT>(context, addr, mval);
                     }
                 } else if(tmCohManager) {
-                    tmCohManager->nonTMread(inst, context, addr);
+                    bool l1Hit = false;
+                    tmCohManager->nonTMread(inst, context, addr, &l1Hit);
+                    context->setL1Hit(l1Hit);
                 }
 #endif
                 MemT   rval=getReg<MemT,DTyp>(context,inst->regDst);
@@ -1562,12 +1541,16 @@ public:
                 MemT  val=readMem<MemT>(context,addr);
 #if (defined TM)
                 if(context->isInTM()) {
-                    TMRWStatus status = tmCohManager->read(inst, context, addr);
+                    bool l1Hit = false;
+                    TMRWStatus status = tmCohManager->read(inst, context, addr, &l1Hit);
+                    context->setL1Hit(l1Hit);
                     if(status == TMRW_SUCCESS) {
                         val = readMemTM<MemT>(context, addr, val);
                     }
                 } else if(tmCohManager) {
-                    tmCohManager->nonTMread(inst, context, addr);
+                    bool l1Hit = false;
+                    tmCohManager->nonTMread(inst, context, addr, &l1Hit);
+                    context->setL1Hit(l1Hit);
                 }
 #endif
 #if (defined TM)
@@ -1617,27 +1600,23 @@ public:
             if((kind==LdStLlSc)&&(getReg<Taddr_t,RegTypeSpc>(context,RegLink)!=(addr-(addr&0x7)))) {
                 setReg<Tregv_t,DTyp>(context,inst->regDst,0);
             } else {
-                bool l1Hit = false;
-                if(privateCacheManager) {
-                    // Update private L1 cache state
-                    // Need this since OSSim starts too early
-                    l1Hit = privateCacheManager->doStore(inst, context, addr, evicted);
-                    tmCohManager->markEvicted(context->getPid(), addr, evicted);
-                }
                 context->setDAddr(addr);
-                context->setL1Hit(l1Hit);
                 MemT val=getReg<MemT,S2Typ>(context,inst->regSrc2);
                 if(kind&LdStLR) {
                     size_t tsiz=sizeof(MemT);
                     size_t offs=(addr%tsiz);
                     EndianDefs<mode>::cvtEndian(val);
                     if(context->isInTM()) {
-                        tmCohManager->write(inst, context, addr);
+                        bool l1Hit = false;
+                        tmCohManager->write(inst, context, addr, &l1Hit);
+                        context->setL1Hit(l1Hit);
                         writeMemTM<MemT>(context, addr, val);
                         // Actual write done in cache flush
                     } else {
                         if(tmCohManager) {
-                            tmCohManager->nonTMwrite(inst, context, addr);
+                            bool l1Hit = false;
+                            tmCohManager->nonTMwrite(inst, context, addr, &l1Hit);
+                            context->setL1Hit(l1Hit);
                         }
                         if((kind==LdStLeft)^((mode&ExecModeEndianMask)==ExecModeEndianLittle)) {
                             context->writeMemFromBuf(addr,tsiz-offs,&val);
@@ -1647,12 +1626,16 @@ public:
                     }
                 } else {
                     if(context->isInTM()) {
-                        tmCohManager->write(inst, context, addr);
+                        bool l1Hit = false;
+                        tmCohManager->write(inst, context, addr, &l1Hit);
+                        context->setL1Hit(l1Hit);
                         writeMemTM<MemT>(context, addr, val);
                         // Actual write done in cache flush
                     } else {
                         if(tmCohManager) {
-                            tmCohManager->nonTMwrite(inst, context, addr);
+                            bool l1Hit = false;
+                            tmCohManager->nonTMwrite(inst, context, addr, &l1Hit);
+                            context->setL1Hit(l1Hit);
                         }
                         writeMem<MemT>(context,addr,val);
                     }

@@ -275,6 +275,7 @@ TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
 		transStates[pid].beginNested();
 		return TMBC_IGNORE;
 	} else {
+        privateCacheManager->startTransaction(pid);
 		return myBegin(pid, inst);
 	}
 }
@@ -286,6 +287,7 @@ TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
 		transStates[pid].commitNested();
 		return TMBC_IGNORE;
 	} else {
+        privateCacheManager->stopTransaction(pid);
 		return myCommit(pid, tid);
 	}
 }
@@ -310,6 +312,8 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
         linesReadHist.sample(getNumReads(pid));
         linesWrittenHist.sample(getNumWrites(pid));
 
+        privateCacheManager->stopTransaction(pid);
+
         transStates[pid].completeAbort();
         removeTransaction(pid);
 
@@ -323,7 +327,7 @@ void TMCoherence::completeFallback(Pid_t pid) {
     removeTransaction(pid);
 }
 
-TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
@@ -332,10 +336,15 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
 		return TMRW_ABORT;
 	} else {
+        std::map<Pid_t, EvictCause> evicted;
+        bool l1Hit = privateCacheManager->doLoad(inst, context, raddr, evicted);
+        markEvicted(context->getPid(), raddr, evicted);
+
+        *p_l1Hit = l1Hit;
         return myRead(pid, 0, raddr);
     }
 }
-TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
@@ -344,6 +353,11 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
 		return TMRW_ABORT;
 	} else {
+        std::map<Pid_t, EvictCause> evicted;
+        bool l1Hit = privateCacheManager->doStore(inst, context, raddr, evicted);
+        markEvicted(context->getPid(), raddr, evicted);
+
+        *p_l1Hit = l1Hit;
         return myWrite(pid, 0, raddr);
     }
 }
@@ -351,12 +365,16 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 ///
 // When a thread not inside a transaction conflicts with data read as part of
 //  a transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
     I(!hadRead(caddr, pid));
     I(!hadWrote(caddr, pid));
+
+    std::map<Pid_t, EvictCause> evicted;
+    bool l1Hit = privateCacheManager->doStore(inst, context, raddr, evicted);
+    markEvicted(context->getPid(), raddr, evicted);
 
     // Abort writers once we try to read
     set<Pid_t> aborted;
@@ -364,18 +382,23 @@ TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr 
 
     markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
+    *p_l1Hit = l1Hit;
     return TMRW_SUCCESS;
 }
 
 ///
 // When a thread not inside a transaction conflicts with data is accessed as part of
 //  a transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
     I(!hadRead(caddr, pid));
     I(!hadWrote(caddr, pid));
+
+    std::map<Pid_t, EvictCause> evicted;
+    bool l1Hit = privateCacheManager->doLoad(inst, context, raddr, evicted);
+    markEvicted(context->getPid(), raddr, evicted);
 
     // Abort everyone once we try to write
     set<Pid_t> aborted;
@@ -384,6 +407,7 @@ TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr
 
     markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
+    *p_l1Hit = l1Hit;
     return TMRW_SUCCESS;
 }
 
