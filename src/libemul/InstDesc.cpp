@@ -1516,7 +1516,10 @@ public:
                 MemT   mval=readMem<MemT>(context,addr-offs);
 #if (defined TM)
                 if(context->isInTM()) {
-                    context->readMemTM<MemT>(addr-offs, mval, &mval);
+                    TMRWStatus status = tmCohManager->read(context->getPid(), 0, addr);
+                    if(status == TMRW_SUCCESS) {
+                        context->readMemTM<MemT>(addr-offs, mval, &mval);
+                    }
                 } else if(tmCohManager) {
                     tmCohManager->nonTMread(context->getPid(), addr-offs);
                 }
@@ -1608,6 +1611,7 @@ public:
                     }
                 } else {
                     if(context->isInTM()) {
+                        tmCohManager->write(context->getPid(), 0, addr);
                         context->writeMemTM<MemT>(addr, val);
                         // Actual write done in cache flush
                     } else {

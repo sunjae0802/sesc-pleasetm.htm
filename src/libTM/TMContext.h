@@ -19,14 +19,10 @@ public:
     TMContext*  getParentContext() { return parent; }
     VAddr       getBeginIAddr() { return beginIAddr; }
 
-    TMBCStatus  beginTransaction(InstDesc *inst);
-    TMBCStatus  abortTransaction();
-    TMBCStatus  commitTransaction(InstDesc *inst);
-
     template<class T>
-    TMRWStatus  cacheAccess(VAddr addr, T oval, T* p_val);
+    void  cacheAccess(VAddr addr, T oval, T* p_val);
     template<class T>
-    TMRWStatus  cacheWrite(VAddr addr, T val);
+    void  cacheWrite(VAddr addr, T val);
 
     void    saveContext();
     void    restoreContext();
@@ -48,23 +44,20 @@ private:
 };
 
 template<class T>
-TMRWStatus TMContext::cacheAccess(VAddr addr, T oval, T* p_val) {
-    T val = 0x10;
+void TMContext::cacheAccess(VAddr addr, T oval, T* p_val) {
+    T val = oval;
     bool found = false;
 
-    TMRWStatus status = tmCohManager->read(pid, tid, addr);
-    if(status == TMRW_SUCCESS) {
-        if(sizeof(T) == 1) {
-            val = (T)cache.load8(addr, &found);
-        } else if(sizeof(T) == 2) {
-            val = (T)cache.load16(addr, &found);
-        } else if(sizeof(T) == 4) {
-            val = (T)cache.load32(addr, &found);
-        } else if(sizeof(T) == 8) {
-            val = (T)cache.load64(addr, &found);
-        } else {
-            assert(0);
-        }
+    if(sizeof(T) == 1) {
+        val = (T)cache.load8(addr, &found);
+    } else if(sizeof(T) == 2) {
+        val = (T)cache.load16(addr, &found);
+    } else if(sizeof(T) == 4) {
+        val = (T)cache.load32(addr, &found);
+    } else if(sizeof(T) == 8) {
+        val = (T)cache.load64(addr, &found);
+    } else {
+        assert(0);
     }
 
     if (!found) {
@@ -72,17 +65,11 @@ TMRWStatus TMContext::cacheAccess(VAddr addr, T oval, T* p_val) {
     } else {
         *p_val = val;
     }
-    return status;
 }
 
 template<class T>
-TMRWStatus TMContext::cacheWrite(VAddr addr, T val) {
-    TMRWStatus status = tmCohManager->write(pid, tid, addr);
-
-    if(status == TMRW_SUCCESS) {
-        cache.store(context, addr, val);
-    }
-    return status;
+void TMContext::cacheWrite(VAddr addr, T val) {
+    cache.store(context, addr, val);
 }
 
 #endif
