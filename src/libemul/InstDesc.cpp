@@ -1631,10 +1631,19 @@ public:
                     size_t tsiz=sizeof(MemT);
                     size_t offs=(addr%tsiz);
                     EndianDefs<mode>::cvtEndian(val);
-                    if((kind==LdStLeft)^((mode&ExecModeEndianMask)==ExecModeEndianLittle)) {
-                        context->writeMemFromBuf(addr,tsiz-offs,&val);
+                    if(context->isInTM()) {
+                        tmCohManager->write(inst, context, addr);
+                        writeMemTM<MemT>(context, addr, val);
+                        // Actual write done in cache flush
                     } else {
-                        context->writeMemFromBuf(addr-offs,offs+1,((uint8_t *)(&val))+tsiz-1-offs);
+                        if(tmCohManager) {
+                            tmCohManager->nonTMwrite(inst, context, addr);
+                        }
+                        if((kind==LdStLeft)^((mode&ExecModeEndianMask)==ExecModeEndianLittle)) {
+                            context->writeMemFromBuf(addr,tsiz-offs,&val);
+                        } else {
+                            context->writeMemFromBuf(addr-offs,offs+1,((uint8_t *)(&val))+tsiz-1-offs);
+                        }
                     }
                 } else {
                     if(context->isInTM()) {
