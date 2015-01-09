@@ -343,6 +343,10 @@ public:
 //  ssize_t readMemToFile(VAddr addr, size_t len, int32_t fd, bool natFile);
     ssize_t readMemString(VAddr stringVAddr, size_t maxSize, char *dstStr);
     template<class T>
+    inline void readMemTM(VAddr addr, T oval, T* p_val) {
+        tmContext->cacheAccess<T>(addr, oval, p_val);
+    }
+    template<class T>
     inline T readMemRaw(VAddr addr) {
         if(sizeof(T)>sizeof(MemAlignType)) {
             fail("ThreadContext:writeMemRaw with a too-large type\n");
@@ -355,19 +359,12 @@ public:
 //      if(getState(addr+i*MemState::Granularity).st==0)
 //        fail("Uninitialized read found\n");
 
-#if (defined TM)
-        if(isInTM()) {
-            T val;
-            T oval = addressSpace->read<T>(addr);
-            tmContext->cacheAccess<T>(addr, oval, &val);
-
-            return val;
-        } else if(tmCohManager) {
-            tmCohManager->nonTMread(pid, addr);
-        }
-#endif
 
         return addressSpace->read<T>(addr);
+    }
+    template<class T>
+    inline void writeMemTM(VAddr addr, const T &val) {
+        tmContext->cacheWrite<T>(addr, val);
     }
     template<class T>
     inline void writeMemRaw(VAddr addr, const T &val) {
@@ -390,16 +387,6 @@ public:
         }
 //    for(size_t i=0;i<(sizeof(T)+MemState::Granularity-1)/MemState::Granularity;i++)
 //      getState(addr+i*MemState::Granularity).st=1;
-
-#if (defined TM)
-        if(isInTM()) {
-            tmContext->cacheWrite<T>(addr, val);
-            // addressSpace->write done in cache flush
-            return;
-        } else if(tmCohManager) {
-            tmCohManager->nonTMwrite(pid, addr);
-        }
-#endif
 
         addressSpace->write<T>(addr,val);
     }

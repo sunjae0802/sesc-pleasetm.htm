@@ -832,19 +832,6 @@ public:
             fail("Null pointer exception\n");
         }
         context->writeMemRaw(addr,fixEndian(val));
-        if(!linkset.empty()) {
-            PidSet::iterator pidIt=linkset.begin();
-            while(pidIt!=linkset.end()) {
-                if((*pidIt==context->getPid())||
-                        (getReg<Taddr_t,RegTypeSpc>(osSim->getContext(*pidIt),static_cast<RegName>(RegLink))==(addr-(addr&0x7)))) {
-                    setReg<Taddr_t,RegTypeSpc>(osSim->getContext(*pidIt),static_cast<RegName>(RegLink),0);
-                    linkset.erase(pidIt);
-                    pidIt=linkset.begin();
-                } else {
-                    pidIt++;
-                }
-            }
-        }
     }
     static RegName decodeArg(InstArgInfo arg, RawInst inst) {
         switch(arg) {
@@ -1527,6 +1514,13 @@ public:
             if(kind&LdStLR) {
                 size_t offs=(addr%sizeof(MemT));
                 MemT   mval=readMem<MemT>(context,addr-offs);
+#if (defined TM)
+                if(context->isInTM()) {
+                    context->readMemTM<MemT>(addr-offs, mval, &mval);
+                } else if(tmCohManager) {
+                    tmCohManager->nonTMread(context->getPid(), addr-offs);
+                }
+#endif
                 MemT   rval=getReg<MemT,DTyp>(context,inst->regDst);
                 if((mode&ExecModeEndianMask)==ExecModeEndianLittle)
                     offs=sizeof(MemT)-offs-1;
@@ -1613,7 +1607,28 @@ public:
                         context->writeMemFromBuf(addr-offs,offs+1,((uint8_t *)(&val))+tsiz-1-offs);
                     }
                 } else {
-                    writeMem<MemT>(context,addr,val);
+                    if(context->isInTM()) {
+                        context->writeMemTM<MemT>(addr, val);
+                        // Actual write done in cache flush
+                    } else {
+                        if(tmCohManager) {
+                            tmCohManager->nonTMwrite(context->getPid(), addr);
+                        }
+                        writeMem<MemT>(context,addr,val);
+                    }
+                    if(!linkset.empty()) {
+                        PidSet::iterator pidIt=linkset.begin();
+                        while(pidIt!=linkset.end()) {
+                            if((*pidIt==context->getPid())||
+                                    (getReg<Taddr_t,RegTypeSpc>(osSim->getContext(*pidIt),static_cast<RegName>(RegLink))==(addr-(addr&0x7)))) {
+                                setReg<Taddr_t,RegTypeSpc>(osSim->getContext(*pidIt),static_cast<RegName>(RegLink),0);
+                                linkset.erase(pidIt);
+                                pidIt=linkset.begin();
+                            } else {
+                                pidIt++;
+                            }
+                        }
+                    }
                 }
                 if(kind==LdStLlSc)
                     setReg<Tregv_t,DTyp>(context,inst->regDst,1);
