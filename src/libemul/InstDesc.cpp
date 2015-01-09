@@ -833,6 +833,22 @@ public:
         }
         context->writeMemRaw(addr,fixEndian(val));
     }
+    template<typename T>
+    static inline T readMemTM(ThreadContext *context, Taddr_t addr, T oval) {
+        T val = oval;
+        if(addr == 0) {
+            fail("Null pointer exception\n");
+        }
+        context->readMemTM<T>(addr, oval, &val);
+        return val;
+    }
+    template<typename T>
+    static inline void writeMemTM(ThreadContext *context, Taddr_t addr, const T &val) {
+        if(addr == 0) {
+            fail("Null pointer exception\n");
+        }
+        context->writeMemTM<T>(addr,val);
+    }
     static RegName decodeArg(InstArgInfo arg, RawInst inst) {
         switch(arg) {
         case ArgNo:
@@ -1513,15 +1529,16 @@ public:
             }
             if(kind&LdStLR) {
                 size_t offs=(addr%sizeof(MemT));
-                MemT   mval=readMem<MemT>(context,addr-offs);
+                addr       = addr - offs;
+                MemT   mval=readMem<MemT>(context,addr);
 #if (defined TM)
                 if(context->isInTM()) {
                     TMRWStatus status = tmCohManager->read(context->getPid(), 0, addr);
                     if(status == TMRW_SUCCESS) {
-                        context->readMemTM<MemT>(addr-offs, mval, &mval);
+                        mval = readMemTM<MemT>(context, addr, mval);
                     }
                 } else if(tmCohManager) {
-                    tmCohManager->nonTMread(context->getPid(), addr-offs);
+                    tmCohManager->nonTMread(context->getPid(), addr);
                 }
 #endif
                 MemT   rval=getReg<MemT,DTyp>(context,inst->regDst);
@@ -1543,6 +1560,16 @@ public:
 #endif
             } else {
                 MemT  val=readMem<MemT>(context,addr);
+#if (defined TM)
+                if(context->isInTM()) {
+                    TMRWStatus status = tmCohManager->read(context->getPid(), 0, addr);
+                    if(status == TMRW_SUCCESS) {
+                        val = readMemTM<MemT>(context, addr, val);
+                    }
+                } else if(tmCohManager) {
+                    tmCohManager->nonTMread(context->getPid(), addr);
+                }
+#endif
 #if (defined TM)
                 if((!markedForAbort(inst, context) && !context->tmNacked())) {
 #endif
@@ -1612,7 +1639,7 @@ public:
                 } else {
                     if(context->isInTM()) {
                         tmCohManager->write(context->getPid(), 0, addr);
-                        context->writeMemTM<MemT>(addr, val);
+                        writeMemTM<MemT>(context, addr, val);
                         // Actual write done in cache flush
                     } else {
                         if(tmCohManager) {
