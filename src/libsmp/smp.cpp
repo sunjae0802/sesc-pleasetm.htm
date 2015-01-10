@@ -39,7 +39,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // debugging defines
 #include "SMPDebug.h"
 
-#include "libll/PrivateCaches.h"
 #if (defined TM)
 #include "libTM/TMCoherence.h"
 #endif
@@ -56,7 +55,6 @@ int32_t main(int32_t argc, char**argv, char **envp)
 #if (defined TM)
     tmCohManager = TMCoherence::create(nProcs);
 #endif
-    privateCacheManager = new PrivateCaches("privatel1", nProcs);
 
     // processor and memory build
     std::vector<GProcessor *>    pr(nProcs);
