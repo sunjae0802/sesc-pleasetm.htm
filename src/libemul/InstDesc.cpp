@@ -818,20 +818,21 @@ public:
         context->writeMemRaw(addr,fixEndian(val));
     }
     template<typename T>
-    static inline T readMemTM(ThreadContext *context, Taddr_t addr, T oval) {
-        T val = oval;
+    static inline T readMemTM(ThreadContext *context, Taddr_t addr) {
         if(addr == 0) {
             fail("Null pointer exception\n");
         }
+        T val = context->readMemRaw<T>(addr);
+        T oval = val;
         context->readMemTM<T>(addr, oval, &val);
-        return val;
+        return fixEndian(val);
     }
     template<typename T>
     static inline void writeMemTM(ThreadContext *context, Taddr_t addr, const T &val) {
         if(addr == 0) {
             fail("Null pointer exception\n");
         }
-        context->writeMemTM<T>(addr,val);
+        context->writeMemTM<T>(addr,fixEndian(val));
     }
     static RegName decodeArg(InstArgInfo arg, RawInst inst) {
         switch(arg) {
@@ -1512,7 +1513,7 @@ public:
                     TMRWStatus status = tmCohManager->read(inst, context, addr, &l1Hit);
                     context->setL1Hit(l1Hit);
                     if(status == TMRW_SUCCESS) {
-                        mval = readMemTM<MemT>(context, addr, mval);
+                        mval = readMemTM<MemT>(context, addr);
                     }
                 } else if(tmCohManager) {
                     bool l1Hit = false;
@@ -1545,7 +1546,7 @@ public:
                     TMRWStatus status = tmCohManager->read(inst, context, addr, &l1Hit);
                     context->setL1Hit(l1Hit);
                     if(status == TMRW_SUCCESS) {
-                        val = readMemTM<MemT>(context, addr, val);
+                        val = readMemTM<MemT>(context, addr);
                     }
                 } else if(tmCohManager) {
                     bool l1Hit = false;
