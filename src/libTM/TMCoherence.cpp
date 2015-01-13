@@ -76,6 +76,33 @@ PrivateCache::PrivateCache(const char* section, const char* name, Pid_t p)
     const int assoc = SescConf->getInt(section, "assoc");
     const int bsize = SescConf->getInt(section, "bsize");
     cache = new CacheAssocTM<CState1, VAddr>(size, assoc, bsize, 1, "LRU");
+
+    if(SescConf->checkCharPtr(section, "prefetchers")) {
+        string prefetchers_str = SescConf->getCharPtr(section, "prefetchers");
+        size_t start = 0;
+        size_t end = 0;
+        do {
+            string prefType;
+            end = prefetchers_str.find(' ', start);
+            if(end == string::npos) {
+                prefType = prefetchers_str.substr(start, string::npos);
+            } else {
+                size_t len = end - start;
+                prefType = prefetchers_str.substr(start, len);
+                start = end + 1;
+            }
+
+            if(prefType == "NextLine") {
+                prefetchers.push_back(new MyNextLinePrefetcher);
+            } else if(prefType == "Stride") {
+                prefetchers.push_back(new MyStridePrefetcher);
+            } else if(prefType == "Markov") {
+                prefetchers.push_back(new MyMarkovPrefetcher(2));
+            } else if(prefType.size() > 0 && prefType.at(0) != ' ') {
+                MSG("Unknown prefetcher type: %s", prefType.c_str());
+            }
+        } while(end != string::npos);
+    }
 }
 
 ///
