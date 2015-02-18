@@ -77,12 +77,6 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         tmAbortIAddr= 0;
         tmAbortArg  = 0;
         tmNumWrites = 0;
-        if(tmBeginNackCycles > 0) {
-            // Trace NACK end
-            std::ostringstream out0;
-            out0 << pid << " n 0x0";
-            instTrace0 = out0.str();
-        }
         tmBeginNackCycles = 0;
 
         uint64_t utid = transState.getUtid();
@@ -100,12 +94,6 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
 
         return getBeginRV(status);
     } else if(status == TMBC_NACK) {
-        if(tmBeginNackCycles == 0) {
-            // Trace NACK begin
-            std::ostringstream out;
-            out << pid << " N 0x0 " << tmCohManager->getTMNackOwner(pid);
-            instTrace10 = out.str();
-        }
         tmBeginNackCycles++;
         // And "return" from TM Begin, returning 4|1 from getBeginRV
         updIAddr(inst->aupdate,1);

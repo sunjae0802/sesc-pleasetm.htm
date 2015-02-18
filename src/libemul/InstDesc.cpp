@@ -2211,6 +2211,27 @@ void handleEveryRet(InstDesc *inst, ThreadContext *context) {
 }
 #endif
 
+// Function Boundary Data Handlers
+void addRetHandler(ThreadContext* context, retHandler_t retHandler) {
+    uint32_t ra     = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    context->addCall(ra, retHandler);
+}
+void nullRetHandler(InstDesc *inst, ThreadContext *context) { }
+
+void funcDataInitCall(ThreadContext* context, enum FuncName funcName, retHandler_t retHandler) {
+    uint32_t ra     = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+    uint32_t arg0   = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+    uint32_t arg1   = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA1);
+
+    context->funcData.push_back(FuncBoundaryData::createCall(funcName, ra, arg0, arg1));
+    addRetHandler(context, retHandler);
+}
+void funcDataInitRet(ThreadContext* context, enum FuncName funcName) {
+    uint32_t rv     = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0);
+
+    context->funcData.push_back(FuncBoundaryData::createRet(funcName, rv));
+}
+
 // pthread_mutex call/return
 void handleLockCall(InstDesc *inst, ThreadContext *context) {
     uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
@@ -2218,10 +2239,7 @@ void handleLockCall(InstDesc *inst, ThreadContext *context) {
 
     if(context->isInTM()) { fail("calling lock in TM"); }
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        out << context->getPid() << " 2 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
-
+        funcDataInitCall(context, FUNC_PTHREAD_MUTEX_LOCK, &handleLockRet);
         context->s_lockRA  = ra;
         context->s_lockArg = arg;
     }
@@ -2229,13 +2247,7 @@ void handleLockCall(InstDesc *inst, ThreadContext *context) {
 
 void handleLockRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = context->s_lockRA;
-        uint32_t arg = context->s_lockArg;
-
-        out << context->getPid() << " 3 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
-
+        funcDataInitRet(context, FUNC_PTHREAD_MUTEX_LOCK);
         context->s_lockRA  = 0;
         context->s_lockArg = 0;
     }
@@ -2243,13 +2255,8 @@ void handleLockRet(InstDesc *inst, ThreadContext *context) {
 }
 
 void handleUnlockCall(InstDesc *inst, ThreadContext *context) {
-    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        out << context->getPid() << " 4 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
+        funcDataInitCall(context, FUNC_PTHREAD_MUTEX_UNLOCK);
     }
     context->decLockDepth();
 }
@@ -2261,10 +2268,7 @@ void handleSpinLockCall(InstDesc *inst, ThreadContext *context) {
 
     if(context->isInTM()) { fail("calling lock in TM"); }
     if(ThreadContext::inMain && !context->spinning) {
-        std::ostringstream out;
-        out << context->getPid() << " 5 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
-
+        funcDataInitCall(context, FUNC_PTHREAD_SPIN_LOCK, &handleSpinLockRet);
         context->s_lockRA  = ra;
         context->s_lockArg = arg;
     }
@@ -2273,13 +2277,7 @@ void handleSpinLockCall(InstDesc *inst, ThreadContext *context) {
 
 void handleSpinLockRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = context->s_lockRA;
-        uint32_t arg = context->s_lockArg;
-
-        out << context->getPid() << " 6 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
-
+        funcDataInitRet(context, FUNC_PTHREAD_SPIN_LOCK);
         context->s_lockRA  = 0;
         context->s_lockArg = 0;
     }
@@ -2287,13 +2285,8 @@ void handleSpinLockRet(InstDesc *inst, ThreadContext *context) {
 }
 
 void handleSpinUnlockCall(InstDesc *inst, ThreadContext *context) {
-    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        out << context->getPid() << " 7 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
+        funcDataInitCall(context, FUNC_PTHREAD_SPIN_UNLOCK);
     }
     context->spinning = false;
     context->decLockDepth();
@@ -2304,9 +2297,7 @@ void handleBarrierCall(InstDesc *inst, ThreadContext *context) {
     uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
 
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        out << context->getPid() << " B 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
+        funcDataInitCall(context, FUNC_PTHREAD_BARRIER, &handleBarrierRet);
 
         context->s_barrierRA  = ra;
         context->s_barrierArg = arg;
@@ -2315,13 +2306,7 @@ void handleBarrierCall(InstDesc *inst, ThreadContext *context) {
 
 void handleBarrierRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = context->s_barrierRA;
-        uint32_t arg = context->s_barrierArg;
-
-        out << context->getPid() << " b 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
-
+        funcDataInitRet(context, FUNC_PTHREAD_BARRIER);
         context->s_barrierRA  = 0;
         context->s_barrierArg = 0;
     }
@@ -2338,116 +2323,60 @@ void handleMainRet(InstDesc *inst, ThreadContext *context) {
 // TM Lib call/return
 void handleTMBeginCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
         uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-
         if(context->tmlibUserTid == -1) {
             context->tmlibUserTid = arg;
         } else if(context->tmlibUserTid != (int32_t)arg) {
             fail("tm_begin tid arg changed?\n");
         }
-        out << context->getPid() << " S 0x" << hex << ra << " 0x" << arg << dec;
-        context->funcTrace.push_back(out.str());
+
+        funcDataInitCall(context, FUNC_TM_BEGIN);
     }
 }
 
 void handleTMBeginFallbackCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-
-        out << context->getPid() << " F 0x" << hex << ra << dec;
-        context->funcTrace.push_back(out.str());
-        context->addCall(ra, &handleTMBeginFallbackRet);
+        funcDataInitCall(context, FUNC_TM_BEGIN_FALLBACK, &handleTMBeginFallbackRet);
     }
 }
 void handleTMBeginFallbackRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-
-        out << context->getPid() << " E 0x" << hex << ra << dec;
-
-        context->funcTrace.push_back(out.str());
+        funcDataInitRet(context, FUNC_TM_BEGIN_FALLBACK);
     }
 }
 void handleTMEndFallbackCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-        context->addCall(ra, &handleTMEndFallbackRet);
+        addRetHandler(context, &handleTMEndFallbackRet);
     }
 }
 void handleTMEndFallbackRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-
-        // XXX Overwriten by tmEndRet?
-        out << context->getPid() << " f 0x" << hex << ra << dec;
-
-        context->funcTrace.push_back(out.str());
+        funcDataInitRet(context, FUNC_TM_END_FALLBACK);
         context->completeFallback();
-    }
-}
-void handleTMAcquireFlagCall(InstDesc *inst, ThreadContext *context) {
-    if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-
-        out << context->getPid() << " G 0x" << hex << ra << dec;
-        context->funcTrace.push_back(out.str());
-        context->addCall(ra, &handleTMAcquireFlagRet);
-    }
-}
-void handleTMAcquireFlagRet(InstDesc *inst, ThreadContext *context) {
-    if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-        uint32_t rv = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0);
-
-        out << context->getPid() << " g 0x" << hex << ra << dec << ' ' << rv;
-
-        context->funcTrace.push_back(out.str());
     }
 }
 
 void handleTMWaitCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-        uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-
-        out << context->getPid() << " V 0x" << hex << ra << dec << ' ' << arg;
-        context->funcTrace.push_back(out.str());
-        context->addCall(ra, &handleTMWaitRet);
+        funcDataInitCall(context, FUNC_TM_WAIT, &handleTMWaitRet);
     }
 }
 void handleTMWaitRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-
-        out << context->getPid() << " v 0x" << hex << ra << dec;
-        context->funcTrace.push_back(out.str());
+        funcDataInitRet(context, FUNC_TM_WAIT);
     }
 }
 
 // TM Lib End Tracing
 void handleTMEndCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-        context->addCall(ra, &handleTMEndRet);
+        addRetHandler(context, &handleTMEndRet);
     }
 }
 
 void handleTMEndRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        std::ostringstream out;
-        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-
-        out << context->getPid() << " s 0x" << hex << ra << dec;
-        context->funcTrace.push_back(out.str());
+        funcDataInitRet(context, FUNC_TM_END);
     }
 }
 
@@ -2528,25 +2457,22 @@ void decodeTrace(ThreadContext *context, VAddr addr, size_t len) {
         AddressSpace::addCallHandler("",WrapHandler<handleEveryCall>);
         AddressSpace::addRetHandler("",WrapHandler<handleEveryRet>);
 #endif
-        // pthread_mutex call/return
-		AddressSpace::addCallHandler("pthread_mutex_lock",WrapHandler<handleLockCall>);
-		AddressSpace::addRetHandler("pthread_mutex_lock",WrapHandler<handleLockRet>);
-		AddressSpace::addCallHandler("pthread_mutex_unlock",WrapHandler<handleUnlockCall>);
-        // pthread_spin call/return
-		AddressSpace::addCallHandler("pthread_spin_lock",WrapHandler<handleSpinLockCall>);
-		AddressSpace::addRetHandler("pthread_spin_lock",WrapHandler<handleSpinLockRet>);
-		AddressSpace::addCallHandler("pthread_spin_unlock",WrapHandler<handleSpinUnlockCall>);
-        // pthread_barrier call/return
-		AddressSpace::addCallHandler("pthread_barrier_wait",WrapHandler<handleBarrierCall>);
-		AddressSpace::addRetHandler("pthread_barrier_wait",WrapHandler<handleBarrierRet>);
         // main call/return
         AddressSpace::addCallHandler("main",WrapHandler<handleMainCall>);
         AddressSpace::addRetHandler("main",WrapHandler<handleMainRet>);
+
+        // pthread_mutex call/return
+		AddressSpace::addCallHandler("pthread_mutex_lock",WrapHandler<handleLockCall>);
+		AddressSpace::addCallHandler("pthread_mutex_unlock",WrapHandler<handleUnlockCall>);
+        // pthread_spin call/return
+		AddressSpace::addCallHandler("pthread_spin_lock",WrapHandler<handleSpinLockCall>);
+		AddressSpace::addCallHandler("pthread_spin_unlock",WrapHandler<handleSpinUnlockCall>);
+        // pthread_barrier call/return
+		AddressSpace::addCallHandler("pthread_barrier_wait",WrapHandler<handleBarrierCall>);
         // TM call/return
         AddressSpace::addCallHandler("tm_begin",WrapHandler<handleTMBeginCall>);
         AddressSpace::addCallHandler("tm_begin_fallback",WrapHandler<handleTMBeginFallbackCall>);
         AddressSpace::addCallHandler("tm_end_fallback",WrapHandler<handleTMEndFallbackCall>);
-        AddressSpace::addCallHandler("tm_acquire_flag",WrapHandler<handleTMAcquireFlagCall>);
         AddressSpace::addCallHandler("tm_wait",WrapHandler<handleTMWaitCall>);
         AddressSpace::addCallHandler("tm_end",WrapHandler<handleTMEndCall>);
 

@@ -122,6 +122,7 @@ private:
     bool tmNacked;
     bool tmAborted;
 public:
+    std::vector<FuncBoundaryData> funcData;
     VAddr       tmCallsite;
     VAddr       tmAbortIAddr;
     TransState  tmState;
@@ -209,11 +210,6 @@ private:
     CallbackBase *pendEvent;
 
     char nDeps;              // 0, 1 or 2 for RISC processors
-
-public:
-    std::vector<std::string> funcTrace;
-    std::string instTrace0;
-    std::string instTrace10;
 
 #ifdef DEBUG
 public:

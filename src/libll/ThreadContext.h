@@ -16,6 +16,27 @@
 #include "libTM/TMContext.h"
 #endif
 
+struct FuncBoundaryData {
+    static FuncBoundaryData createCall(enum FuncName name,
+            uint32_t retA, uint32_t a0, uint32_t a1) {
+        return FuncBoundaryData(name, true, retA, 0, a0, a1);
+    }
+    static FuncBoundaryData createRet(enum FuncName name,
+            uint32_t retV) {
+        return FuncBoundaryData(name, false, 0, retV, 0, 0);
+    }
+    FuncBoundaryData(enum FuncName name, bool call,
+            uint32_t retA, uint32_t retV, uint32_t a0, uint32_t a1):
+        funcName(name), isCall(call), ra(retA), rv(retV), arg0(a0), arg1(a1) {}
+
+    enum FuncName funcName;
+    bool isCall;        // Call if true, return if false
+    uint32_t ra;
+    uint32_t rv;
+    uint32_t arg0;
+    uint32_t arg1;
+};
+
 // Use this define to debug the simulated application
 // It enables call stack tracking
 //#define DEBUG_BENCH
@@ -27,6 +48,7 @@ public:
     static bool simDone;
 	static int64_t finalSkip;
     static Time_t resetTS;
+    std::vector<FuncBoundaryData> funcData;
 private:
     void initialize(bool child);
 	void cleanup();
@@ -581,10 +603,6 @@ public:
     void clearCallStack(void);
 
 public:
-    std::vector<std::string> funcTrace;
-    std::string instTrace0;
-    std::string instTrace10;
-
     int32_t lockDepth;
     bool spinning;
     uint32_t s_lockRA;

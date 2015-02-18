@@ -265,6 +265,10 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->pend[0].preg = 0;
     i->pend[1].preg = 0;
 #endif
+    i->funcData.clear();
+    i->funcData     = context->funcData;
+    context->funcData.clear();
+
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);
     i->tmCallsite   = 0;
@@ -288,15 +292,6 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     }
     i->tmNacked     = context->tmNacked();
     i->tmAborted    = context->isTMAborting();
-
-    i->funcTrace = context->funcTrace;
-    context->funcTrace.clear();
-
-    i->instTrace10 = context->instTrace10;
-    context->instTrace10 = "";
-
-    i->instTrace0 = context->instTrace0;
-    context->instTrace0 = "";
 
     return i;
 }

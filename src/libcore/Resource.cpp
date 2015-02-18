@@ -671,53 +671,65 @@ void FUEvent::simTime(DInst *dinst)
     cluster->executed(dinst);
 }
 
+#include <iostream>
+
 void Resource::traceEvent(DInst *dinst) {
     if(ThreadContext::inMain == false) {
         return;
     }
     const Instruction *inst = dinst->getInst();
     ThreadContext *context = dinst->context;
+    GProcessor *gproc = getCluster()->getGProcessor();
     std::ofstream& out = context->getDatafile();
 
     // XXX
     context->incNRetiredInsts();
 
-    // Handle Memop Nack Stall tracking
-    if(dinst->wasTMNacked()) {
-        out<<context->getPid()
-                    <<" M"
-                    <<" 0x"<<std::hex<<inst->getAddr()<<std::dec
-                    <<" 0x"<<std::hex<<dinst->getVaddr()<<std::dec
-                    <<" " << context->getNRetiredInsts() << ' ' << globalClock << '\n';
-        context->retireNackedDInst();
-    } else if(context->getNackStallStart() != 0) {
-        // DInst after the previous nacked dinst
-        if(dinst->wasTMAborted()) {
-            out<<context->getPid()
-                        <<" k"
-                        <<" 0x"<<std::hex<<inst->getAddr()<<std::dec
-                        <<" " << (globalClock - context->getNackStallStart())
-                        <<" " << context->getNRetiredInsts() << ' ' << globalClock << '\n';
-        } else {
-            out<<context->getPid()
-                        <<" K"
-                        <<" 0x"<<std::hex<<inst->getAddr()<<std::dec
-                        <<" " << (globalClock - context->getNackStallStart())
-                        <<" " << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+    for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
+            i_funcData != dinst->funcData.end(); ++i_funcData) {
+        char eventType = '?';
+        switch(i_funcData->funcName) {
+            case FUNC_PTHREAD_BARRIER:
+                if(i_funcData->isCall) {
+                    eventType = 'B';
+                } else {
+                    eventType = 'b';
+                }
+                break;
+            case FUNC_TM_BEGIN:
+                if(i_funcData->isCall) {
+                    eventType = 'S';
+                }
+                break;
+            case FUNC_TM_BEGIN_FALLBACK:
+                if(i_funcData->isCall) {
+                    eventType = 'F';
+                } else {
+                    eventType = 'E';
+                }
+                break;
+            case FUNC_TM_WAIT:
+                if(i_funcData->isCall) {
+                    eventType = 'V';
+                } else {
+                    eventType = 'v';
+                }
+                break;
+            case FUNC_TM_END:
+                if(i_funcData->isCall == false) {
+                    eventType = 's';
+                }
+                break;
+            default:
+                // Do nothing
+                break;
         }
-        context->clearRetireNack();
-    }
-
-    for(std::vector<string>::iterator i_funcTrace = dinst->funcTrace.begin();
-            i_funcTrace != dinst->funcTrace.end(); ++i_funcTrace) {
-        out << *i_funcTrace << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
-    }
-    out.flush();
-    if(!dinst->instTrace0.empty()) {
-        out << dinst->instTrace0 << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
-    }
-    if(!dinst->instTrace10.empty()) {
-        out << dinst->instTrace10 << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+        if(eventType != '?') {
+            out << context->getPid() << ' ' << eventType
+                    << " 0x" << hex << i_funcData->ra
+                    << " 0x" << i_funcData->arg0 << dec
+                    << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+        }
     }
 }
 

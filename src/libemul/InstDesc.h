@@ -16,6 +16,20 @@ typedef uint16_t Opcode;
 
 class ThreadContext;
 class InstDesc;
+enum FuncName {
+    FUNC_NONE = 0,
+    FUNC_PTHREAD_BARRIER,
+    FUNC_PTHREAD_MUTEX_LOCK,
+    FUNC_PTHREAD_MUTEX_UNLOCK,
+    FUNC_PTHREAD_SPIN_LOCK,
+    FUNC_PTHREAD_SPIN_UNLOCK,
+    FUNC_TM_BEGIN,
+    FUNC_TM_BEGIN_FALLBACK,
+    FUNC_TM_END_FALLBACK,
+    FUNC_TM_WAIT,
+    FUNC_TM_END
+};
+
 typedef InstDesc *EmulFunc(InstDesc *inst, ThreadContext *context);
 
 namespace Mips {
@@ -30,6 +44,12 @@ namespace Mips {
     InstDesc *emulTMTest(InstDesc *inst, ThreadContext *context);
 #endif
 }
+
+typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
+void addRetHandler(ThreadContext* context, retHandler_t retHandler);
+void nullRetHandler(InstDesc *inst, ThreadContext *context);
+void funcDataInitCall(ThreadContext* context, enum FuncName funcName, retHandler_t retHandler = &nullRetHandler);
+void funcDataInitRet(ThreadContext* context, enum FuncName funcName);
 
 // pthread_mutex call/return
 void handleLockCall(InstDesc *inst, ThreadContext *context);
@@ -51,8 +71,6 @@ void handleTMBeginFallbackCall(InstDesc *inst, ThreadContext *context);
 void handleTMBeginFallbackRet(InstDesc *inst, ThreadContext *context);
 void handleTMEndFallbackCall(InstDesc *inst, ThreadContext *context);
 void handleTMEndFallbackRet(InstDesc *inst, ThreadContext *context);
-void handleTMAcquireFlagCall(InstDesc *inst, ThreadContext *context);
-void handleTMAcquireFlagRet(InstDesc *inst, ThreadContext *context);
 void handleTMWaitCall(InstDesc *inst, ThreadContext *context);
 void handleTMWaitRet(InstDesc *inst, ThreadContext *context);
 void handleTMEndCall(InstDesc *inst, ThreadContext *context);
