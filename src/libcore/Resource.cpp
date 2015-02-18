@@ -726,10 +726,15 @@ void Resource::traceEvent(DInst *dinst) {
                 break;
         }
         if(eventType != '?') {
-            out << context->getPid() << ' ' << eventType
-                    << " 0x" << hex << i_funcData->ra
-                    << " 0x" << i_funcData->arg0 << dec
-                    << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
+            out << context->getPid() << ' ' << eventType;
+            if(i_funcData->isCall) {
+                out << " 0x" << hex << i_funcData->ra
+                    << " 0x" << i_funcData->arg0
+                    << " 0x" << i_funcData->arg1 << dec;
+            } else {
+                out << " 0x" << hex << i_funcData->rv << dec;
+            }
+            out << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
         }
     }
 }
