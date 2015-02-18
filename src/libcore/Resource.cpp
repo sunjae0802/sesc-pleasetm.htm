@@ -709,6 +709,11 @@ void Resource::traceEvent(DInst *dinst) {
                     eventType = 'E';
                 }
                 break;
+            case FUNC_TM_END_FALLBACK:
+                if(i_funcData->isCall == false) {
+                    eventType = 'f';
+                }
+                break;
             case FUNC_TM_WAIT:
                 if(i_funcData->isCall) {
                     eventType = 'V';
