@@ -137,9 +137,6 @@ StallCause FUMemory::canIssue(DInst *dinst)
 void FUMemory::simTime(DInst *dinst)
 {
     const Instruction *inst = dinst->getInst();
-    I(inst->isFence());
-    I(!inst->isLoad() );
-    I(!inst->isStore() );
 
     // All structures accessed (very expensive)
     iAluEnergy->inc();
@@ -164,35 +161,38 @@ RetOutcome FUMemory::retire(DInst *dinst)
             return WaitForFence;
         }
         traceTM(dinst);
-    }
 
-    if( inst->getSubCode() == iFetchOp ) {
-        if (L1DCache->canAcceptStore(static_cast<PAddr>(dinst->getVaddr())) == false)
-            return NoCacheSpace;
-        FUStore* r = (FUStore*) getCluster()->getResource(iStore);
+        traceEvent(dinst);
+        dinst->destroy();
+    } else if(inst->isFence()) {
+        if( inst->getSubCode() == iFetchOp ) {
+            if (L1DCache->canAcceptStore(static_cast<PAddr>(dinst->getVaddr())) == false)
+                return NoCacheSpace;
+            FUStore* r = (FUStore*) getCluster()->getResource(iStore);
 #ifdef TS_CHERRY
-        dinst->setCanBeRecycled();
-        dinst->setMemoryIssued();
+            dinst->setCanBeRecycled();
+            dinst->setMemoryIssued();
 #endif
-        if ( r->waitingOnFence() == true)
-            return WaitForFence;
-        else
-            r->storeSent();
-        traceEvent(dinst);
-        DMemRequest::create(dinst, memorySystem, MemWrite);
-    } else if( inst->getSubCode() == iMemFence ) {
-        ((FUStore*)(getCluster()->getResource(iStore)))->doFence();
-        traceEvent(dinst);
-        dinst->destroy();
-    } else if( inst->getSubCode() == iAcquire ) {
-        traceEvent(dinst);
-        // TODO: Consistency in LDST
-        dinst->destroy();
-    } else {
-        I( inst->getSubCode() == iRelease );
-        traceEvent(dinst);
-        // TODO: Consistency in LDST
-        dinst->destroy();
+            if ( r->waitingOnFence() == true)
+                return WaitForFence;
+            else
+                r->storeSent();
+            traceEvent(dinst);
+            DMemRequest::create(dinst, memorySystem, MemWrite);
+        } else if( inst->getSubCode() == iMemFence ) {
+            ((FUStore*)(getCluster()->getResource(iStore)))->doFence();
+            traceEvent(dinst);
+            dinst->destroy();
+        } else if( inst->getSubCode() == iAcquire ) {
+            traceEvent(dinst);
+            // TODO: Consistency in LDST
+            dinst->destroy();
+        } else {
+            I( inst->getSubCode() == iRelease );
+            traceEvent(dinst);
+            // TODO: Consistency in LDST
+            dinst->destroy();
+        }
     }
 
     return Retired;
