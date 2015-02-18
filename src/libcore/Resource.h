@@ -102,7 +102,6 @@ public:
     virtual void executed(DInst *dinst);
     virtual RetOutcome retire(DInst *dinst);
 
-    void traceTM(DInst *dinst);
     void traceEvent(DInst *dinst);
 };
 
@@ -135,6 +134,7 @@ public:
     StallCause canIssue(DInst *dinst);
     void simTime(DInst *dinst);
     RetOutcome retire(DInst *dinst);
+    void traceTM(DInst *dinst);
 
 };
 

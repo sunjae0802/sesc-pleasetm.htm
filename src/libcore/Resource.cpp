@@ -65,81 +65,8 @@ void Resource::executed(DInst *dinst)
     cluster->executed(dinst);
 }
 
-void Resource::traceTM(DInst* dinst)
-{
-    const Instruction *inst = dinst->getInst();
-    ThreadContext *context = dinst->context;
-    std::ofstream& out = context->getDatafile();
-    Pid_t pid = context->getPid();
-
-    if(dinst->tmBeginOp()) {
-        out<<pid<<" T"
-                    <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                    <<" "<<dinst->tmState.getUtid()
-                    <<" "<< (context->getNRetiredInsts() + 1)
-                    <<" "<< globalClock << std::endl;
-    } else if(dinst->tmAbortCompleteOp()) {
-        // Get abort state
-        Pid_t aborter = dinst->tmState.getAborterPid();
-        TMAbortType_e abortType = dinst->tmState.getAbortType();
-
-        // Trace this instruction
-        if(abortType == TM_ATYPE_USER) {
-            out<<pid<<" Z"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" "<<abortType
-                            <<" "<<dinst->tmAbortArg
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
-        } else if(abortType == TM_ATYPE_NONTM) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
-            if(abortByAddr == 0) {
-                fail("Why abort addr NULL?\n");
-            }
-            out<<pid<<" a"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
-                            <<" "<<aborter
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
-        } else if(abortType == TM_ATYPE_DEFAULT) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
-            if(abortByAddr == 0) {
-                fail("Why abort addr NULL?\n");
-            }
-            out<<pid<<" A"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
-                            <<" "<<aborter
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
-        } else {
-            out<<pid<<" Z"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" "<<abortType
-                            <<" 0"
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
-        }
-    } else if(dinst->tmCommitOp()) {
-        out<<pid<<" C"
-                    <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                    <<" 0"
-                    <<" "<< (context->getNRetiredInsts() + 1)
-                    <<" "<< globalClock << std::endl;
-    }
-}
-
 RetOutcome Resource::retire(DInst *dinst)
 {
-    if(dinst->getInst()->isTM()) {
-        if(dinst->tmLat > 0) {
-            dinst->tmLat--;
-            return WaitForFence;
-        }
-        traceTM(dinst);
-    }
-
     traceEvent(dinst);
     cluster->retire(dinst);
     dinst->destroy();
@@ -231,6 +158,14 @@ RetOutcome FUMemory::retire(DInst *dinst)
 {
     const Instruction *inst = dinst->getInst();
 
+    if(inst->isTM()) {
+        if(dinst->tmLat > 0) {
+            dinst->tmLat--;
+            return WaitForFence;
+        }
+        traceTM(dinst);
+    }
+
     if( inst->getSubCode() == iFetchOp ) {
         if (L1DCache->canAcceptStore(static_cast<PAddr>(dinst->getVaddr())) == false)
             return NoCacheSpace;
@@ -261,6 +196,72 @@ RetOutcome FUMemory::retire(DInst *dinst)
     }
 
     return Retired;
+}
+
+
+void FUMemory::traceTM(DInst* dinst)
+{
+    const Instruction *inst = dinst->getInst();
+    ThreadContext *context = dinst->context;
+    std::ofstream& out = context->getDatafile();
+    Pid_t pid = context->getPid();
+
+    if(dinst->tmBeginOp()) {
+        out<<pid<<" T"
+                    <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
+                    <<" "<<dinst->tmState.getUtid()
+                    <<" "<< (context->getNRetiredInsts() + 1)
+                    <<" "<< globalClock << std::endl;
+    } else if(dinst->tmAbortCompleteOp()) {
+        // Get abort state
+        Pid_t aborter = dinst->tmState.getAborterPid();
+        TMAbortType_e abortType = dinst->tmState.getAbortType();
+
+        // Trace this instruction
+        if(abortType == TM_ATYPE_USER) {
+            out<<pid<<" Z"
+                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" "<<abortType
+                            <<" "<<dinst->tmAbortArg
+                            <<" "<< (context->getNRetiredInsts() + 1)
+                            <<" "<< globalClock << std::endl;
+        } else if(abortType == TM_ATYPE_NONTM) {
+            VAddr abortByAddr = dinst->tmState.getAbortBy();
+            if(abortByAddr == 0) {
+                fail("Why abort addr NULL?\n");
+            }
+            out<<pid<<" a"
+                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
+                            <<" "<<aborter
+                            <<" "<< (context->getNRetiredInsts() + 1)
+                            <<" "<< globalClock << std::endl;
+        } else if(abortType == TM_ATYPE_DEFAULT) {
+            VAddr abortByAddr = dinst->tmState.getAbortBy();
+            if(abortByAddr == 0) {
+                fail("Why abort addr NULL?\n");
+            }
+            out<<pid<<" A"
+                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
+                            <<" "<<aborter
+                            <<" "<< (context->getNRetiredInsts() + 1)
+                            <<" "<< globalClock << std::endl;
+        } else {
+            out<<pid<<" Z"
+                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" "<<abortType
+                            <<" 0"
+                            <<" "<< (context->getNRetiredInsts() + 1)
+                            <<" "<< globalClock << std::endl;
+        }
+    } else if(dinst->tmCommitOp()) {
+        out<<pid<<" C"
+                    <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
+                    <<" 0"
+                    <<" "<< (context->getNRetiredInsts() + 1)
+                    <<" "<< globalClock << std::endl;
+    }
 }
 
 

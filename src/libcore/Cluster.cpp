@@ -125,7 +125,6 @@ void Cluster::buildUnit(const char *clusterName
     switch(type) {
     case iOpInvalid:
     case iALU:
-    case iTM:
         strtmp = strdup("iALUEnergy");
     case iMult:
         if(!strtmp) strtmp = strdup("iMultEnergy");
@@ -140,9 +139,6 @@ void Cluster::buildUnit(const char *clusterName
         free(strtmp);
 
         r = new FUGeneric(cluster, gen, lat, eng);
-        if(res[iTM]==0) {
-            res[iTM] = new FUGeneric(cluster, gen, lat, eng);
-        }
         break;
     case fpALU:
         strtmp = strdup("fpALUEnergy");
@@ -181,6 +177,7 @@ void Cluster::buildUnit(const char *clusterName
         r = new FULoad(cluster, gen, lat, ldstdelay, ms, maxLoads, gproc->getId());
     }
     break;
+    case iTM:
     case iStore:
     {
         SescConf->isInt("cpucore", "maxStores",gproc->getId());
@@ -197,6 +194,9 @@ void Cluster::buildUnit(const char *clusterName
             res[iFence] = new FUMemory(cluster, ms, gproc->getId());
             I(res[iEvent]==0);
             res[iEvent] = new FUEvent(cluster);
+        }
+        if(res[iTM]==0) {
+            res[iTM] = new FUMemory(cluster, ms, gproc->getId());
         }
     }
     break;

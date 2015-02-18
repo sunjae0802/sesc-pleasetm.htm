@@ -60,7 +60,8 @@ static const char *opcode2NameTable[] = {
     "fpMult",
     "fpDiv",
     "iFence",
-    "iEvent"
+    "iEvent",
+    "iTM"
 };
 
 
