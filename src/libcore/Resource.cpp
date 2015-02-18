@@ -258,7 +258,7 @@ void FUMemory::traceTM(DInst* dinst)
     } else if(dinst->tmCommitOp()) {
         out<<pid<<" C"
                     <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                    <<" 0"
+                    <<" "<<(100-dinst->tmLat)
                     <<" "<< (context->getNRetiredInsts() + 1)
                     <<" "<< globalClock << std::endl;
     }
