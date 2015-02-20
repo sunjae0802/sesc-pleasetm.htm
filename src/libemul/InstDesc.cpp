@@ -547,7 +547,7 @@ static inline void preExec(InstDesc *inst, ThreadContext *context) {
 
 #if (defined TM)
 static inline bool markedForAbort(InstDesc *inst, ThreadContext *context) {
-    return context->isInTM() && context->markedForAbort();
+    return tmCohManager != NULL && context->markedForAbort();
 }
 #endif
 
