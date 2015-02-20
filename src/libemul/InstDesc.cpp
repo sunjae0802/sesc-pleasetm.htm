@@ -2394,6 +2394,12 @@ void handleHTMCommitCall(InstDesc *inst, ThreadContext *context) {
         context->setTMCallsite(ra);
     }
 }
+void handleHTMAbortCall(InstDesc *inst, ThreadContext *context) {
+    if(ThreadContext::inMain) {
+        uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
+        context->setTMCallsite(ra);
+    }
+}
 template<ExecMode mode>
 bool decodeInstSize(ThreadContext *context, VAddr funcAddr, VAddr &curAddr, VAddr endAddr, size_t &tsize, bool domap) {
     switch(mode&ExecModeArchMask) {
@@ -2479,6 +2485,7 @@ void decodeTrace(ThreadContext *context, VAddr addr, size_t len) {
         // HTM call/return
         AddressSpace::addCallHandler("htm_start",WrapHandler<handleHTMStartCall>);
         AddressSpace::addCallHandler("htm_commit",WrapHandler<handleHTMCommitCall>);
+        AddressSpace::addCallHandler("htm_abort",WrapHandler<handleHTMAbortCall>);
 
         didThis=true;
     }

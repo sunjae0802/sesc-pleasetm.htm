@@ -81,6 +81,7 @@ void handleTMSeqTermRet(InstDesc *inst, ThreadContext *context);
 // HTM call/return
 void handleHTMStartCall(InstDesc *inst, ThreadContext *context);
 void handleHTMCommitCall(InstDesc *inst, ThreadContext *context);
+void handleHTMAbortCall(InstDesc *inst, ThreadContext *context);
 
 enum InstTypInfoEnum {
     // Main instruction opcode
