@@ -596,6 +596,9 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
             cache->updatePrefetchers(inst, context, raddr, evicted);
         }
         markEvicted(pid, raddr, evicted);
+        if(transStates[pid].getState() == TM_MARKABORT) {
+            return TMRW_ABORT;
+        }
 
         *p_l1Hit = l1Hit;
         return myRead(pid, 0, raddr);
@@ -627,6 +630,9 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
             cache->updatePrefetchers(inst, context, raddr, evicted);
         }
         markEvicted(pid, raddr, evicted);
+        if(transStates[pid].getState() == TM_MARKABORT) {
+            return TMRW_ABORT;
+        }
 
         *p_l1Hit = l1Hit;
         return myWrite(pid, 0, raddr);
