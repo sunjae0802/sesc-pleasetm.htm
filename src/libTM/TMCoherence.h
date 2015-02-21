@@ -202,11 +202,6 @@ protected:
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid) {}
 
-    bool cacheOverflowed(Pid_t pid, VAddr caddr) const {
-        const std::set<VAddr>& linesAccessed = cacheLines.at(pid);
-        return (linesAccessed.size() == numLines && linesAccessed.find(caddr) == linesAccessed.end());
-    }
-
     int nProcs;
     int cacheLineSize;
     size_t numLines;
@@ -220,7 +215,6 @@ protected:
     static uint64_t nextUtid;
 
     std::vector<struct TransState>  transStates;
-    std::map<Pid_t, std::set<VAddr> > cacheLines;
     std::map<Pid_t, PrivateCache*>    caches;
 
     void addWrite(VAddr caddr, Pid_t pid);
@@ -245,9 +239,8 @@ protected:
     std::map<VAddr, size_t> numAbortsCaused;
     std::map<Pid_t, std::set<VAddr> > linesRead;
     std::map<Pid_t, std::set<VAddr> > linesWritten;
-    std::map<VAddr, std::list<Pid_t> > writers2;
-    std::map<VAddr, std::list<Pid_t> > readers2;
-    std::map<Pid_t, std::vector<VAddr> > linesAccessed;
+    std::map<VAddr, std::list<Pid_t> > writers;
+    std::map<VAddr, std::list<Pid_t> > readers;
 };
 
 class TMEECoherence: public TMCoherence {

@@ -346,7 +346,6 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
         // Initialize maps to enable at() use
-        cacheLines[pid].clear();
         linesRead[pid].clear();
         linesWritten[pid].clear();
         caches[pid] = new PrivateCache("privatel1", "privateCache", pid);
@@ -354,26 +353,24 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
 }
 
 void TMCoherence::addWrite(VAddr caddr, Pid_t pid) {
-    linesAccessed[pid].push_back(caddr);
     if(!hadWrote(caddr, pid)) {
         linesWritten[pid].insert(caddr);
-        writers2[caddr].push_back(pid);
+        writers[caddr].push_back(pid);
     } else {
-        if(find(writers2[caddr].begin(), writers2[caddr].end(), pid)
-                == writers2[caddr].end()) {
-            fail("writers2 and linesWritten mistmatch in add\n");
+        if(find(writers[caddr].begin(), writers[caddr].end(), pid)
+                == writers[caddr].end()) {
+            fail("writers and linesWritten mistmatch in add\n");
         }
     }
 }
 void TMCoherence::addRead(VAddr caddr, Pid_t pid) {
-    linesAccessed[pid].push_back(caddr);
     if(!hadRead(caddr, pid)) {
         linesRead[pid].insert(caddr);
-        readers2[caddr].push_back(pid);
+        readers[caddr].push_back(pid);
     } else {
-        if(find(readers2[caddr].begin(), readers2[caddr].end(), pid)
-                == readers2[caddr].end()) {
-            fail("readers2 and linesRead mistmatch in add\n");
+        if(find(readers[caddr].begin(), readers[caddr].end(), pid)
+                == readers[caddr].end()) {
+            fail("readers and linesRead mistmatch in add\n");
         }
     }
 }
@@ -386,16 +383,16 @@ bool TMCoherence::hadRead(VAddr caddr, Pid_t pid) {
 }
 void TMCoherence::getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w) {
     std::map<VAddr, std::list<Pid_t> >::iterator i_line;
-    i_line = writers2.find(caddr);
-    if(i_line != writers2.end()) {
+    i_line = writers.find(caddr);
+    if(i_line != writers.end()) {
         w.insert(i_line->second.begin(), i_line->second.end());
         w.erase(pid);
     }
 }
 void TMCoherence::getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r) {
     std::map<VAddr, std::list<Pid_t> >::iterator i_line;
-    i_line = readers2.find(caddr);
-    if(i_line != readers2.end()) {
+    i_line = readers.find(caddr);
+    if(i_line != readers.end()) {
         r.insert(i_line->second.begin(), i_line->second.end());
         r.erase(pid);
     }
@@ -415,13 +412,13 @@ void TMCoherence::removeTransaction(Pid_t pid) {
     std::map<VAddr, std::list<Pid_t> >::iterator i_line;
     std::set<VAddr>::iterator i_wroteTo;
     for(i_wroteTo = linesWritten[pid].begin(); i_wroteTo != linesWritten[pid].end(); ++i_wroteTo) {
-        i_line = writers2.find(*i_wroteTo);
-        if(i_line == writers2.end()) {
-            fail("linesWritten and writers2 mismatch\n");
+        i_line = writers.find(*i_wroteTo);
+        if(i_line == writers.end()) {
+            fail("linesWritten and writers mismatch\n");
         }
         removeFromList(i_line->second, pid);
         if(i_line->second.empty()) {
-            writers2.erase(i_line);
+            writers.erase(i_line);
         }
         if(std::find(i_line->second.begin(), i_line->second.end(), pid) != i_line->second.end()) {
             fail("Remove fail?");
@@ -429,13 +426,13 @@ void TMCoherence::removeTransaction(Pid_t pid) {
     }
     std::set<VAddr>::iterator i_readFrom;
     for(i_readFrom = linesRead[pid].begin(); i_readFrom != linesRead[pid].end(); ++i_readFrom) {
-        i_line = readers2.find(*i_readFrom);
-        if(i_line == readers2.end()) {
-            fail("linesRead and readers2 mismatch\n");
+        i_line = readers.find(*i_readFrom);
+        if(i_line == readers.end()) {
+            fail("linesRead and readers mismatch\n");
         }
         removeFromList(i_line->second, pid);
         if(i_line->second.empty()) {
-            readers2.erase(i_line);
+            readers.erase(i_line);
         }
         if(std::find(i_line->second.begin(), i_line->second.end(), pid) != i_line->second.end()) {
             fail("Remove fail?");
@@ -449,10 +446,8 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 	if(!transStates[pid].getRestartPending()) {
         // This is a new transaction instance
     } // Else a restarted transaction
-	cacheLines[pid].clear();
     numAbortsCaused[pid] = 0;
     removeTransaction(pid);
-    linesAccessed[pid].clear();
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 
@@ -505,12 +500,10 @@ void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, u
 	}
 }
 void TMCoherence::readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
-    cacheLines[pid].insert(caddr);
     addRead(caddr, pid);
 	I(transStates[pid].getState() == TM_RUNNING);
 }
 void TMCoherence::writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
-    cacheLines[pid].insert(caddr);
     addWrite(caddr, pid);
 
 	I(transStates[pid].getState() == TM_RUNNING);
@@ -582,9 +575,6 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
-	} else if(cacheOverflowed(pid, caddr)) {
-		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
-		return TMRW_ABORT;
 	} else {
         PrivateCache* cache = caches.at(pid);
         std::map<Pid_t, EvictCause> evicted;
@@ -608,9 +598,6 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
-		return TMRW_ABORT;
-	} else if(cacheOverflowed(pid, caddr)) {
-		markTransAborted(pid, pid, transStates[pid].getUtid(), caddr, TM_ATYPE_CAPACITY);
 		return TMRW_ABORT;
 	} else {
         std::map<Pid_t, EvictCause> evicted;
@@ -745,8 +732,8 @@ TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 		transStates[pid].resumeAfterNack();
 	}
 
-    if(writers2[caddr].size() >= 1 && !hadWrote(caddr, pid)) {
-        list<Pid_t>::iterator i_writer = writers2[caddr].begin();
+    if(writers[caddr].size() >= 1 && !hadWrote(caddr, pid)) {
+        list<Pid_t>::iterator i_writer = writers[caddr].begin();
         Pid_t aborterPid = *i_writer;
 
         if(aborterPid == pid) {
@@ -784,9 +771,9 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
 		transStates[pid].resumeAfterNack();
 	}
 
-    if(readers2[caddr].size() > 1 || ((readers2[caddr].size() == 1) && !hadRead(caddr, pid))) {
+    if(readers[caddr].size() > 1 || ((readers[caddr].size() == 1) && !hadRead(caddr, pid))) {
         // If there is more than one reader, or there is a single reader who happens not to be us
-        list<Pid_t>::iterator i_reader = readers2[caddr].begin();
+        list<Pid_t>::iterator i_reader = readers[caddr].begin();
         Pid_t aborterPid = *i_reader;
 
         if(aborterPid == pid) {
@@ -810,8 +797,8 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
             nackTrans(pid);
             return TMRW_NACKED;
         }
-    } else if(writers2[caddr].size() > 1 || ((writers2[caddr].size() == 1) && !hadWrote(caddr, pid))) {
-        list<Pid_t>::iterator i_writer = writers2[caddr].begin();
+    } else if(writers[caddr].size() > 1 || ((writers[caddr].size() == 1) && !hadWrote(caddr, pid))) {
+        list<Pid_t>::iterator i_writer = writers[caddr].begin();
         Pid_t aborterPid = *i_writer;
 
         if(aborterPid == pid) {
@@ -1405,15 +1392,15 @@ TMRWStatus TMLEWARCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     getWritersExcept(caddr, pid, aborted);
     markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
 
-    set<Pid_t> readers;
-    getReadersExcept(caddr, pid, readers);
-    set<Pid_t>::iterator i_reader;
-    for(i_reader = readers.begin(); i_reader != readers.end(); ++i_reader) {
-        if(hadWrote(caddr, *i_reader)) {
-            markTransAborted(*i_reader, pid, utid, caddr, TM_ATYPE_DEFAULT);
+    set<Pid_t> r;
+    getReadersExcept(caddr, pid, r);
+    set<Pid_t>::iterator i_r;
+    for(i_r = r.begin(); i_r != r.end(); ++i_r) {
+        if(hadWrote(caddr, *i_r)) {
+            markTransAborted(*i_r, pid, utid, caddr, TM_ATYPE_DEFAULT);
         } else {
-            warChest[*i_reader].insert(caddr);
-            std::remove(readers2[caddr].begin(), readers2[caddr].end(), pid);
+            warChest[*i_r].insert(caddr);
+            std::remove(readers[caddr].begin(), readers[caddr].end(), pid);
             linesRead[pid].erase(caddr);
         }
 	}
