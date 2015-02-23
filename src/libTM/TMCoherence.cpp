@@ -142,9 +142,6 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, bool isPrefetch, std::m
         if(isTransactional && replaced->isTransactional() && replaced->isDirty() && cache->countDirty(addr) < cache->getAssoc()) {
             fail("%d evicted transactional dirty line too early: %d\n", pid, cache->countDirty(addr));
         }
-        if(isTransactional && replaced->isTransactional() && replaced->isDirty()) {
-            MSG("%d set-conflict: %ld %ld\n", pid, cache->countTransactional(addr), cache->countDirty(addr));
-        }
 
         VAddr replTag = replaced->getTag();
         if(replTag == myTag) {
@@ -338,11 +335,17 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType),
         nackStallBaseCycles(1), nackStallCap(1), maxNacks(0),
-        numCommits("tm:numCommits"), numAborts("tm:numAborts"), abortTypes("tm:abortTypes"),
+        numCommits("tm:numCommits"),
+        numAborts("tm:numAborts"),
+        abortTypes("tm:abortTypes"),
+        tmLoads("tm:loads"),
+        tmStores("tm:stores"),
+        tmLoadMisses("tm:loadMisses"),
+        tmStoreMisses("tm:storeMisses"),
         numAbortsCausedBeforeAbort("tm:numAbortsCausedBeforeAbort"),
         numAbortsCausedBeforeCommit("tm:numAbortsCausedBeforeCommit"),
-        avgLinesRead("tm:avgLinesRead"), avgLinesWritten("tm:avgLinesWritten"),
-        linesReadHist("tm:linesReadHist"), linesWrittenHist("tm:linesWrittenHist") {
+        linesReadHist("tm:linesReadHist"),
+        linesWrittenHist("tm:linesWrittenHist") {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
         // Initialize maps to enable at() use
@@ -454,8 +457,7 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 void TMCoherence::commitTrans(Pid_t pid) {
     numCommits.inc();
     numAbortsCausedBeforeCommit.add(numAbortsCaused[pid]);
-    avgLinesRead.sample(getNumReads(pid));
-    avgLinesWritten.sample(getNumWrites(pid));
+
     linesReadHist.sample(getNumReads(pid));
     linesWrittenHist.sample(getNumWrites(pid));
     transStates[pid].commit();
@@ -550,8 +552,7 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
         numAborts.inc();
         numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
         abortTypes.sample(transStates[pid].getAbortType());
-        avgLinesRead.sample(getNumReads(pid));
-        avgLinesWritten.sample(getNumWrites(pid));
+
         linesReadHist.sample(getNumReads(pid));
         linesWrittenHist.sample(getNumWrites(pid));
 
@@ -580,7 +581,9 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
         std::map<Pid_t, EvictCause> evicted;
 
         bool l1Hit = cache->doLoad(inst, context, raddr, evicted);
+        tmLoads.inc();
         if(l1Hit == false) {
+            tmLoadMisses.inc();
             cache->doPrefetches(inst, context, raddr, evicted);
         } else {
             cache->updatePrefetchers(inst, context, raddr, evicted);
@@ -611,7 +614,9 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 
         PrivateCache* cache = caches.at(pid);
         bool l1Hit = cache->doStore(inst, context, raddr, evicted);
+        tmStores.inc();
         if(l1Hit == false) {
+            tmStoreMisses.inc();
             cache->doPrefetches(inst, context, raddr, evicted);
         } else {
             cache->updatePrefetchers(inst, context, raddr, evicted);

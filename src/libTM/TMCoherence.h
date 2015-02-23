@@ -229,10 +229,12 @@ protected:
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
+    GStatsCntr      tmLoads;
+    GStatsCntr      tmStores;
+    GStatsCntr      tmLoadMisses;
+    GStatsCntr      tmStoreMisses;
     GStatsCntr      numAbortsCausedBeforeAbort;
     GStatsCntr      numAbortsCausedBeforeCommit;
-    GStatsAvg       avgLinesRead;
-    GStatsAvg       avgLinesWritten;
     GStatsHist      linesReadHist;
     GStatsHist      linesWrittenHist;
 
