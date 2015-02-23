@@ -305,28 +305,6 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
     }
 }
 
-void TMCoherence::addWrite(VAddr caddr, Pid_t pid) {
-    if(!hadWrote(caddr, pid)) {
-        linesWritten[pid].insert(caddr);
-        writers[caddr].push_back(pid);
-    } else {
-        if(find(writers[caddr].begin(), writers[caddr].end(), pid)
-                == writers[caddr].end()) {
-            fail("writers and linesWritten mistmatch in add\n");
-        }
-    }
-}
-void TMCoherence::addRead(VAddr caddr, Pid_t pid) {
-    if(!hadRead(caddr, pid)) {
-        linesRead[pid].insert(caddr);
-        readers[caddr].push_back(pid);
-    } else {
-        if(find(readers[caddr].begin(), readers[caddr].end(), pid)
-                == readers[caddr].end()) {
-            fail("readers and linesRead mistmatch in add\n");
-        }
-    }
-}
 bool TMCoherence::hadWrote(VAddr caddr, Pid_t pid) {
     return linesWritten[pid].find(caddr) != linesWritten[pid].end();
 }
@@ -452,13 +430,30 @@ void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, u
 	}
 }
 void TMCoherence::readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
-    addRead(caddr, pid);
-	I(transStates[pid].getState() == TM_RUNNING);
+    I(transStates[pid].getState() == TM_RUNNING);
+
+    if(!hadRead(caddr, pid)) {
+        linesRead[pid].insert(caddr);
+        readers[caddr].push_back(pid);
+    } else {
+        if(find(readers[caddr].begin(), readers[caddr].end(), pid)
+                == readers[caddr].end()) {
+            fail("readers and linesRead mistmatch in add\n");
+        }
+    }
 }
 void TMCoherence::writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
-    addWrite(caddr, pid);
+    I(transStates[pid].getState() == TM_RUNNING);
 
-	I(transStates[pid].getState() == TM_RUNNING);
+    if(!hadWrote(caddr, pid)) {
+        linesWritten[pid].insert(caddr);
+        writers[caddr].push_back(pid);
+    } else {
+        if(find(writers[caddr].begin(), writers[caddr].end(), pid)
+                == writers[caddr].end()) {
+            fail("writers and linesWritten mistmatch in add\n");
+        }
+    }
 }
 void TMCoherence::nackTrans(Pid_t pid) {
     transStates[pid].startNacking();

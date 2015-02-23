@@ -200,8 +200,6 @@ protected:
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid) {}
 
-    void addWrite(VAddr caddr, Pid_t pid);
-    void addRead(VAddr caddr, Pid_t pid);
     void removeTransaction(Pid_t pid);
     void removeFromList(std::list<Pid_t>& list, Pid_t pid);
     bool hadWrote(VAddr caddr, Pid_t pid);
