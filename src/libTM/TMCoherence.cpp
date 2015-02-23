@@ -284,7 +284,7 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 /////////////////////////////////////////////////////////////////////////////////////////
 TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType),
-        nackStallBaseCycles(1), nackStallCap(1), maxNacks(0),
+        nackStallBaseCycles(1), nackStallCap(1),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
         abortTypes("tm:abortTypes"),
@@ -298,10 +298,10 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         linesWrittenHist("tm:linesWrittenHist") {
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
+        caches.push_back(new PrivateCache("privatel1", "privateCache", pid));
         // Initialize maps to enable at() use
         linesRead[pid].clear();
         linesWritten[pid].clear();
-        caches[pid] = new PrivateCache("privatel1", "privateCache", pid);
     }
 }
 
@@ -673,11 +673,6 @@ TMBCStatus TMCoherence::myCommit(Pid_t pid, int tid) {
 TMEECoherence::TMEECoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence(nProcs, lineSize, lines, argType), cycleFlags(nProcs) {
 	cout<<"[TM] Eager/Eager Transactional Memory System" << endl;
-
-	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
-	abortVarStallCycles     = SescConf->getInt("TransactionalMemory","secondaryVarStallCycles");
-	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
-	commitVarStallCycles    = SescConf->getInt("TransactionalMemory","primaryVarStallCycles");
 }
 TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
@@ -811,11 +806,6 @@ TMLLCoherence::TMLLCoherence(int32_t nProcs, int lineSize, int lines, int argTyp
         TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Lazy Transactional Memory System" << endl;
 
-	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
-	abortVarStallCycles     = SescConf->getInt("TransactionalMemory","primaryVarStallCycles");
-	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
-	commitVarStallCycles    = SescConf->getInt("TransactionalMemory","secondaryVarStallCycles");
-
 	currentCommitter = INVALID_PID; 
 }
 TMRWStatus TMLLCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
@@ -869,9 +859,6 @@ TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
 TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence(nProcs, lineSize, lines, argType) {
 	cout<<"[TM] Lazy/Eager Transactional Memory System" << endl;
-
-	abortBaseStallCycles    = SescConf->getInt("TransactionalMemory","primaryBaseStallCycles");
-	commitBaseStallCycles   = SescConf->getInt("TransactionalMemory","secondaryBaseStallCycles");
 }
 TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);

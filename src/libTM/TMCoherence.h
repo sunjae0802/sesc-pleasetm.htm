@@ -162,7 +162,7 @@ public:
     bool checkNacked(Pid_t pid)    const { return transStates.at(pid).getState() == TM_NACKED; }
     bool checkAborting(Pid_t pid)   const { return transStates.at(pid).getState() == TM_ABORTING; }
     bool markedForAbort(Pid_t pid)  const { return transStates.at(pid).getState() == TM_MARKABORT; }
-    Pid_t getTMNackOwner(Pid_t pid) const { return nackOwner.find(pid) != nackOwner.end() ? nackOwner.at(pid) : -1; }
+
     uint32_t getNackStallCycles(size_t numNacks)   const {
         uint32_t stallCycles = nackStallBaseCycles * numNacks;
         if(stallCycles > nackStallCap) {
@@ -178,8 +178,6 @@ public:
     }
 
 protected:
-    std::map<Pid_t, Pid_t> nackOwner;
-
     VAddr addrToCacheLine(VAddr raddr) {
         while(raddr % cacheLineSize != 0) {
             raddr = raddr-1;
@@ -202,21 +200,6 @@ protected:
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void myCompleteAbort(Pid_t pid) {}
 
-    int nProcs;
-    int cacheLineSize;
-    size_t numLines;
-    int returnArgType;
-    int abortBaseStallCycles;
-    int commitBaseStallCycles;
-    uint32_t nackStallBaseCycles;
-    uint32_t nackStallCap;
-    size_t   maxNacks;
-
-    static uint64_t nextUtid;
-
-    std::vector<struct TransState>  transStates;
-    std::map<Pid_t, PrivateCache*>    caches;
-
     void addWrite(VAddr caddr, Pid_t pid);
     void addRead(VAddr caddr, Pid_t pid);
     void removeTransaction(Pid_t pid);
@@ -225,6 +208,17 @@ protected:
     bool hadRead(VAddr caddr, Pid_t pid);
     void getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w);
     void getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r);
+
+    static uint64_t nextUtid;
+    int             nProcs;
+    int             cacheLineSize;
+    size_t          numLines;
+    int             returnArgType;
+    uint32_t        nackStallBaseCycles;
+    uint32_t        nackStallCap;
+
+    std::vector<struct TransState>  transStates;
+    std::vector<PrivateCache*>      caches;
 
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
@@ -238,11 +232,11 @@ protected:
     GStatsHist      linesReadHist;
     GStatsHist      linesWrittenHist;
 
-    std::map<VAddr, size_t> numAbortsCaused;
-    std::map<Pid_t, std::set<VAddr> > linesRead;
-    std::map<Pid_t, std::set<VAddr> > linesWritten;
-    std::map<VAddr, std::list<Pid_t> > writers;
-    std::map<VAddr, std::list<Pid_t> > readers;
+    std::map<VAddr, size_t>             numAbortsCaused;
+    std::map<Pid_t, std::set<VAddr> >   linesRead;
+    std::map<Pid_t, std::set<VAddr> >   linesWritten;
+    std::map<VAddr, std::list<Pid_t> >  writers;
+    std::map<VAddr, std::list<Pid_t> >  readers;
 };
 
 class TMEECoherence: public TMCoherence {
@@ -268,7 +262,7 @@ public:
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
 private:
-    Pid_t   currentCommitter;                          //!< PID of the currently committing processor
+    Pid_t   currentCommitter; // PID of the currently committing processor
     int     abortVarStallCycles;
     int     commitVarStallCycles;
 };
