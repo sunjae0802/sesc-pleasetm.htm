@@ -37,7 +37,7 @@ PrivateCache::~PrivateCache() {
 ///
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
-PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus) {
     Line*         line  = cache->findLineNoEffect(addr);
     I(line == NULL);
 
@@ -65,7 +65,7 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, std::map<Pid_t, EvictCa
         }
 
         if(isTransactional && replaced->isTransactional() && replaced->isDirty()) {
-            tmEvicted.insert(make_pair(pid, EvictSetConflict));
+            p_opStatus->setConflict = true;
         }
 
         replaced->invalidate();
@@ -78,15 +78,15 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, std::map<Pid_t, EvictCa
     return replaced;
 }
 
-bool PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
     // Lookup line
-    bool        wasHit = true;
-    Line*       line  = cache->findLineNoEffect(addr);
+    Line*   line  = cache->findLineNoEffect(addr);
     if(line == nullptr) {
-        wasHit = false;
+        p_opStatus->wasHit = false;
         readMiss.inc();
-        line = doFillLine(addr, tmEvicted);
+        line = doFillLine(addr, p_opStatus);
     } else {
+        p_opStatus->wasHit = true;
         readHit.inc();
     }
 
@@ -94,8 +94,6 @@ bool PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, st
     if(isTransactional) {
         line->markTransactional();
     }
-
-    return wasHit;
 }
 
 void PrivateCache::doInvalidate(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
@@ -109,15 +107,15 @@ void PrivateCache::doInvalidate(InstDesc* inst, ThreadContext* context, VAddr ad
     }
 }
 
-bool PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
     // Lookup line
-    bool    wasHit = true;
     Line*   line  = cache->findLineNoEffect(addr);
     if(line == nullptr) {
-        wasHit = false;
+        p_opStatus->wasHit = false;
         writeMiss.inc();
-        line = doFillLine(addr, tmEvicted);
+        line = doFillLine(addr, p_opStatus);
     } else {
+        p_opStatus->wasHit = true;
         writeHit.inc();
     }
 
@@ -126,8 +124,6 @@ bool PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, s
         line->markTransactional();
     }
     line->makeDirty();
-
-    return wasHit;
 }
 
 TMCoherence *TMCoherence::create(int32_t nProcs) {
@@ -387,7 +383,7 @@ void TMCoherence::completeFallback(Pid_t pid) {
     removeTransaction(pid);
 }
 
-TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
+TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
@@ -396,7 +392,7 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
         PrivateCache* cache = caches.at(pid);
         std::map<Pid_t, EvictCause> evicted;
 
-        bool l1Hit = cache->doLoad(inst, context, raddr, evicted);
+        cache->doLoad(inst, context, raddr, p_opStatus);
         tmLoads.inc();
 
         markEvicted(pid, raddr, evicted);
@@ -404,11 +400,10 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
             return TMRW_ABORT;
         }
 
-        *p_l1Hit = l1Hit;
         return myRead(pid, 0, raddr);
     }
 }
-TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
+TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
@@ -424,7 +419,7 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
         }
 
         PrivateCache* cache = caches.at(pid);
-        bool l1Hit = cache->doStore(inst, context, raddr, evicted);
+        cache->doStore(inst, context, raddr, p_opStatus);
         tmStores.inc();
 
         markEvicted(pid, raddr, evicted);
@@ -432,7 +427,6 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
             return TMRW_ABORT;
         }
 
-        *p_l1Hit = l1Hit;
         return myWrite(pid, 0, raddr);
     }
 }
@@ -440,7 +434,7 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 ///
 // When a thread not inside a transaction conflicts with data read as part of
 //  a transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
+TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -450,7 +444,7 @@ TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr 
     PrivateCache* cache = caches.at(pid);
     std::map<Pid_t, EvictCause> evicted;
 
-    bool l1Hit = cache->doLoad(inst, context, raddr, evicted);
+    cache->doLoad(inst, context, raddr, p_opStatus);
 
     markEvicted(pid, raddr, evicted);
 
@@ -460,14 +454,13 @@ TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr 
 
     markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
-    *p_l1Hit = l1Hit;
     return TMRW_SUCCESS;
 }
 
 ///
 // When a thread not inside a transaction conflicts with data is accessed as part of
 //  a transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit) {
+TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -483,7 +476,7 @@ TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr
     }
 
     PrivateCache* cache = caches.at(pid);
-    bool l1Hit = cache->doStore(inst, context, raddr, evicted);
+    cache->doStore(inst, context, raddr, p_opStatus);
 
     markEvicted(pid, raddr, evicted);
 
@@ -494,7 +487,6 @@ TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr
 
     markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
 
-    *p_l1Hit = l1Hit;
     return TMRW_SUCCESS;
 }
 

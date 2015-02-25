@@ -26,6 +26,13 @@ enum EvictCause {
     EvictByWrite,
     EvictSetConflict,
 };
+
+struct MemOpStatus {
+    bool wasHit;
+    bool setConflict;
+    MemOpStatus(): wasHit(false), setConflict(false) {}
+};
+
 class CState1 : public StateGeneric<> {
 private:
     bool valid;
@@ -62,8 +69,8 @@ public:
     PrivateCache(const char* section, const char* name, Pid_t p);
     ~PrivateCache();
 
-    bool doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
-    bool doStore(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    void doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
+    void doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
     void doInvalidate(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
     bool findLine(VAddr addr) const { return cache->findLineNoEffect(addr) != NULL; }
 
@@ -75,7 +82,7 @@ private:
     typedef CacheGeneric<CState1, VAddr>            Cache;
     typedef CacheGeneric<CState1, VAddr>::CacheLine Line;
 
-    Line* doFillLine(VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    Line* doFillLine(VAddr addr, MemOpStatus* p_opStatus);
 
     Pid_t                       pid;
     bool                        isTransactional;
@@ -92,15 +99,15 @@ public:
     virtual ~TMCoherence() {}
     static TMCoherence *create(int32_t nProcs);
 
-    TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
-    TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
+    TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     TMBCStatus abort(Pid_t pid, int tid, TMAbortType_e abortType);
     TMBCStatus commit(Pid_t pid, int tid);
     TMBCStatus begin(Pid_t pid, InstDesc *inst);
 
     TMBCStatus completeAbort(Pid_t pid);
-    TMRWStatus nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
-    TMRWStatus nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, bool* p_l1Hit);
+    TMRWStatus nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    TMRWStatus nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     void completeFallback(Pid_t pid);
     void markEvicted(Pid_t evicterPid, VAddr raddr, std::map<Pid_t, EvictCause>& evicted);
 

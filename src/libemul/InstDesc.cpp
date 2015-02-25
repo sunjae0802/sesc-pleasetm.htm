@@ -1508,17 +1508,16 @@ public:
                 addr       = addr - offs;
                 MemT   mval=readMem<MemT>(context,addr);
 #if (defined TM)
+                MemOpStatus opStatus;
                 if(context->isInTM()) {
-                    bool l1Hit = false;
-                    TMRWStatus status = tmCohManager->read(inst, context, addr, &l1Hit);
-                    context->setL1Hit(l1Hit);
+                    TMRWStatus status = tmCohManager->read(inst, context, addr, &opStatus);
+                    context->setL1Hit(opStatus.wasHit);
                     if(status == TMRW_SUCCESS) {
                         mval = readMemTM<MemT>(context, addr);
                     }
                 } else if(tmCohManager) {
-                    bool l1Hit = false;
-                    tmCohManager->nonTMread(inst, context, addr, &l1Hit);
-                    context->setL1Hit(l1Hit);
+                    tmCohManager->nonTMread(inst, context, addr, &opStatus);
+                    context->setL1Hit(opStatus.wasHit);
                 }
 #endif
                 MemT   rval=getReg<MemT,DTyp>(context,inst->regDst);
@@ -1541,17 +1540,16 @@ public:
             } else {
                 MemT  val=readMem<MemT>(context,addr);
 #if (defined TM)
+                MemOpStatus opStatus;
                 if(context->isInTM()) {
-                    bool l1Hit = false;
-                    TMRWStatus status = tmCohManager->read(inst, context, addr, &l1Hit);
-                    context->setL1Hit(l1Hit);
+                    TMRWStatus status = tmCohManager->read(inst, context, addr, &opStatus);
+                    context->setL1Hit(opStatus.wasHit);
                     if(status == TMRW_SUCCESS) {
                         val = readMemTM<MemT>(context, addr);
                     }
                 } else if(tmCohManager) {
-                    bool l1Hit = false;
-                    tmCohManager->nonTMread(inst, context, addr, &l1Hit);
-                    context->setL1Hit(l1Hit);
+                    tmCohManager->nonTMread(inst, context, addr, &opStatus);
+                    context->setL1Hit(opStatus.wasHit);
                 }
 #endif
 #if (defined TM)
@@ -1607,17 +1605,16 @@ public:
                     size_t tsiz=sizeof(MemT);
                     size_t offs=(addr%tsiz);
                     EndianDefs<mode>::cvtEndian(val);
+                    MemOpStatus opStatus;
                     if(context->isInTM()) {
-                        bool l1Hit = false;
-                        tmCohManager->write(inst, context, addr, &l1Hit);
-                        context->setL1Hit(l1Hit);
+                        tmCohManager->write(inst, context, addr, &opStatus);
+                        context->setL1Hit(opStatus.wasHit);
                         writeMemTM<MemT>(context, addr, val);
                         // Actual write done in cache flush
                     } else {
                         if(tmCohManager) {
-                            bool l1Hit = false;
-                            tmCohManager->nonTMwrite(inst, context, addr, &l1Hit);
-                            context->setL1Hit(l1Hit);
+                            tmCohManager->nonTMwrite(inst, context, addr, &opStatus);
+                            context->setL1Hit(opStatus.wasHit);
                         }
                         if((kind==LdStLeft)^((mode&ExecModeEndianMask)==ExecModeEndianLittle)) {
                             context->writeMemFromBuf(addr,tsiz-offs,&val);
@@ -1626,17 +1623,16 @@ public:
                         }
                     }
                 } else {
+                MemOpStatus opStatus;
                     if(context->isInTM()) {
-                        bool l1Hit = false;
-                        tmCohManager->write(inst, context, addr, &l1Hit);
-                        context->setL1Hit(l1Hit);
+                        tmCohManager->write(inst, context, addr, &opStatus);
+                        context->setL1Hit(opStatus.wasHit);
                         writeMemTM<MemT>(context, addr, val);
                         // Actual write done in cache flush
                     } else {
                         if(tmCohManager) {
-                            bool l1Hit = false;
-                            tmCohManager->nonTMwrite(inst, context, addr, &l1Hit);
-                            context->setL1Hit(l1Hit);
+                            tmCohManager->nonTMwrite(inst, context, addr, &opStatus);
+                            context->setL1Hit(opStatus.wasHit);
                         }
                         writeMem<MemT>(context,addr,val);
                     }
