@@ -71,7 +71,7 @@ public:
 
     void doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
     void doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
-    void doInvalidate(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted);
+    void doInvalidate(VAddr addr, std::set<Pid_t>& tmInvalidateAborted);
     bool findLine(VAddr addr) const { return cache->findLineNoEffect(addr) != NULL; }
 
     void startTransaction() { isTransactional = true; }
@@ -109,7 +109,6 @@ public:
     TMRWStatus nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     TMRWStatus nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     void completeFallback(Pid_t pid);
-    void markEvicted(Pid_t evicterPid, VAddr raddr, std::map<Pid_t, EvictCause>& evicted);
 
     const TransState& getTransState(Pid_t pid) { return transStates.at(pid); }
     int getReturnArgType()          const { return returnArgType; }
@@ -148,6 +147,7 @@ protected:
     void writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType);
     void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType);
+    void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
 
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr) = 0;
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr) = 0;

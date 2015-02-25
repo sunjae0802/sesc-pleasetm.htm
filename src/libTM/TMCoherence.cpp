@@ -96,12 +96,12 @@ void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, Me
     }
 }
 
-void PrivateCache::doInvalidate(InstDesc* inst, ThreadContext* context, VAddr addr, std::map<Pid_t, EvictCause>& tmEvicted) {
+void PrivateCache::doInvalidate(VAddr addr, std::set<Pid_t>& tmInvalidateAborted) {
     // Lookup line
     Line* line = cache->findLineNoEffect(addr);
     if(line) {
         if(isTransactional && line->isTransactional()) {
-            tmEvicted.insert(make_pair(pid, EvictByWrite));
+            tmInvalidateAborted.insert(pid);
         }
         line->invalidate();
     }
@@ -263,19 +263,6 @@ void TMCoherence::commitTrans(Pid_t pid) {
 void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
 }
-void TMCoherence::markEvicted(Pid_t evicterPid, VAddr raddr, std::map<Pid_t, EvictCause>& evicted) {
-	VAddr caddr = addrToCacheLine(raddr);
-	map<Pid_t, EvictCause>::iterator i_evicted;
-    for(i_evicted = evicted.begin(); i_evicted != evicted.end(); ++i_evicted) {
-        if(transStates[i_evicted->first].getState() == TM_RUNNING) {
-            TMAbortType_e abortType = TM_ATYPE_EVICTION;
-            if(i_evicted->second == EvictSetConflict) {
-                abortType = TM_ATYPE_SETCONFLICT;
-            }
-            markTransAborted(i_evicted->first, evicterPid, getUtid(evicterPid), caddr, abortType);
-        }
-	}
-}
 
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType) {
     if(transStates[victimPid].getState() != TM_ABORTING) {
@@ -382,6 +369,18 @@ void TMCoherence::completeFallback(Pid_t pid) {
     transStates[pid].completeFallback();
     removeTransaction(pid);
 }
+void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    std::set<Pid_t> aborted;
+
+    for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
+        if(p != pid) {
+            caches.at(p)->doInvalidate(raddr, aborted);
+        }
+    }
+    markTransAborted(aborted, pid, getUtid(pid), caddr, TM_ATYPE_EVICTION);
+}
 
 TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
@@ -390,13 +389,12 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 		return TMRW_ABORT;
 	} else {
         PrivateCache* cache = caches.at(pid);
-        std::map<Pid_t, EvictCause> evicted;
 
         cache->doLoad(inst, context, raddr, p_opStatus);
         tmLoads.inc();
 
-        markEvicted(pid, raddr, evicted);
-        if(transStates[pid].getState() == TM_MARKABORT) {
+        if(p_opStatus->setConflict) {
+            markTransAborted(pid, pid, getUtid(pid), caddr, TM_ATYPE_SETCONFLICT);
             return TMRW_ABORT;
         }
 
@@ -409,21 +407,14 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
 	} else {
-        std::map<Pid_t, EvictCause> evicted;
-
-        // Invalidate all sharers
-        for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
-            if(p != pid) {
-                caches.at(p)->doInvalidate(inst, context, raddr, evicted);
-            }
-        }
+        invalidateSharers(inst, context, raddr);
 
         PrivateCache* cache = caches.at(pid);
         cache->doStore(inst, context, raddr, p_opStatus);
         tmStores.inc();
 
-        markEvicted(pid, raddr, evicted);
-        if(transStates[pid].getState() == TM_MARKABORT) {
+        if(p_opStatus->setConflict) {
+            markTransAborted(pid, pid, getUtid(pid), caddr, TM_ATYPE_SETCONFLICT);
             return TMRW_ABORT;
         }
 
@@ -442,11 +433,7 @@ TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr 
     I(!hadWrote(caddr, pid));
 
     PrivateCache* cache = caches.at(pid);
-    std::map<Pid_t, EvictCause> evicted;
-
     cache->doLoad(inst, context, raddr, p_opStatus);
-
-    markEvicted(pid, raddr, evicted);
 
     // Abort writers once we try to read
     set<Pid_t> aborted;
@@ -466,19 +453,12 @@ TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr
 
     I(!hadRead(caddr, pid));
     I(!hadWrote(caddr, pid));
-    std::map<Pid_t, EvictCause> evicted;
 
-    // Invalidate all sharers
-    for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
-        if(p != pid) {
-            caches.at(p)->doInvalidate(inst, context, raddr, evicted);
-        }
-    }
+    invalidateSharers(inst, context, raddr);
 
     PrivateCache* cache = caches.at(pid);
     cache->doStore(inst, context, raddr, p_opStatus);
 
-    markEvicted(pid, raddr, evicted);
 
     // Abort everyone once we try to write
     set<Pid_t> aborted;
