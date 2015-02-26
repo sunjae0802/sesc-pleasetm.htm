@@ -95,7 +95,6 @@ private:
 
 class TMCoherence {
 public:
-    TMCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMCoherence() {}
     static TMCoherence *create(int32_t nProcs);
 
@@ -133,6 +132,7 @@ public:
     }
 
 protected:
+    TMCoherence(const char* tmStyle, int32_t nProcs, int lineSize, int lines, int returnArgType);
     VAddr addrToCacheLine(VAddr raddr) {
         while(raddr % cacheLineSize != 0) {
             raddr = raddr-1;

@@ -151,7 +151,7 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 // Abstract super-class of all TM policies. Contains the external interface and common
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
-TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
+TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int lineSize, int lines, int argType):
         nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType),
         nackStallBaseCycles(1), nackStallCap(1),
         numCommits("tm:numCommits"),
@@ -165,6 +165,9 @@ TMCoherence::TMCoherence(int32_t procs, int lineSize, int lines, int argType):
         numAbortsCausedBeforeCommit("tm:numAbortsCausedBeforeCommit"),
         linesReadHist("tm:linesReadHist"),
         linesWrittenHist("tm:linesWrittenHist") {
+
+    MSG("Using %s TM", tmStyle);
+
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
         caches.push_back(new PrivateCache("privatel1", "privateCache", pid));
@@ -491,8 +494,7 @@ TMBCStatus TMCoherence::myCommit(Pid_t pid, int tid) {
 // Follows LogTM TM policy.
 /////////////////////////////////////////////////////////////////////////////////////////
 TMEECoherence::TMEECoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMCoherence(nProcs, lineSize, lines, argType), cycleFlags(nProcs) {
-	cout<<"[TM] Eager/Eager Transactional Memory System" << endl;
+        TMCoherence("Eager/Eager", nProcs, lineSize, lines, argType), cycleFlags(nProcs) {
 }
 TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
@@ -623,8 +625,7 @@ TMBCStatus TMEECoherence::myCommit(Pid_t pid, int tid) {
 // for any memory conflicts. Follows Josep's group's TM policy
 /////////////////////////////////////////////////////////////////////////////////////////
 TMLLCoherence::TMLLCoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMCoherence(nProcs, lineSize, lines, argType) {
-	cout<<"[TM] Lazy/Lazy Transactional Memory System" << endl;
+        TMCoherence("Lazy/Lazy", nProcs, lineSize, lines, argType) {
 
 	currentCommitter = INVALID_PID; 
 }
@@ -677,8 +678,7 @@ TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
 /////////////////////////////////////////////////////////////////////////////////////////
 TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMCoherence(nProcs, lineSize, lines, argType) {
-	cout<<"[TM] Lazy/Eager Transactional Memory System" << endl;
+        TMCoherence("Lazy/Eager", nProcs, lineSize, lines, argType) {
 }
 TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
