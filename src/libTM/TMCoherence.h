@@ -98,6 +98,7 @@ public:
     virtual ~TMCoherence() {}
     static TMCoherence *create(int32_t nProcs);
 
+    // Entry point functions for TM operations
     TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     TMBCStatus abort(Pid_t pid, int tid, TMAbortType_e abortType);
@@ -109,6 +110,7 @@ public:
     TMRWStatus nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     void completeFallback(Pid_t pid);
 
+    // Query functions
     const TransState& getTransState(Pid_t pid) { return transStates.at(pid); }
     int getReturnArgType()          const { return returnArgType; }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
@@ -140,6 +142,7 @@ protected:
         return raddr;
     }
 
+    // Common functionality that all TMCoherence styles would use
     void beginTrans(Pid_t pid, InstDesc* inst);
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
@@ -151,13 +154,15 @@ protected:
     void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
     void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
 
+    // Interface for child classes to override and actually implement the TM OP
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr) = 0;
     virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr) = 0;
     virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
-    virtual void       myCompleteAbort(Pid_t pid)
+    virtual void       myCompleteAbort(Pid_t pid);
 
+    // Functions for managing reads/writes
     void removeTransaction(Pid_t pid);
     void removeFromList(std::list<Pid_t>& list, Pid_t pid);
     bool hadWrote(VAddr caddr, Pid_t pid);
@@ -165,6 +170,7 @@ protected:
     void getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w);
     void getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r);
 
+    // Common member variables
     static uint64_t nextUtid;
     int             nProcs;
     int             cacheLineSize;
@@ -176,6 +182,7 @@ protected:
     std::vector<struct TransState>  transStates;
     std::vector<PrivateCache*>      caches;
 
+    // Statistics
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;

@@ -52,6 +52,7 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
 
     // Invalidate old line
     if(replaced->isValid()) {
+        // Do various checks to see if replaced line is correctly chosen
         if(isTransactional && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
             fail("%d evicted transactional line too early: %d\n", pid, cache->countTransactional(addr));
         }
@@ -64,10 +65,12 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
             fail("Replaced line matches tag!\n");
         }
 
+        // Update MemOpStatus if this is a set conflict
         if(isTransactional && replaced->isTransactional() && replaced->isDirty()) {
             p_opStatus->setConflict = true;
         }
 
+        // Invalidate line
         replaced->invalidate();
     }
 
@@ -126,6 +129,10 @@ void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, M
     line->makeDirty();
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////
+// Factory function for all TM Coherence objects. Use different concrete classes
+// depending on SescConf
+/////////////////////////////////////////////////////////////////////////////////////////
 TMCoherence *TMCoherence::create(int32_t nProcs) {
     TMCoherence* newCohManager;
 
@@ -339,6 +346,8 @@ void TMCoherence::nackTrans(Pid_t pid) {
     transStates[pid].startNacking();
 }
 
+///
+// Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
     if(transStates[pid].getDepth() > 0) {
         fail("Nested transactions not tested\n");
@@ -349,6 +358,8 @@ TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
 	}
 }
 
+///
+// Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMBC_ABORT;
@@ -360,6 +371,9 @@ TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
 	}
 }
 
+///
+// Entry point for TM abort operation. If the abort type is driven externally (syscall/user),
+// then mark the transaction as aborted, else 
 TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
     if(abortType == TM_ATYPE_SYSCALL || abortType == TM_ATYPE_USER) {
         transStates[pid].markAbort(pid, transStates[pid].getUtid(), 0, abortType);
@@ -370,6 +384,9 @@ TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
     return myAbort(pid, tid);
 }
 
+///
+// Entry point for TM complete abort operation (to be called after an aborted TM returns to
+// tm.begin).
 TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
     if(transStates[pid].getState() == TM_ABORTING) {
         myCompleteAbort(pid);
@@ -377,11 +394,16 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
     return TMBC_SUCCESS;
 }
 
+///
+// Function that tells the TM engine that a fallback path for this transaction has been used,
+// so reset any statistics. Used for statistics that run across multiple retires.
 void TMCoherence::completeFallback(Pid_t pid) {
     transStates[pid].completeFallback();
     removeTransaction(pid);
 }
 
+///
+// Helper function that looks at all private caches and invalidates every active transaction.
 void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
@@ -395,6 +417,8 @@ void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAdd
     markTransAborted(aborted, pid, caddr, TM_ATYPE_EVICTION);
 }
 
+///
+// Entry point for TM read operation. Checks transaction state and then calls the real read.
 TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
@@ -414,6 +438,9 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
         return myRead(pid, 0, raddr);
     }
 }
+
+///
+// Entry point for TM write operation. Checks transaction state and then calls the real write.
 TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
@@ -436,8 +463,8 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 }
 
 ///
-// When a thread not inside a transaction conflicts with data read as part of
-//  a transaction, abort the transaction.
+// Entry point for a non-transactional read, i.e. when a thread not inside a transaction.
+// If this read conflicts with data read as part of another transaction, abort the transaction.
 TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
@@ -458,8 +485,8 @@ TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr 
 }
 
 ///
-// When a thread not inside a transaction conflicts with data is accessed as part of
-//  a transaction, abort the transaction.
+// Entry point for a non-transactional write, i.e. when a thread not inside a transaction.
+// If this write conflicts with data read as part of another transaction, abort the transaction.
 TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
@@ -483,21 +510,29 @@ TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr
     return TMRW_SUCCESS;
 }
 
+///
+// A basic type of TM begin that will be used if child does not override
 TMBCStatus TMCoherence::myBegin(Pid_t pid, InstDesc* inst) {
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
 
+///
+// A basic type of TM abort if child does not override
 TMBCStatus TMCoherence::myAbort(Pid_t pid, int tid) {
 	abortTrans(pid);
 	return TMBC_SUCCESS;
 }
 
+///
+// A basic type of TM commit if child does not override
 TMBCStatus TMCoherence::myCommit(Pid_t pid, int tid) {
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
+///
+// A basic type of TM complete abort if child does not override
 void TMCoherence::myCompleteAbort(Pid_t pid) {
     completeAbortTrans(pid);
 }
