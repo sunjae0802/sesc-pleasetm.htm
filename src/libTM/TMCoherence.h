@@ -139,9 +139,11 @@ protected:
         }
         return raddr;
     }
+
     void beginTrans(Pid_t pid, InstDesc* inst);
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
+    void completeAbortTrans(Pid_t pid);
     void nackTrans(Pid_t pid);
     void readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
@@ -154,7 +156,7 @@ protected:
     virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
-    virtual void myCompleteAbort(Pid_t pid) {}
+    virtual void       myCompleteAbort(Pid_t pid)
 
     void removeTransaction(Pid_t pid);
     void removeFromList(std::list<Pid_t>& list, Pid_t pid);

@@ -249,22 +249,43 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 	if(!transStates[pid].getRestartPending()) {
         // This is a new transaction instance
     } // Else a restarted transaction
+
+    // Reset Statistics
     numAbortsCaused[pid] = 0;
+
+    // Do the begin
     removeTransaction(pid);
+    caches.at(pid)->startTransaction();
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 
 void TMCoherence::commitTrans(Pid_t pid) {
+    // Update Statistics
     numCommits.inc();
     numAbortsCausedBeforeCommit.add(numAbortsCaused[pid]);
-
     linesReadHist.sample(getNumReads(pid));
     linesWrittenHist.sample(getNumWrites(pid));
-    transStates[pid].commit();
+
+    // Do the commit
     removeTransaction(pid);
+    caches.at(pid)->stopTransaction();
+    transStates[pid].commit();
 }
 void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
+}
+void TMCoherence::completeAbortTrans(Pid_t pid) {
+    // Update Statistics
+    numAborts.inc();
+    numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
+    abortTypes.sample(transStates[pid].getAbortType());
+    linesReadHist.sample(getNumReads(pid));
+    linesWrittenHist.sample(getNumWrites(pid));
+
+    // Do the completeAbort
+    removeTransaction(pid);
+    caches.at(pid)->stopTransaction();
+    transStates[pid].completeAbort();
 }
 
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
@@ -324,7 +345,6 @@ TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
 		transStates[pid].beginNested();
 		return TMBC_IGNORE;
 	} else {
-        caches.at(pid)->startTransaction();
 		return myBegin(pid, inst);
 	}
 }
@@ -336,7 +356,6 @@ TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
 		transStates[pid].commitNested();
 		return TMBC_IGNORE;
 	} else {
-        caches.at(pid)->stopTransaction();
 		return myCommit(pid, tid);
 	}
 }
@@ -353,27 +372,16 @@ TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
 
 TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
     if(transStates[pid].getState() == TM_ABORTING) {
-        numAborts.inc();
-        numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
-        abortTypes.sample(transStates[pid].getAbortType());
-
-        linesReadHist.sample(getNumReads(pid));
-        linesWrittenHist.sample(getNumWrites(pid));
-
-        caches.at(pid)->stopTransaction();
-
-        transStates[pid].completeAbort();
-        removeTransaction(pid);
-
-        Pid_t aborter = transStates[pid].getAborterPid();
         myCompleteAbort(pid);
     }
     return TMBC_SUCCESS;
 }
+
 void TMCoherence::completeFallback(Pid_t pid) {
     transStates[pid].completeFallback();
     removeTransaction(pid);
 }
+
 void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
@@ -488,6 +496,10 @@ TMBCStatus TMCoherence::myAbort(Pid_t pid, int tid) {
 TMBCStatus TMCoherence::myCommit(Pid_t pid, int tid) {
     commitTrans(pid);
     return TMBC_SUCCESS;
+}
+
+void TMCoherence::myCompleteAbort(Pid_t pid) {
+    completeAbortTrans(pid);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
