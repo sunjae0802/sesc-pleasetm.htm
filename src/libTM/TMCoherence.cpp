@@ -267,7 +267,9 @@ void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
 }
 
-void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType) {
+void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
+    uint64_t aborterUtid = transStates[aborterPid].getUtid();
+
     if(transStates[victimPid].getState() != TM_ABORTING) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
         removeTransaction(victimPid);
@@ -277,13 +279,13 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t a
     } // Else victim is already aborting, so leave it alone
 }
 
-void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType) {
+void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
 	set<Pid_t>::iterator i_aborted;
     for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
 		if(*i_aborted == aborterPid) {
             fail("Aborter is also the aborted?");
         }
-        markTransAborted(*i_aborted, aborterPid, aborterUtid, caddr, abortType);
+        markTransAborted(*i_aborted, aborterPid, caddr, abortType);
 	}
 }
 void TMCoherence::readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
@@ -382,7 +384,7 @@ void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAdd
             caches.at(p)->doInvalidate(raddr, aborted);
         }
     }
-    markTransAborted(aborted, pid, getUtid(pid), caddr, TM_ATYPE_EVICTION);
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_EVICTION);
 }
 
 TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
@@ -397,7 +399,7 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
         tmLoads.inc();
 
         if(p_opStatus->setConflict) {
-            markTransAborted(pid, pid, getUtid(pid), caddr, TM_ATYPE_SETCONFLICT);
+            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
             return TMRW_ABORT;
         }
 
@@ -417,7 +419,7 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
         tmStores.inc();
 
         if(p_opStatus->setConflict) {
-            markTransAborted(pid, pid, getUtid(pid), caddr, TM_ATYPE_SETCONFLICT);
+            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
             return TMRW_ABORT;
         }
 
@@ -442,7 +444,7 @@ TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr 
     set<Pid_t> aborted;
     getWritersExcept(caddr, pid, aborted);
 
-    markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
 
     return TMRW_SUCCESS;
 }
@@ -468,7 +470,7 @@ TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr
     getReadersExcept(caddr, pid, aborted);
     getWritersExcept(caddr, pid, aborted);
 
-    markTransAborted(aborted, pid, INVALID_UTID, caddr, TM_ATYPE_NONTM);
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
 
     return TMRW_SUCCESS;
 }
@@ -518,8 +520,7 @@ TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
         Time_t myTimestamp = transStates[pid].getTimestamp();
 
         if(nackTimestamp <= myTimestamp && cycleFlags[pid]) {
-            uint64_t aborterUtid = transStates[aborterPid].getUtid();
-            markTransAborted(pid, aborterPid, aborterUtid, caddr, TM_ATYPE_DEFAULT);
+            markTransAborted(pid, aborterPid, caddr, TM_ATYPE_DEFAULT);
             return TMRW_ABORT;
         } else {
             if(nackTimestamp >= myTimestamp) {
@@ -558,8 +559,7 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
         Time_t myTimestamp = transStates[pid].getTimestamp();
 
         if(nackTimestamp <= myTimestamp && cycleFlags[pid]) {
-            uint64_t aborterUtid = transStates[aborterPid].getUtid();
-            markTransAborted(pid, aborterPid, aborterUtid, caddr, TM_ATYPE_DEFAULT);
+            markTransAborted(pid, aborterPid, caddr, TM_ATYPE_DEFAULT);
             return TMRW_ABORT;
         } else {
             if(nackTimestamp >= myTimestamp) {
@@ -583,8 +583,7 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
         Time_t myTimestamp = transStates[pid].getTimestamp();
 
         if(nackTimestamp <= myTimestamp && cycleFlags[pid]) {
-            uint64_t aborterUtid = transStates[aborterPid].getUtid();
-            markTransAborted(pid, aborterPid, aborterUtid, caddr, TM_ATYPE_DEFAULT);
+            markTransAborted(pid, aborterPid, caddr, TM_ATYPE_DEFAULT);
             return TMRW_ABORT;
         } else {
             if(nackTimestamp >= myTimestamp) {
@@ -658,7 +657,7 @@ TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
             aborted.clear();
             getReadersExcept(caddr, pid, aborted);
             getWritersExcept(caddr, pid, aborted);
-            markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
+            markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
         }
 
         // Now do the "commit"
@@ -687,7 +686,7 @@ TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     // Abort writers once we try to read
     set<Pid_t> aborted;
     getWritersExcept(caddr, pid, aborted);
-    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
 
     readTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;
@@ -701,7 +700,7 @@ TMRWStatus TMLECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     set<Pid_t> aborted;
     getReadersExcept(caddr, pid, aborted);
     getWritersExcept(caddr, pid, aborted);
-    markTransAborted(aborted, pid, utid, caddr, TM_ATYPE_DEFAULT);
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
 
     writeTrans(pid, tid, raddr, caddr);
     return TMRW_SUCCESS;

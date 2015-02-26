@@ -145,8 +145,8 @@ protected:
     void nackTrans(Pid_t pid);
     void readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
-    void markTransAborted(Pid_t victimPid, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType);
-    void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, uint64_t aborterUtid, VAddr caddr, TMAbortType_e abortType);
+    void markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
+    void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
     void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
 
     virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr) = 0;
