@@ -37,6 +37,8 @@ CacheAssocTM<Line, Addr_t>::CacheAssocTM(int32_t s, int32_t a, int32_t b, int32_
     }
 }
 
+///
+// Look up an cache line and return a pointer to that line, or NULL if not found
 template<class Line, class Addr_t>
 Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
 {
@@ -68,9 +70,20 @@ Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
 
     // No matter what is the policy, move lineHit to the *theSet. This
     // increases locality
-    Line *tmp = *lineHit;
+    moveToMRU(theSet, lineHit);
+
+    return *theSet;
+}
+
+///
+// Move theLine to the MRU position in theSet
+template<class Line, class Addr_t>
+void
+CacheAssocTM<Line, Addr_t>::moveToMRU(Line** theSet, Line** theLine)
+{
+    Line *tmp = *theLine;
     {
-        Line **l = lineHit;
+        Line **l = theLine;
         while(l > theSet) {
             Line **prev = l - 1;
             *l = *prev;;
@@ -78,18 +91,15 @@ Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
         }
         *theSet = tmp;
     }
-
-    return tmp;
 }
 
+///
+// Find and return the oldest invalid block
 template<class Line, class Addr_t>
 Line
-*CacheAssocTM<Line, Addr_t>::findLine2Replace(Addr_t addr)
+**CacheAssocTM<Line, Addr_t>::findInvalid(Line **theSet)
 {
-    Addr_t tag    = this->calcTag(addr);
-    Line **theSet = &content[this->calcIndex4Tag(tag)];
-
-    Line **lineFree=0; // Order of preference, invalid
+    Line **lineFree = 0;
     Line **setEnd = theSet + assoc;
 
     {
@@ -103,6 +113,69 @@ Line
         }
     }
 
+    return lineFree;
+}
+
+///
+// Find and return the oldest block that is clean (may be transactional)
+template<class Line, class Addr_t>
+Line
+**CacheAssocTM<Line, Addr_t>::findOldestClean(Line **theSet)
+{
+    Line **lineFree = 0;
+    Line **setEnd = theSet + assoc;
+
+    {
+        Line **l = setEnd -1;
+        while(l >= theSet) {
+            if (!(*l)->isDirty()) {
+                lineFree = l;
+                break;
+            }
+
+            l--;
+        }
+    }
+
+    return lineFree;
+}
+
+///
+// Find and return the oldest block that is non transactional (may be dirty)
+template<class Line, class Addr_t>
+Line
+**CacheAssocTM<Line, Addr_t>::findOldestNonTM(Line **theSet)
+{
+    Line **lineFree = 0;
+    Line **setEnd = theSet + assoc;
+
+    {
+        Line **l = setEnd -1;
+        while(l >= theSet) {
+            if (!(*l)->isTransactional()) {
+                lineFree = l;
+                break;
+            }
+
+            l--;
+        }
+    }
+
+    return lineFree;
+}
+
+template<class Line, class Addr_t>
+Line
+*CacheAssocTM<Line, Addr_t>::findLine2Replace(Addr_t addr)
+{
+    Addr_t tag    = this->calcTag(addr);
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+
+    Line **lineFree=0; // Order of preference, invalid
+    Line **setEnd = theSet + assoc;
+
+    lineFree = findInvalid(theSet);
+
     if (lineFree) {
         return *lineFree;
     }
@@ -112,56 +185,15 @@ Line
         // Get the oldest line possible
         lineFree = setEnd-1;
     } else {
-        Line **l = setEnd -1;
-        if(countTransactional(addr) == assoc && countDirty(addr) < assoc) {
-            // Find oldest transactional but still clean line
-            while(l >= theSet) {
-                if (!(*l)->isDirty()) {
-                    lineFree = l;
-                    break;
-                }
-
-                l--;
-            }
+        if(countTransactional(addr) < assoc && countDirty(addr) < assoc) {
+            lineFree = findOldestNonTM(theSet);
             if(lineFree == 0) {
-                fail("Clean replacement policy failed\n");
+                lineFree = findOldestClean(theSet);
             }
+        } else if(countTransactional(addr) == assoc && countDirty(addr) < assoc) {
+            lineFree = findOldestClean(theSet);
         } else if(countTransactional(addr) < assoc && countDirty(addr) == assoc) {
-            // Find oldest dirty, but non-transactional line
-            while(l >= theSet) {
-                if (!(*l)->isTransactional()) {
-                    lineFree = l;
-                    break;
-                }
-
-                l--;
-            }
-            if(lineFree == 0) {
-                fail("non-transactional replacement policy failed\n");
-            }
-        } else if(countTransactional(addr) < assoc && countDirty(addr) < assoc) {
-            while(l >= theSet) {
-                if (!(*l)->isTransactional()) {
-                    lineFree = l;
-                    break;
-                }
-
-                l--;
-            }
-            if(lineFree == 0) {
-                l = setEnd -1;
-                while(l >= theSet) {
-                    if (!(*l)->isDirty()) {
-                        lineFree = l;
-                        break;
-                    }
-
-                    l--;
-                }
-            }
-            if(lineFree == 0) {
-                fail("Common replacement policy failed\n");
-            }
+            lineFree = findOldestNonTM(theSet);
         } else {
             fail("Non-accounted for case\n");
         }
@@ -176,18 +208,9 @@ Line
 
     // No matter what is the policy, move lineHit to the *theSet. This
     // increases locality
-    Line *tmp = *lineFree;
-    {
-        Line **l = lineFree;
-        while(l > theSet) {
-            Line **prev = l - 1;
-            *l = *prev;;
-            l = prev;
-        }
-        *theSet = tmp;
-    }
+    moveToMRU(theSet, lineFree);
 
-    return tmp;
+    return *theSet;
 }
 
 template<class Line, class Addr_t>
@@ -278,11 +301,13 @@ CacheAssocTM<Line, Addr_t>::countTransactionalDirty(Addr_t addr)
     return count;
 }
 
+/*********************************************************
+ *  PrivateCache
+ *********************************************************/
 ///
 // Constructor for PrivateCache. Allocate members and GStat counters
 PrivateCache::PrivateCache(const char* section, const char* name, Pid_t p)
         : pid(p)
-        , isTransactional(false)
         , readHit("%s_%d:readHit", name, p)
         , writeHit("%s_%d:writeHit", name, p)
         , readMiss("%s_%d:readMiss", name, p)
@@ -320,10 +345,10 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
     // Invalidate old line
     if(replaced->isValid()) {
         // Do various checks to see if replaced line is correctly chosen
-        if(isTransactional && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
+        if(isInTransaction() && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
             fail("%d evicted transactional line too early: %d\n", pid, cache->countTransactional(addr));
         }
-        if(isTransactional && replaced->isTransactional() && replaced->isDirty() && cache->countDirty(addr) < cache->getAssoc()) {
+        if(isInTransaction() && replaced->isTransactional() && replaced->isDirty() && cache->countDirty(addr) < cache->getAssoc()) {
             fail("%d evicted transactional dirty line too early: %d\n", pid, cache->countDirty(addr));
         }
 
@@ -333,7 +358,7 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
         }
 
         // Update MemOpStatus if this is a set conflict
-        if(isTransactional && replaced->isTransactional() && replaced->isDirty()) {
+        if(isInTransaction() && replaced->isTransactional() && replaced->isDirty()) {
             p_opStatus->setConflict = true;
         }
 
@@ -360,7 +385,7 @@ void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, Me
     }
 
     // Update line
-    if(isTransactional) {
+    if(isInTransaction()) {
         line->markTransactional();
     }
 }
@@ -369,7 +394,7 @@ void PrivateCache::doInvalidate(VAddr addr, std::set<Pid_t>& tmInvalidateAborted
     // Lookup line
     Line* line = cache->findLine(addr);
     if(line) {
-        if(isTransactional && line->isTransactional()) {
+        if(isInTransaction() && line->isTransactional()) {
             tmInvalidateAborted.insert(pid);
         }
         line->invalidate();
@@ -389,7 +414,7 @@ void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, M
     }
 
     // Update line
-    if(isTransactional) {
+    if(isInTransaction()) {
         line->markTransactional();
     }
     line->makeDirty();

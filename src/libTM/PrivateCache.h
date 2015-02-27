@@ -67,7 +67,10 @@ protected:
     Line *mem;
     Line **content;
     bool isTransactional;
-    void clearTransactional();
+    void moveToMRU(Line** theSet, Line** theLine);
+    Line **findInvalid(Line **theSet);
+    Line **findOldestClean(Line **theSet);
+    Line **findOldestNonTM(Line **theSet);
 
 public:
     CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit);
@@ -82,13 +85,13 @@ public:
     size_t countDirty(Addr_t addr);
     size_t countTransactional(Addr_t addr);
     size_t countTransactionalDirty(Addr_t addr);
-    void startTransaction() { isTransactional = true; }
-    void stopTransaction() {
-        isTransactional = false;
-        for(uint32_t i = 0; i < numLines; i++) {
-            mem[i].clearTransactional();
-        }
+
+    void startTransaction();
+    void stopTransaction();
+    bool getTransactional() const {
+        return isTransactional;
     }
+
     uint32_t  getLineSize() const   {
         return lineSize;
     }
@@ -147,9 +150,9 @@ public:
     void doInvalidate(VAddr addr, std::set<Pid_t>& tmInvalidateAborted);
     bool findLine(VAddr addr) const { return cache->findLine(addr) != NULL; }
 
-    void startTransaction() {cache->startTransaction(); isTransactional = true; }
-    void stopTransaction() { cache->stopTransaction(); isTransactional = false; }
-    bool isInTransaction() const { return isTransactional; }
+    void startTransaction() {cache->startTransaction(); }
+    void stopTransaction() { cache->stopTransaction(); }
+    bool isInTransaction() const { return cache->getTransactional(); }
     size_t getLineSize() const { return cache->getLineSize(); }
 private:
     typedef CacheAssocTM<CState1, VAddr>            Cache;
@@ -158,12 +161,30 @@ private:
     Line* doFillLine(VAddr addr, MemOpStatus* p_opStatus);
 
     Pid_t                       pid;
-    bool                        isTransactional;
     Cache                      *cache;
     GStatsCntr                  readHit;
     GStatsCntr                  writeHit;
     GStatsCntr                  readMiss;
     GStatsCntr                  writeMiss;
 };
+
+
+template<class Line, class Addr_t>
+void
+CacheAssocTM<Line, Addr_t>::startTransaction()
+{
+    isTransactional = true;
+}
+
+template<class Line, class Addr_t>
+void
+CacheAssocTM<Line, Addr_t>::stopTransaction()
+{
+    isTransactional = false;
+    for(uint32_t i = 0; i < numLines; i++) {
+        mem[i].clearTransactional();
+    }
+}
+
 
 #endif
