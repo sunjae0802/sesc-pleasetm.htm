@@ -35,8 +35,8 @@ struct MemOpStatus {
 
 class CState1 : public StateGeneric<> {
 private:
-    bool valid;
     bool dirty;
+    bool transactional;
 public:
     CState1() {
         invalidate();
@@ -50,17 +50,102 @@ public:
     void makeClean() {
         dirty = false;
     }
-    bool isValid() const {
-        return valid;
+    bool isTransactional() const {
+        return transactional;
     }
-    void validate() {
-        I(getTag());
-        valid = true;
+    void markTransactional() {
+        transactional = true;
+    }
+    void clearTransactional() {
+        transactional = false;
     }
     void invalidate() {
-        valid = false;
         dirty = false;
+        transactional = false;
         clearTag();
+    }
+};
+
+template<class Line, class Addr_t>
+class CacheAssocTM {
+    const uint32_t  size;
+    const uint32_t  lineSize;
+    const uint32_t  addrUnit; //Addressable unit: for most caches = 1 byte
+    const uint32_t  assoc;
+    const uint32_t  log2Assoc;
+    const uint64_t  log2AddrLs;
+    const uint64_t  maskAssoc;
+    const uint32_t  sets;
+    const uint32_t  maskSets;
+    const uint32_t  numLines;
+
+protected:
+
+    Line *mem;
+    Line **content;
+    bool isTransactional;
+    void clearTransactional();
+
+public:
+    CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit);
+    virtual ~CacheAssocTM() {
+        delete [] content;
+        delete [] mem;
+    }
+
+    Line *findLine2Replace(Addr_t addr);
+    Line *findLine(Addr_t addr);
+    size_t countValid(Addr_t addr);
+    size_t countDirty(Addr_t addr);
+    size_t countTransactional(Addr_t addr);
+    size_t countTransactionalDirty(Addr_t addr);
+    void startTransaction() { isTransactional = true; }
+    void stopTransaction() { isTransactional = false; clearTransactional(); }
+    uint32_t  getLineSize() const   {
+        return lineSize;
+    }
+    uint32_t  getAssoc() const      {
+        return assoc;
+    }
+    uint32_t  getLog2AddrLs() const {
+        return log2AddrLs;
+    }
+    uint32_t  getLog2Assoc() const  {
+        return log2Assoc;
+    }
+    uint32_t  getMaskSets() const   {
+        return maskSets;
+    }
+    uint32_t  getNumLines() const   {
+        return numLines;
+    }
+    uint32_t  getNumSets() const    {
+        return sets;
+    }
+
+    Addr_t calcTag(Addr_t addr)       const {
+        return (addr >> log2AddrLs);
+    }
+
+    uint32_t calcSet4Tag(Addr_t tag)     const {
+        return (tag & maskSets);
+    }
+    uint32_t calcSet4Addr(Addr_t addr)   const {
+        return calcSet4Tag(calcTag(addr));
+    }
+
+    uint32_t calcIndex4Set(uint32_t set)    const {
+        return (set << log2Assoc);
+    }
+    uint32_t calcIndex4Tag(uint32_t tag)    const {
+        return calcIndex4Set(calcSet4Tag(tag));
+    }
+    uint32_t calcIndex4Addr(Addr_t addr) const {
+        return calcIndex4Set(calcSet4Addr(addr));
+    }
+
+    Addr_t calcAddr4Tag(Addr_t tag)   const {
+        return (tag << log2AddrLs);
     }
 };
 
@@ -72,15 +157,15 @@ public:
     void doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
     void doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
     void doInvalidate(VAddr addr, std::set<Pid_t>& tmInvalidateAborted);
-    bool findLine(VAddr addr) const { return cache->findLineNoEffect(addr) != NULL; }
+    bool findLine(VAddr addr) const { return cache->findLine(addr) != NULL; }
 
-    void startTransaction() { isTransactional = true; }
-    void stopTransaction() { cache->clearTransactional(); isTransactional = false; }
+    void startTransaction() {cache->startTransaction(); isTransactional = true; }
+    void stopTransaction() { cache->stopTransaction(); isTransactional = false; }
     bool isInTransaction() const { return isTransactional; }
     size_t getLineSize() const { return cache->getLineSize(); }
 private:
-    typedef CacheGeneric<CState1, VAddr>            Cache;
-    typedef CacheGeneric<CState1, VAddr>::CacheLine Line;
+    typedef CacheAssocTM<CState1, VAddr>            Cache;
+    typedef CState1 Line;
 
     Line* doFillLine(VAddr addr, MemOpStatus* p_opStatus);
 

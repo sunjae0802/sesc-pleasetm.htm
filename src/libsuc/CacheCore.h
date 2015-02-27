@@ -116,15 +116,8 @@ public:
     //
     // when locked parameter is false, it would try to remove even locked lines
 
-    virtual CacheLine *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false)=0;
+    virtual CacheLine *findLine2Replace(Addr_t addr, bool ignoreLocked=false)=0;
     virtual size_t countValid(Addr_t addr) = 0;
-    virtual size_t countDirty(Addr_t addr) { return 0; }
-
-#if defined(TM)
-    // Clear all transactional bits
-    virtual size_t countTransactional(Addr_t addr) = 0;
-    virtual void clearTransactional()=0;
-#endif
 
     // TO DELETE if flush from Cache.cpp is cleared.  At least it should have a
     // cleaner interface so that Cache.cpp does not touch the internals.
@@ -265,56 +258,6 @@ public:
     }
 };
 
-#if defined(TM)
-#ifdef SESC_ENERGY
-template<class State, class Addr_t = uint32_t, bool Energy=true>
-#else
-template<class State, class Addr_t = uint32_t, bool Energy=false>
-#endif
-class CacheAssocTM : public CacheGeneric<State, Addr_t, Energy> {
-    using CacheGeneric<State, Addr_t, Energy>::numLines;
-    using CacheGeneric<State, Addr_t, Energy>::assoc;
-    using CacheGeneric<State, Addr_t, Energy>::maskAssoc;
-    using CacheGeneric<State, Addr_t, Energy>::goodInterface;
-
-private:
-public:
-    typedef typename CacheGeneric<State, Addr_t, Energy>::CacheLine Line;
-
-protected:
-
-    Line *mem;
-    Line **content;
-    ushort irand;
-    ReplacementPolicy policy;
-
-    friend class CacheGeneric<State, Addr_t, Energy>;
-
-    Line *findLinePrivate(Addr_t addr);
-public:
-    CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit, const char *pStr);
-    virtual ~CacheAssocTM() {
-        delete [] content;
-        delete [] mem;
-    }
-
-    // TODO: do an iterator. not this junk!!
-    Line *getPLine(uint32_t l) {
-        // Lines [l..l+assoc] belong to the same set
-        I(l<numLines);
-        return content[l];
-    }
-
-    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
-    size_t countValid(Addr_t addr);
-    size_t countDirty(Addr_t addr);
-#if defined(TM)
-    size_t countTransactional(Addr_t addr);
-    void clearTransactional();
-#endif
-};
-#endif
-
 #ifdef SESC_ENERGY
 template<class State, class Addr_t = uint32_t, bool Energy=true>
 #else
@@ -354,12 +297,8 @@ public:
         return content[l];
     }
 
-    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false);
     size_t countValid(Addr_t addr);
-#if defined(TM)
-    size_t countTransactional(Addr_t addr);
-    void clearTransactional();
-#endif
 };
 
 #ifdef SESC_ENERGY
@@ -397,12 +336,8 @@ public:
         return content[l];
     }
 
-    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false);
     size_t countValid(Addr_t addr);
-#if defined(TM)
-    size_t countTransactional(Addr_t addr);
-    void clearTransactional();
-#endif
 };
 
 #ifdef SESC_ENERGY
@@ -440,12 +375,8 @@ public:
         return content[l];
     }
 
-    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false, bool isTransactional=false);
+    Line *findLine2Replace(Addr_t addr, bool ignoreLocked=false);
     size_t countValid(Addr_t addr);
-#if defined(TM)
-    size_t countTransactional(Addr_t addr);
-    void clearTransactional();
-#endif
 };
 
 
@@ -453,12 +384,10 @@ template<class Addr_t=uint32_t>
 class StateGeneric {
 private:
     Addr_t tag;
-    bool transactional;
 
 public:
     virtual ~StateGeneric() {
         tag = 0;
-        transactional = false;
     }
 
     Addr_t getTag() const {
@@ -470,7 +399,6 @@ public:
     }
     void clearTag() {
         tag = 0;
-        transactional = false;
     }
     void initialize(void *c) {
         clearTag();
@@ -487,20 +415,6 @@ public:
     virtual bool isLocked() const {
         return false;
     }
-
-#if defined(TM)
-    bool isTransactional() const {
-        return transactional;
-    }
-
-    void markTransactional() {
-        transactional = true;
-    }
-
-    void clearTransactional() {
-        transactional = false;
-    }
-#endif
 
     virtual void dump(const char *str) {
     }
