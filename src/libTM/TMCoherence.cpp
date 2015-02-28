@@ -147,7 +147,6 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 
     // Do the begin
     removeTransaction(pid);
-    caches.at(pid)->startTransaction();
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 
@@ -160,7 +159,7 @@ void TMCoherence::commitTrans(Pid_t pid) {
 
     // Do the commit
     removeTransaction(pid);
-    caches.at(pid)->stopTransaction();
+    caches.at(pid)->clearTransactional();
     transStates[pid].commit();
 }
 void TMCoherence::abortTrans(Pid_t pid) {
@@ -176,7 +175,7 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 
     // Do the completeAbort
     removeTransaction(pid);
-    caches.at(pid)->stopTransaction();
+    caches.at(pid)->clearTransactional();
     transStates[pid].completeAbort();
 }
 

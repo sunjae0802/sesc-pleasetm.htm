@@ -23,7 +23,6 @@ CacheAssocTM<Line, Addr_t>::CacheAssocTM(int32_t s, int32_t a, int32_t b, int32_
         ,sets((s/b)/a)
         ,maskSets(sets-1)
         ,numLines(s/b)
-        ,isTransactional(false)
 {
     I(numLines>0);
 
@@ -166,7 +165,7 @@ Line
 
 template<class Line, class Addr_t>
 Line
-*CacheAssocTM<Line, Addr_t>::findLine2Replace(Addr_t addr)
+*CacheAssocTM<Line, Addr_t>::findLine2Replace(bool isInTM, Addr_t addr)
 {
     Addr_t tag    = this->calcTag(addr);
     Line **theSet = &content[this->calcIndex4Tag(tag)];
@@ -180,7 +179,7 @@ Line
         return *lineFree;
     }
 
-    if(isTransactional == false || (countTransactionalDirty(addr) == assoc)) {
+    if(isInTM == false || (countTransactionalDirty(addr) == assoc)) {
         // If not inside a transaction, or if we ran out of non-transactional or clean lines
         // Get the oldest line possible
         lineFree = setEnd-1;
@@ -326,7 +325,7 @@ PrivateCache::~PrivateCache() {
 ///
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
-PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus) {
+PrivateCache::Line* PrivateCache::doFillLine(bool isInTM, VAddr addr, MemOpStatus* p_opStatus) {
     Line*         line  = findLine(addr);
     I(line == NULL);
 
@@ -334,7 +333,7 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
     VAddr myTag = cache->calcTag(addr);
 
     // Find line to replace
-    Line* replaced  = cache->findLine2Replace(addr);
+    Line* replaced  = cache->findLine2Replace(isInTM, addr);
     if(replaced == nullptr) {
         fail("Replacing line is NULL!\n");
     }
@@ -342,10 +341,10 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
     // Invalidate old line
     if(replaced->isValid()) {
         // Do various checks to see if replaced line is correctly chosen
-        if(isInTransaction() && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
+        if(isInTM && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
             fail("%d evicted transactional line too early: %d\n", pid, cache->countTransactional(addr));
         }
-        if(isInTransaction() && replaced->isTransactional() && replaced->isDirty() && cache->countDirty(addr) < cache->getAssoc()) {
+        if(isInTM && replaced->isTransactional() && replaced->isDirty() && cache->countDirty(addr) < cache->getAssoc()) {
             fail("%d evicted transactional dirty line too early: %d\n", pid, cache->countDirty(addr));
         }
 
@@ -355,7 +354,7 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
         }
 
         // Update MemOpStatus if this is a set conflict
-        if(isInTransaction() && replaced->isTransactional() && replaced->isDirty()) {
+        if(isInTM && replaced->isTransactional() && replaced->isDirty()) {
             p_opStatus->setConflict = true;
         }
 
@@ -379,14 +378,14 @@ void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, Me
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         readMiss.inc();
-        line = doFillLine(addr, p_opStatus);
+        line = doFillLine(context->isInTM(), addr, p_opStatus);
     } else {
         p_opStatus->wasHit = true;
         readHit.inc();
     }
 
     // Update line
-    if(isInTransaction()) {
+    if(context->isInTM()) {
         line->markTransactional();
     }
 }
@@ -397,14 +396,14 @@ void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, M
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         writeMiss.inc();
-        line = doFillLine(addr, p_opStatus);
+        line = doFillLine(context->isInTM(), addr, p_opStatus);
     } else {
         p_opStatus->wasHit = true;
         writeHit.inc();
     }
 
     // Update line
-    if(isInTransaction()) {
+    if(context->isInTM()) {
         line->markTransactional();
     }
     line->makeDirty();

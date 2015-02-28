@@ -66,7 +66,6 @@ protected:
 
     Line *mem;
     Line **content;
-    bool isTransactional;
     void moveToMRU(Line** theSet, Line** theLine);
     Line **findInvalid(Line **theSet);
     Line **findOldestClean(Line **theSet);
@@ -79,18 +78,14 @@ public:
         delete [] mem;
     }
 
-    Line *findLine2Replace(Addr_t addr);
+    Line *findLine2Replace(bool isInTM, Addr_t addr);
     Line *findLine(Addr_t addr);
     size_t countValid(Addr_t addr);
     size_t countDirty(Addr_t addr);
     size_t countTransactional(Addr_t addr);
     size_t countTransactionalDirty(Addr_t addr);
 
-    void startTransaction();
-    void stopTransaction();
-    bool getTransactional() const {
-        return isTransactional;
-    }
+    void clearTransactional();
 
     uint32_t  getLineSize() const   {
         return lineSize;
@@ -151,15 +146,15 @@ public:
     void doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
     void doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
 
-    void startTransaction() {cache->startTransaction(); }
-    void stopTransaction() { cache->stopTransaction(); }
-    bool isInTransaction() const { return cache->getTransactional(); }
+    // Functions forwarded to Cache
     Line* findLine(VAddr addr);
+    void clearTransactional() { cache->clearTransactional(); }
     size_t getLineSize() const { return cache->getLineSize(); }
 private:
 
-    Line* doFillLine(VAddr addr, MemOpStatus* p_opStatus);
+    Line* doFillLine(bool isInTM, VAddr addr, MemOpStatus* p_opStatus);
 
+    // Member variables
     Pid_t                       pid;
     Cache                      *cache;
     GStatsCntr                  readHit;
@@ -168,19 +163,10 @@ private:
     GStatsCntr                  writeMiss;
 };
 
-
 template<class Line, class Addr_t>
 void
-CacheAssocTM<Line, Addr_t>::startTransaction()
+CacheAssocTM<Line, Addr_t>::clearTransactional()
 {
-    isTransactional = true;
-}
-
-template<class Line, class Addr_t>
-void
-CacheAssocTM<Line, Addr_t>::stopTransaction()
-{
-    isTransactional = false;
     for(uint32_t i = 0; i < numLines; i++) {
         mem[i].clearTransactional();
     }
