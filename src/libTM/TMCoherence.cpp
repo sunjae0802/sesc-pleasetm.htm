@@ -56,9 +56,13 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int lineSize, int 
 
     MSG("Using %s TM", tmStyle);
 
+    const int size = SescConf->getInt("privatel1", "size");
+    const int assoc = SescConf->getInt("privatel1", "assoc");
+    const int bsize = SescConf->getInt("privatel1", "bsize");
+
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
-        caches.push_back(new PrivateCache("privatel1", "privateCache", pid));
+        caches.push_back(new PrivateCache("privateCache", pid, size, assoc, bsize));
         // Initialize maps to enable at() use
         linesRead[pid].clear();
         linesWritten[pid].clear();

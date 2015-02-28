@@ -306,16 +306,13 @@ CacheAssocTM<Line, Addr_t>::countTransactionalDirty(Addr_t addr)
  *********************************************************/
 ///
 // Constructor for PrivateCache. Allocate members and GStat counters
-PrivateCache::PrivateCache(const char* section, const char* name, Pid_t p)
+PrivateCache::PrivateCache(const char* name, Pid_t p, int size, int assoc, int bsize)
         : pid(p)
         , readHit("%s_%d:readHit", name, p)
         , writeHit("%s_%d:writeHit", name, p)
         , readMiss("%s_%d:readMiss", name, p)
         , writeMiss("%s_%d:writeMiss", name, p)
 {
-    const int size = SescConf->getInt(section, "size");
-    const int assoc = SescConf->getInt(section, "assoc");
-    const int bsize = SescConf->getInt(section, "bsize");
     cache = new CacheAssocTM<CState1, VAddr>(size, assoc, bsize, 1);
 }
 

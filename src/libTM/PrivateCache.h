@@ -142,7 +142,7 @@ public:
 
 class PrivateCache {
 public:
-    PrivateCache(const char* section, const char* name, Pid_t p);
+    PrivateCache(const char* name, Pid_t p, int size, int assoc, int bsize);
     ~PrivateCache();
 
     typedef CacheAssocTM<CState1, VAddr>            Cache;
