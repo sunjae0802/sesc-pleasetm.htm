@@ -288,20 +288,18 @@ void TMCoherence::completeFallback(Pid_t pid) {
 void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    std::set<Pid_t> aborted;
 
     for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
         if(p != pid) {
             PrivateCache::Line* line = caches.at(p)->findLine(raddr);
             if(line) {
-                if(caches.at(p)->isInTransaction() && line->isTransactional()) {
-                    aborted.insert(p);
+                if(line->isTransactional()) {
+                    markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
                 }
                 line->invalidate();
             }
         }
-    }
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_EVICTION);
+    } // End foreach(pid)
 }
 
 ///
