@@ -145,18 +145,18 @@ public:
     PrivateCache(const char* section, const char* name, Pid_t p);
     ~PrivateCache();
 
+    typedef CacheAssocTM<CState1, VAddr>            Cache;
+    typedef CState1 Line;
+
     void doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
     void doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
-    void doInvalidate(VAddr addr, std::set<Pid_t>& tmInvalidateAborted);
-    bool findLine(VAddr addr) const { return cache->findLine(addr) != NULL; }
 
     void startTransaction() {cache->startTransaction(); }
     void stopTransaction() { cache->stopTransaction(); }
     bool isInTransaction() const { return cache->getTransactional(); }
+    Line* findLine(VAddr addr);
     size_t getLineSize() const { return cache->getLineSize(); }
 private:
-    typedef CacheAssocTM<CState1, VAddr>            Cache;
-    typedef CState1 Line;
 
     Line* doFillLine(VAddr addr, MemOpStatus* p_opStatus);
 

@@ -330,7 +330,7 @@ PrivateCache::~PrivateCache() {
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
 PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus) {
-    Line*         line  = cache->findLine(addr);
+    Line*         line  = findLine(addr);
     I(line == NULL);
 
     // The "tag" contains both the set and the real tag
@@ -372,9 +372,13 @@ PrivateCache::Line* PrivateCache::doFillLine(VAddr addr, MemOpStatus* p_opStatus
     return replaced;
 }
 
+PrivateCache::Line* PrivateCache::findLine(VAddr addr) {
+    return cache->findLine(addr);
+}
+
 void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
     // Lookup line
-    Line*   line  = cache->findLine(addr);
+    Line*   line  = findLine(addr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         readMiss.inc();
@@ -390,20 +394,9 @@ void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, Me
     }
 }
 
-void PrivateCache::doInvalidate(VAddr addr, std::set<Pid_t>& tmInvalidateAborted) {
-    // Lookup line
-    Line* line = cache->findLine(addr);
-    if(line) {
-        if(isInTransaction() && line->isTransactional()) {
-            tmInvalidateAborted.insert(pid);
-        }
-        line->invalidate();
-    }
-}
-
 void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
     // Lookup line
-    Line*   line  = cache->findLine(addr);
+    Line*   line  = findLine(addr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         writeMiss.inc();

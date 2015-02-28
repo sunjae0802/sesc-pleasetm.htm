@@ -292,7 +292,13 @@ void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAdd
 
     for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
         if(p != pid) {
-            caches.at(p)->doInvalidate(raddr, aborted);
+            PrivateCache::Line* line = caches.at(p)->findLine(raddr);
+            if(line) {
+                if(caches.at(p)->isInTransaction() && line->isTransactional()) {
+                    aborted.insert(p);
+                }
+                line->invalidate();
+            }
         }
     }
     markTransAborted(aborted, pid, caddr, TM_ATYPE_EVICTION);
