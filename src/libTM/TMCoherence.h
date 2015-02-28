@@ -23,7 +23,10 @@ enum TMRWStatus { TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
 class TMCoherence {
 public:
-    virtual ~TMCoherence() {}
+    virtual ~TMCoherence() {
+        delete caches;
+        caches = 0;
+    }
     static TMCoherence *create(int32_t nProcs);
 
     // Entry point functions for TM operations
@@ -108,7 +111,7 @@ protected:
     uint32_t        nackStallCap;
 
     std::vector<struct TransState>  transStates;
-    std::vector<PrivateCache*>      caches;
+    PrivateCache*   caches;
 
     // Statistics
     GStatsCntr      numCommits;

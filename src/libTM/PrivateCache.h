@@ -137,7 +137,7 @@ public:
 
 class PrivateCache {
 public:
-    PrivateCache(const char* name, Pid_t p, int size, int assoc, int bsize);
+    PrivateCache(const char* section, int nProcs);
     ~PrivateCache();
 
     typedef CacheAssocTM<CState1, VAddr>            Cache;
@@ -147,20 +147,14 @@ public:
     void doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
 
     // Functions forwarded to Cache
-    Line* findLine(VAddr addr);
-    void clearTransactional() { cache->clearTransactional(); }
-    size_t getLineSize() const { return cache->getLineSize(); }
+    Line* findLine(Pid_t pid, VAddr addr);
+    void clearTransactional(Pid_t pid) { caches.at(pid)->clearTransactional(); }
 private:
 
-    Line* doFillLine(bool isInTM, VAddr addr, MemOpStatus* p_opStatus);
+    Line* doFillLine(Pid_t pid, bool isInTM, VAddr addr, MemOpStatus* p_opStatus);
 
     // Member variables
-    Pid_t                       pid;
-    Cache                      *cache;
-    GStatsCntr                  readHit;
-    GStatsCntr                  writeHit;
-    GStatsCntr                  readMiss;
-    GStatsCntr                  writeMiss;
+    std::vector<Cache*>         caches;
 };
 
 template<class Line, class Addr_t>

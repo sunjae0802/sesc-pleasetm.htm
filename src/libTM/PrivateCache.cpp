@@ -305,28 +305,33 @@ CacheAssocTM<Line, Addr_t>::countTransactionalDirty(Addr_t addr)
  *********************************************************/
 ///
 // Constructor for PrivateCache. Allocate members and GStat counters
-PrivateCache::PrivateCache(const char* name, Pid_t p, int size, int assoc, int bsize)
-        : pid(p)
-        , readHit("%s_%d:readHit", name, p)
-        , writeHit("%s_%d:writeHit", name, p)
-        , readMiss("%s_%d:readMiss", name, p)
-        , writeMiss("%s_%d:writeMiss", name, p)
+PrivateCache::PrivateCache(const char* section, int nProcs)
 {
-    cache = new CacheAssocTM<CState1, VAddr>(size, assoc, bsize, 1);
+    const int size = SescConf->getInt(section, "size");
+    const int assoc = SescConf->getInt(section, "assoc");
+    const int bsize = SescConf->getInt(section, "bsize");
+
+    for(Pid_t pid = 0; pid < nProcs; pid++) {
+        caches.push_back(new CacheAssocTM<CState1, VAddr>(size, assoc, bsize, 1));
+    }
 }
 
 ///
 // Destructor for PrivateCache. Delete all allocated members
 PrivateCache::~PrivateCache() {
-    delete cache;
-    cache = 0;
+    for(size_t cid = caches.size() - 1; cid >= 0; cid--) {
+        Cache* cache = caches.back();
+        caches.pop_back();
+        delete cache;
+    }
 }
 
 ///
 // Add a line to the private cache of pid, evicting set conflicting lines
 // if necessary.
-PrivateCache::Line* PrivateCache::doFillLine(bool isInTM, VAddr addr, MemOpStatus* p_opStatus) {
-    Line*         line  = findLine(addr);
+PrivateCache::Line* PrivateCache::doFillLine(Pid_t pid, bool isInTM, VAddr addr, MemOpStatus* p_opStatus) {
+    Cache* cache = caches.at(pid);
+    Line*         line  = findLine(pid, addr);
     I(line == NULL);
 
     // The "tag" contains both the set and the real tag
@@ -368,42 +373,45 @@ PrivateCache::Line* PrivateCache::doFillLine(bool isInTM, VAddr addr, MemOpStatu
     return replaced;
 }
 
-PrivateCache::Line* PrivateCache::findLine(VAddr addr) {
+PrivateCache::Line* PrivateCache::findLine(Pid_t pid, VAddr addr) {
+    Cache* cache = caches.at(pid);
     return cache->findLine(addr);
 }
 
 void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
+    Pid_t pid = context->getPid();
+    bool isInTM = context->isInTM();
+
     // Lookup line
-    Line*   line  = findLine(addr);
+    Line*   line  = findLine(pid, addr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        readMiss.inc();
-        line = doFillLine(context->isInTM(), addr, p_opStatus);
+        line = doFillLine(pid, isInTM, addr, p_opStatus);
     } else {
         p_opStatus->wasHit = true;
-        readHit.inc();
     }
 
     // Update line
-    if(context->isInTM()) {
+    if(isInTM) {
         line->markTransactional();
     }
 }
 
 void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
+    Pid_t pid = context->getPid();
+    bool isInTM = context->isInTM();
+
     // Lookup line
-    Line*   line  = findLine(addr);
+    Line*   line  = findLine(pid, addr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        writeMiss.inc();
-        line = doFillLine(context->isInTM(), addr, p_opStatus);
+        line = doFillLine(pid, isInTM, addr, p_opStatus);
     } else {
         p_opStatus->wasHit = true;
-        writeHit.inc();
     }
 
     // Update line
-    if(context->isInTM()) {
+    if(isInTM) {
         line->markTransactional();
     }
     line->makeDirty();

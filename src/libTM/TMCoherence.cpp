@@ -56,13 +56,10 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int lineSize, int 
 
     MSG("Using %s TM", tmStyle);
 
-    const int size = SescConf->getInt("privatel1", "size");
-    const int assoc = SescConf->getInt("privatel1", "assoc");
-    const int bsize = SescConf->getInt("privatel1", "bsize");
+    caches = new PrivateCache("privatel1", nProcs);
 
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
-        caches.push_back(new PrivateCache("privateCache", pid, size, assoc, bsize));
         // Initialize maps to enable at() use
         linesRead[pid].clear();
         linesWritten[pid].clear();
@@ -159,7 +156,7 @@ void TMCoherence::commitTrans(Pid_t pid) {
 
     // Do the commit
     removeTransaction(pid);
-    caches.at(pid)->clearTransactional();
+    caches->clearTransactional(pid);
     transStates[pid].commit();
 }
 void TMCoherence::abortTrans(Pid_t pid) {
@@ -175,7 +172,7 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 
     // Do the completeAbort
     removeTransaction(pid);
-    caches.at(pid)->clearTransactional();
+    caches->clearTransactional(pid);
     transStates[pid].completeAbort();
 }
 
@@ -294,7 +291,7 @@ void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAdd
 
     for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
         if(p != pid) {
-            PrivateCache::Line* line = caches.at(p)->findLine(raddr);
+            PrivateCache::Line* line = caches->findLine(p, raddr);
             if(line) {
                 if(line->isTransactional()) {
                     markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
@@ -313,9 +310,7 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
 	} else {
-        PrivateCache* cache = caches.at(pid);
-
-        cache->doLoad(inst, context, raddr, p_opStatus);
+        caches->doLoad(inst, context, raddr, p_opStatus);
         tmLoads.inc();
 
         if(p_opStatus->setConflict) {
@@ -337,8 +332,7 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 	} else {
         invalidateSharers(inst, context, raddr);
 
-        PrivateCache* cache = caches.at(pid);
-        cache->doStore(inst, context, raddr, p_opStatus);
+        caches->doStore(inst, context, raddr, p_opStatus);
         tmStores.inc();
 
         if(p_opStatus->setConflict) {
@@ -360,8 +354,7 @@ TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr 
     I(!hadRead(caddr, pid));
     I(!hadWrote(caddr, pid));
 
-    PrivateCache* cache = caches.at(pid);
-    cache->doLoad(inst, context, raddr, p_opStatus);
+    caches->doLoad(inst, context, raddr, p_opStatus);
 
     // Abort writers once we try to read
     set<Pid_t> aborted;
@@ -384,8 +377,7 @@ TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr
 
     invalidateSharers(inst, context, raddr);
 
-    PrivateCache* cache = caches.at(pid);
-    cache->doStore(inst, context, raddr, p_opStatus);
+    caches->doStore(inst, context, raddr, p_opStatus);
 
 
     // Abort everyone once we try to write
