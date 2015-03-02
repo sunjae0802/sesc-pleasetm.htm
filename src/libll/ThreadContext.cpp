@@ -215,14 +215,11 @@ uint32_t ThreadContext::getAbortRV(const TransState& transState) {
         case TM_ATYPE_SYSCALL:
             abortRV |= 2;
             break;
-        case TM_ATYPE_CAPACITY:
+        case TM_ATYPE_SETCONFLICT:
             abortRV |= 8;
             break;
         case TM_ATYPE_EVICTION:
             abortRV |= 16;
-            break;
-        case TM_ATYPE_SETCONFLICT:
-            abortRV |= 32;
             break;
         default:
             // Do nothing
