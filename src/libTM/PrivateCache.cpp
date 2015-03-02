@@ -114,12 +114,11 @@ Line
 
     return lineFree;
 }
-
 ///
-// Find and return the oldest block that is clean (may be transactional)
+// Find and return the oldest block that is clean or non-transactional
 template<class Line, class Addr_t>
 Line
-**CacheAssocTM<Line, Addr_t>::findOldestClean(Line **theSet)
+**CacheAssocTM<Line, Addr_t>::findOldestNonTMClean(Line **theSet)
 {
     Line **lineFree = 0;
     Line **setEnd = theSet + assoc;
@@ -127,31 +126,7 @@ Line
     {
         Line **l = setEnd -1;
         while(l >= theSet) {
-            if (!(*l)->isDirty()) {
-                lineFree = l;
-                break;
-            }
-
-            l--;
-        }
-    }
-
-    return lineFree;
-}
-
-///
-// Find and return the oldest block that is non transactional (may be dirty)
-template<class Line, class Addr_t>
-Line
-**CacheAssocTM<Line, Addr_t>::findOldestNonTM(Line **theSet)
-{
-    Line **lineFree = 0;
-    Line **setEnd = theSet + assoc;
-
-    {
-        Line **l = setEnd -1;
-        while(l >= theSet) {
-            if (!(*l)->isTransactional()) {
+            if (!(*l)->isDirty() || !(*l)->isTransactional()) {
                 lineFree = l;
                 break;
             }
@@ -170,6 +145,25 @@ Line
     Addr_t tag    = this->calcTag(addr);
     Line **theSet = &content[this->calcIndex4Tag(tag)];
 
+    Line *replaced = findLine2Replace(isInTM, theSet);
+
+    // Do various checks to see if replaced line is correctly chosen
+    if(isInTM && replaced->isTransactional() && replaced->isDirty() && countTransactionalDirty(theSet) < assoc) {
+        fail("Evicted transactional line too early: %d\n", countTransactionalDirty(theSet));
+    }
+
+    VAddr replTag = replaced->getTag();
+    if(replTag == tag) {
+        fail("Replaced line matches tag!\n");
+    }
+
+    return replaced;
+}
+
+template<class Line, class Addr_t>
+Line
+*CacheAssocTM<Line, Addr_t>::findLine2Replace(bool isInTM, Line** theSet)
+{
     Line **lineFree=0; // Order of preference, invalid
     Line **setEnd = theSet + assoc;
 
@@ -179,22 +173,14 @@ Line
         return *lineFree;
     }
 
-    if(isInTM == false || (countTransactionalDirty(addr) == assoc)) {
+    if(isInTM == false || (countTransactionalDirty(theSet) == assoc)) {
         // If not inside a transaction, or if we ran out of non-transactional or clean lines
         // Get the oldest line possible
         lineFree = setEnd-1;
     } else {
-        if(countTransactional(addr) < assoc && countDirty(addr) < assoc) {
-            lineFree = findOldestNonTM(theSet);
-            if(lineFree == 0) {
-                lineFree = findOldestClean(theSet);
-            }
-        } else if(countTransactional(addr) == assoc && countDirty(addr) < assoc) {
-            lineFree = findOldestClean(theSet);
-        } else if(countTransactional(addr) < assoc && countDirty(addr) == assoc) {
-            lineFree = findOldestNonTM(theSet);
-        } else {
-            fail("Non-accounted for case\n");
+        lineFree = findOldestNonTMClean(theSet);
+        if(lineFree && (*lineFree)->isDirty() && (*lineFree)->isTransactional()) {
+            fail("Replacing transactional dirty line");
         }
     }
     if(lineFree == 0) {
@@ -214,11 +200,8 @@ Line
 
 template<class Line, class Addr_t>
 size_t
-CacheAssocTM<Line, Addr_t>::countValid(Addr_t addr)
+CacheAssocTM<Line, Addr_t>::countValid(Line** theSet)
 {
-    Addr_t tag = this->calcTag(addr);
-
-    Line **theSet = &content[this->calcIndex4Tag(tag)];
     Line **setEnd = theSet + assoc;
 
     size_t count = 0;
@@ -236,11 +219,8 @@ CacheAssocTM<Line, Addr_t>::countValid(Addr_t addr)
 
 template<class Line, class Addr_t>
 size_t
-CacheAssocTM<Line, Addr_t>::countDirty(Addr_t addr)
+CacheAssocTM<Line, Addr_t>::countDirty(Line** theSet)
 {
-    Addr_t tag = this->calcTag(addr);
-
-    Line **theSet = &content[this->calcIndex4Tag(tag)];
     Line **setEnd = theSet + assoc;
 
     size_t count = 0;
@@ -258,11 +238,8 @@ CacheAssocTM<Line, Addr_t>::countDirty(Addr_t addr)
 
 template<class Line, class Addr_t>
 size_t
-CacheAssocTM<Line, Addr_t>::countTransactional(Addr_t addr)
+CacheAssocTM<Line, Addr_t>::countTransactional(Line** theSet)
 {
-    Addr_t tag = this->calcTag(addr);
-
-    Line **theSet = &content[this->calcIndex4Tag(tag)];
     Line **setEnd = theSet + assoc;
 
     size_t count = 0;
@@ -280,11 +257,8 @@ CacheAssocTM<Line, Addr_t>::countTransactional(Addr_t addr)
 
 template<class Line, class Addr_t>
 size_t
-CacheAssocTM<Line, Addr_t>::countTransactionalDirty(Addr_t addr)
+CacheAssocTM<Line, Addr_t>::countTransactionalDirty(Line** theSet)
 {
-    Addr_t tag = this->calcTag(addr);
-
-    Line **theSet = &content[this->calcIndex4Tag(tag)];
     Line **setEnd = theSet + assoc;
 
     size_t count = 0;
@@ -345,19 +319,6 @@ PrivateCache::Line* PrivateCache::doFillLine(Pid_t pid, bool isInTM, VAddr addr,
 
     // Invalidate old line
     if(replaced->isValid()) {
-        // Do various checks to see if replaced line is correctly chosen
-        if(isInTM && replaced->isTransactional() && cache->countTransactional(addr) < cache->getAssoc()) {
-            fail("%d evicted transactional line too early: %d\n", pid, cache->countTransactional(addr));
-        }
-        if(isInTM && replaced->isTransactional() && replaced->isDirty() && cache->countDirty(addr) < cache->getAssoc()) {
-            fail("%d evicted transactional dirty line too early: %d\n", pid, cache->countDirty(addr));
-        }
-
-        VAddr replTag = replaced->getTag();
-        if(replTag == myTag) {
-            fail("Replaced line matches tag!\n");
-        }
-
         // Update MemOpStatus if this is a set conflict
         if(isInTM && replaced->isTransactional() && replaced->isDirty()) {
             p_opStatus->setConflict = true;
@@ -417,4 +378,7 @@ void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, M
     line->makeDirty();
 }
 
-
+void PrivateCache::clearTransactional(Pid_t pid) {
+    Cache* cache = caches.at(pid);
+    cache->clearTransactional();
+}

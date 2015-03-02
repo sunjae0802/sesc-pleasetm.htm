@@ -67,9 +67,15 @@ protected:
     Line *mem;
     Line **content;
     void moveToMRU(Line** theSet, Line** theLine);
+    Line *findLine2Replace(bool isInTM, Line** theSet);
     Line **findInvalid(Line **theSet);
+    Line **findOldestNonTMClean(Line **theSet);
     Line **findOldestClean(Line **theSet);
     Line **findOldestNonTM(Line **theSet);
+    size_t countValid(Line **theSet);
+    size_t countDirty(Line **theSet);
+    size_t countTransactional(Line **theSet);
+    size_t countTransactionalDirty(Line **theSet);
 
 public:
     CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit);
@@ -80,10 +86,6 @@ public:
 
     Line *findLine2Replace(bool isInTM, Addr_t addr);
     Line *findLine(Addr_t addr);
-    size_t countValid(Addr_t addr);
-    size_t countDirty(Addr_t addr);
-    size_t countTransactional(Addr_t addr);
-    size_t countTransactionalDirty(Addr_t addr);
 
     void clearTransactional();
 
@@ -148,7 +150,7 @@ public:
 
     // Functions forwarded to Cache
     Line* findLine(Pid_t pid, VAddr addr);
-    void clearTransactional(Pid_t pid) { caches.at(pid)->clearTransactional(); }
+    void clearTransactional(Pid_t pid);
 private:
 
     Line* doFillLine(Pid_t pid, bool isInTM, VAddr addr, MemOpStatus* p_opStatus);
