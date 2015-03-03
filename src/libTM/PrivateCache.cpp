@@ -63,7 +63,6 @@ Line *CacheAssocTM<Line, Addr_t>::lookupLine(Addr_t addr)
             l++;
         }
     }
-    Line* line = findLine(addr);
 
     if (lineHit == 0)
         return 0;
@@ -95,7 +94,7 @@ Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
     {
         Line **l = theSet + 1;
         while(l < setEnd) {
-            if ((*theSet)->getTag() == tag) {
+            if ((*l)->getTag() == tag) {
                 lineHit = l;
                 break;
             }
