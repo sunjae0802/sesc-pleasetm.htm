@@ -72,10 +72,13 @@ protected:
     Line **findOldestNonTMClean(Line **theSet);
     Line **findOldestClean(Line **theSet);
     Line **findOldestNonTM(Line **theSet);
-    size_t countValid(Line **theSet);
-    size_t countDirty(Line **theSet);
-    size_t countTransactional(Line **theSet);
-    size_t countTransactionalDirty(Line **theSet);
+
+    typedef bool (*lineConditionFunc)(Line *l);
+    static bool lineValid(Line *l) { return l->isValid(); }
+    static bool lineDirty(Line *l) { return l->isDirty(); }
+    static bool lineTransactional(Line *l) { return l->isTransactional(); }
+    static bool lineTransactionalDirty(Line *l) { return l->isTransactional() && l->isDirty(); }
+    size_t countLines(Line **theSet, lineConditionFunc func) const;
 
 public:
     CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit);
@@ -85,6 +88,7 @@ public:
     }
 
     Line *findLine2Replace(bool isInTM, Addr_t addr);
+    Line *lookupLine(Addr_t addr);
     Line *findLine(Addr_t addr);
 
     void clearTransactional();

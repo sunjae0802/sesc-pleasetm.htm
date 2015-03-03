@@ -39,7 +39,7 @@ CacheAssocTM<Line, Addr_t>::CacheAssocTM(int32_t s, int32_t a, int32_t b, int32_
 ///
 // Look up an cache line and return a pointer to that line, or NULL if not found
 template<class Line, class Addr_t>
-Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
+Line *CacheAssocTM<Line, Addr_t>::lookupLine(Addr_t addr)
 {
     Addr_t tag = this->calcTag(addr);
     Line **theSet = &content[this->calcIndex4Tag(tag)];
@@ -63,6 +63,7 @@ Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
             l++;
         }
     }
+    Line* line = findLine(addr);
 
     if (lineHit == 0)
         return 0;
@@ -72,6 +73,40 @@ Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
     moveToMRU(theSet, lineHit);
 
     return *theSet;
+}
+
+///
+// Look up an cache line and return a pointer to that line, or NULL if not found
+template<class Line, class Addr_t>
+Line *CacheAssocTM<Line, Addr_t>::findLine(Addr_t addr)
+{
+    Addr_t tag = this->calcTag(addr);
+    Line **theSet = &content[this->calcIndex4Tag(tag)];
+
+    // Check most typical case
+    if ((*theSet)->getTag() == tag) {
+        return *theSet;
+    }
+
+    Line **lineHit=0;
+    Line **setEnd = theSet + assoc;
+
+    // For sure that position 0 is not (short-cut)
+    {
+        Line **l = theSet + 1;
+        while(l < setEnd) {
+            if ((*theSet)->getTag() == tag) {
+                lineHit = l;
+                break;
+            }
+            l++;
+        }
+    }
+
+    if (lineHit == 0)
+        return 0;
+    else
+        return *lineHit;
 }
 
 ///
@@ -148,8 +183,8 @@ Line
     Line *replaced = findLine2Replace(isInTM, theSet);
 
     // Do various checks to see if replaced line is correctly chosen
-    if(isInTM && replaced->isTransactional() && replaced->isDirty() && countTransactionalDirty(theSet) < assoc) {
-        fail("Evicted transactional line too early: %d\n", countTransactionalDirty(theSet));
+    if(isInTM && replaced->isTransactional() && replaced->isDirty() && countLines(theSet, &lineTransactionalDirty) < assoc) {
+        fail("Evicted transactional line too early: %d\n", countLines(theSet, &lineTransactionalDirty));
     }
 
     VAddr replTag = replaced->getTag();
@@ -173,7 +208,7 @@ Line
         return *lineFree;
     }
 
-    if(isInTM == false || (countTransactionalDirty(theSet) == assoc)) {
+    if(isInTM == false || (countLines(theSet, &lineTransactionalDirty) == assoc)) {
         // If not inside a transaction, or if we ran out of non-transactional or clean lines
         // Get the oldest line possible
         lineFree = setEnd-1;
@@ -200,7 +235,7 @@ Line
 
 template<class Line, class Addr_t>
 size_t
-CacheAssocTM<Line, Addr_t>::countValid(Line** theSet)
+CacheAssocTM<Line, Addr_t>::countLines(Line** theSet, lineConditionFunc func) const
 {
     Line **setEnd = theSet + assoc;
 
@@ -208,64 +243,7 @@ CacheAssocTM<Line, Addr_t>::countValid(Line** theSet)
     {
         Line **l = theSet;
         while(l < setEnd) {
-            if ((*l)->isValid()) {
-                count++;
-            }
-            l++;
-        }
-    }
-    return count;
-}
-
-template<class Line, class Addr_t>
-size_t
-CacheAssocTM<Line, Addr_t>::countDirty(Line** theSet)
-{
-    Line **setEnd = theSet + assoc;
-
-    size_t count = 0;
-    {
-        Line **l = theSet;
-        while(l < setEnd) {
-            if ((*l)->isValid() && (*l)->isDirty()) {
-                count++;
-            }
-            l++;
-        }
-    }
-    return count;
-}
-
-template<class Line, class Addr_t>
-size_t
-CacheAssocTM<Line, Addr_t>::countTransactional(Line** theSet)
-{
-    Line **setEnd = theSet + assoc;
-
-    size_t count = 0;
-    {
-        Line **l = theSet;
-        while(l < setEnd) {
-            if ((*l)->isValid() && (*l)->isTransactional()) {
-                count++;
-            }
-            l++;
-        }
-    }
-    return count;
-}
-
-template<class Line, class Addr_t>
-size_t
-CacheAssocTM<Line, Addr_t>::countTransactionalDirty(Line** theSet)
-{
-    Line **setEnd = theSet + assoc;
-
-    size_t count = 0;
-    {
-        Line **l = theSet;
-        while(l < setEnd) {
-            if ((*l)->isValid() && (*l)->isTransactional() && (*l)->isDirty()) {
+            if (func(*l)) {
                 count++;
             }
             l++;
@@ -305,8 +283,6 @@ PrivateCache::~PrivateCache() {
 // if necessary.
 PrivateCache::Line* PrivateCache::doFillLine(Pid_t pid, bool isInTM, VAddr addr, MemOpStatus* p_opStatus) {
     Cache* cache = caches.at(pid);
-    Line*         line  = findLine(pid, addr);
-    I(line == NULL);
 
     // The "tag" contains both the set and the real tag
     VAddr myTag = cache->calcTag(addr);
@@ -341,10 +317,11 @@ PrivateCache::Line* PrivateCache::findLine(Pid_t pid, VAddr addr) {
 
 void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
     Pid_t pid = context->getPid();
+    Cache* cache = caches.at(pid);
     bool isInTM = context->isInTM();
 
     // Lookup line
-    Line*   line  = findLine(pid, addr);
+    Line*   line  = cache->lookupLine(addr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         line = doFillLine(pid, isInTM, addr, p_opStatus);
@@ -360,10 +337,11 @@ void PrivateCache::doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, Me
 
 void PrivateCache::doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus) {
     Pid_t pid = context->getPid();
+    Cache* cache = caches.at(pid);
     bool isInTM = context->isInTM();
 
     // Lookup line
-    Line*   line  = findLine(pid, addr);
+    Line*   line  = cache->lookupLine(addr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         line = doFillLine(pid, isInTM, addr, p_opStatus);
