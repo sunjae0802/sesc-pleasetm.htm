@@ -133,34 +133,6 @@ protected:
     std::map<VAddr, std::list<Pid_t> >  readers;
 };
 
-class TMEECoherence: public TMCoherence {
-public:
-    TMEECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
-    virtual ~TMEECoherence() { }
-    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
-private:
-    std::vector<bool> cycleFlags;
-    int     abortVarStallCycles;
-    int     commitVarStallCycles;
-};
-
-class TMLLCoherence: public TMCoherence {
-public:
-    TMLLCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
-    virtual ~TMLLCoherence() { }
-    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
-private:
-    Pid_t   currentCommitter; // PID of the currently committing processor
-    int     abortVarStallCycles;
-    int     commitVarStallCycles;
-};
-
 class TMLECoherence: public TMCoherence {
 public:
     TMLECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
