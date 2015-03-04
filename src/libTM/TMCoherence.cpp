@@ -305,6 +305,9 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
+	} else if(transStates[pid].getState() == TM_INVALID) {
+        nonTMRead(inst, context, raddr, p_opStatus);
+        return TMRW_NONTM;
 	} else {
         caches->doLoad(inst, context, raddr, p_opStatus);
         tmLoads.inc();
@@ -314,7 +317,7 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
             return TMRW_ABORT;
         }
 
-        return myRead(inst, context, raddr, p_opStatus);
+        return TMRead(inst, context, raddr, p_opStatus);
     }
 }
 
@@ -325,6 +328,9 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 	VAddr caddr = addrToCacheLine(raddr);
 	if(transStates[pid].getState() == TM_MARKABORT) {
 		return TMRW_ABORT;
+	} else if(transStates[pid].getState() == TM_INVALID) {
+        nonTMWrite(inst, context, raddr, p_opStatus);
+        return TMRW_NONTM;
 	} else {
         invalidateSharers(inst, context, raddr);
 
@@ -336,54 +342,8 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
             return TMRW_ABORT;
         }
 
-        return myWrite(inst, context, raddr, p_opStatus);
+        return TMWrite(inst, context, raddr, p_opStatus);
     }
-}
-
-///
-// Entry point for a non-transactional read, i.e. when a thread not inside a transaction.
-// If this read conflicts with data read as part of another transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
-    Pid_t pid   = context->getPid();
-	VAddr caddr = addrToCacheLine(raddr);
-
-    I(!hadRead(caddr, pid));
-    I(!hadWrote(caddr, pid));
-
-    caches->doLoad(inst, context, raddr, p_opStatus);
-
-    // Abort writers once we try to read
-    set<Pid_t> aborted;
-    getWritersExcept(caddr, pid, aborted);
-
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
-
-    return TMRW_SUCCESS;
-}
-
-///
-// Entry point for a non-transactional write, i.e. when a thread not inside a transaction.
-// If this write conflicts with data read as part of another transaction, abort the transaction.
-TMRWStatus TMCoherence::nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
-    Pid_t pid   = context->getPid();
-	VAddr caddr = addrToCacheLine(raddr);
-
-    I(!hadRead(caddr, pid));
-    I(!hadWrote(caddr, pid));
-
-    invalidateSharers(inst, context, raddr);
-
-    caches->doStore(inst, context, raddr, p_opStatus);
-
-
-    // Abort everyone once we try to write
-    set<Pid_t> aborted;
-    getReadersExcept(caddr, pid, aborted);
-    getWritersExcept(caddr, pid, aborted);
-
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
-
-    return TMRW_SUCCESS;
 }
 
 ///
@@ -419,7 +379,10 @@ void TMCoherence::myCompleteAbort(Pid_t pid) {
 TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence("Lazy/Eager", nProcs, lineSize, lines, argType) {
 }
-TMRWStatus TMLECoherence::myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+
+///
+// Do a transactional read.
+TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
@@ -433,7 +396,9 @@ TMRWStatus TMLECoherence::myRead(InstDesc* inst, ThreadContext* context, VAddr r
     return TMRW_SUCCESS;
 }
 
-TMRWStatus TMLECoherence::myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+///
+// Do a transactional write.
+TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
@@ -448,3 +413,42 @@ TMRWStatus TMLECoherence::myWrite(InstDesc* inst, ThreadContext* context, VAddr 
     return TMRW_SUCCESS;
 }
 
+///
+// Do a non-transactional read, i.e. when a thread not inside a transaction.
+void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    I(!hadRead(caddr, pid));
+    I(!hadWrote(caddr, pid));
+
+    caches->doLoad(inst, context, raddr, p_opStatus);
+
+    // Abort writers once we try to read
+    set<Pid_t> aborted;
+    getWritersExcept(caddr, pid, aborted);
+
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+}
+
+///
+// Do a non-transactional write, i.e. when a thread not inside a transaction.
+void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    I(!hadRead(caddr, pid));
+    I(!hadWrote(caddr, pid));
+
+    invalidateSharers(inst, context, raddr);
+
+    caches->doStore(inst, context, raddr, p_opStatus);
+
+
+    // Abort everyone once we try to write
+    set<Pid_t> aborted;
+    getReadersExcept(caddr, pid, aborted);
+    getWritersExcept(caddr, pid, aborted);
+
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+}

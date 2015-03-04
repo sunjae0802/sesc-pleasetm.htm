@@ -19,7 +19,7 @@ typedef unsigned long long ID;
 typedef unsigned long long INSTCOUNT;
 
 enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT, TMBC_IGNORE };
-enum TMRWStatus { TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
+enum TMRWStatus { TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
 class TMCoherence {
 public:
@@ -37,8 +37,6 @@ public:
     TMBCStatus begin(Pid_t pid, InstDesc *inst);
 
     TMBCStatus completeAbort(Pid_t pid);
-    TMRWStatus nonTMread(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    TMRWStatus nonTMwrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     void completeFallback(Pid_t pid);
 
     // Query functions
@@ -86,8 +84,10 @@ protected:
     void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
 
     // Interface for child classes to override and actually implement the TM OP
-    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
-    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
     virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
@@ -137,8 +137,10 @@ class TMLECoherence: public TMCoherence {
 public:
     TMLECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLECoherence() { }
-    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
 private:
 };
 
