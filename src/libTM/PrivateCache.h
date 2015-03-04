@@ -16,12 +16,12 @@ struct MemOpStatus {
     MemOpStatus(): wasHit(false), setConflict(false) {}
 };
 
-class CState1 : public StateGeneric<> {
+class TMLine : public StateGeneric<> {
 private:
     bool dirty;
     bool transactional;
 public:
-    CState1() {
+    TMLine() {
         invalidate();
     }
     bool isDirty() const {
@@ -49,7 +49,6 @@ public:
     }
 };
 
-template<class Line, class Addr_t>
 class CacheAssocTM {
     const uint32_t  size;
     const uint32_t  lineSize;
@@ -64,21 +63,21 @@ class CacheAssocTM {
 
 protected:
 
-    Line *mem;
-    Line **content;
-    void moveToMRU(Line** theSet, Line** theLine);
-    Line *findLine2Replace(bool isInTM, Line** theSet);
-    Line **findInvalid(Line **theSet);
-    Line **findOldestNonTMClean(Line **theSet);
-    Line **findOldestClean(Line **theSet);
-    Line **findOldestNonTM(Line **theSet);
+    TMLine *mem;
+    TMLine **content;
+    void moveToMRU(TMLine** theSet, TMLine** theTMLine);
+    TMLine *findLine2Replace(bool isInTM, TMLine** theSet);
+    TMLine **findInvalid(TMLine **theSet);
+    TMLine **findOldestNonTMClean(TMLine **theSet);
+    TMLine **findOldestClean(TMLine **theSet);
+    TMLine **findOldestNonTM(TMLine **theSet);
 
-    typedef bool (*lineConditionFunc)(Line *l);
-    static bool lineValid(Line *l) { return l->isValid(); }
-    static bool lineDirty(Line *l) { return l->isDirty(); }
-    static bool lineTransactional(Line *l) { return l->isTransactional(); }
-    static bool lineTransactionalDirty(Line *l) { return l->isTransactional() && l->isDirty(); }
-    size_t countLines(Line **theSet, lineConditionFunc func) const;
+    typedef bool (*lineConditionFunc)(TMLine *l);
+    static bool lineValid(TMLine *l) { return l->isValid(); }
+    static bool lineDirty(TMLine *l) { return l->isDirty(); }
+    static bool lineTransactional(TMLine *l) { return l->isTransactional(); }
+    static bool lineTransactionalDirty(TMLine *l) { return l->isTransactional() && l->isDirty(); }
+    size_t countLines(TMLine **theSet, lineConditionFunc func) const;
 
 public:
     CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit);
@@ -87,13 +86,12 @@ public:
         delete [] mem;
     }
 
-    Line *findLine2Replace(bool isInTM, Addr_t addr);
-    Line *lookupLine(Addr_t addr);
-    Line *findLine(Addr_t addr);
-
+    TMLine *findLine2Replace(bool isInTM, VAddr addr);
+    TMLine *lookupLine(VAddr addr);
+    TMLine *findLine(VAddr addr);
     void clearTransactional();
 
-    uint32_t  getLineSize() const   {
+    uint32_t  getTMLineSize() const   {
         return lineSize;
     }
     uint32_t  getAssoc() const      {
@@ -115,14 +113,14 @@ public:
         return sets;
     }
 
-    Addr_t calcTag(Addr_t addr)       const {
+    VAddr calcTag(VAddr addr)       const {
         return (addr >> log2AddrLs);
     }
 
-    uint32_t calcSet4Tag(Addr_t tag)     const {
+    uint32_t calcSet4Tag(VAddr tag)     const {
         return (tag & maskSets);
     }
-    uint32_t calcSet4Addr(Addr_t addr)   const {
+    uint32_t calcSet4Addr(VAddr addr)   const {
         return calcSet4Tag(calcTag(addr));
     }
 
@@ -132,45 +130,13 @@ public:
     uint32_t calcIndex4Tag(uint32_t tag)    const {
         return calcIndex4Set(calcSet4Tag(tag));
     }
-    uint32_t calcIndex4Addr(Addr_t addr) const {
+    uint32_t calcIndex4Addr(VAddr addr) const {
         return calcIndex4Set(calcSet4Addr(addr));
     }
 
-    Addr_t calcAddr4Tag(Addr_t tag)   const {
+    VAddr calcAddr4Tag(VAddr tag)   const {
         return (tag << log2AddrLs);
     }
 };
-
-class PrivateCache {
-public:
-    PrivateCache(const char* section, int nProcs);
-    ~PrivateCache();
-
-    typedef CacheAssocTM<CState1, VAddr>            Cache;
-    typedef CState1 Line;
-
-    void doLoad(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
-    void doStore(InstDesc* inst, ThreadContext* context, VAddr addr, MemOpStatus* p_opStatus);
-
-    // Functions forwarded to Cache
-    Line* findLine(Pid_t pid, VAddr addr);
-    void clearTransactional(Pid_t pid);
-private:
-
-    Line* doFillLine(Pid_t pid, bool isInTM, VAddr addr, MemOpStatus* p_opStatus);
-
-    // Member variables
-    std::vector<Cache*>         caches;
-};
-
-template<class Line, class Addr_t>
-void
-CacheAssocTM<Line, Addr_t>::clearTransactional()
-{
-    for(uint32_t i = 0; i < numLines; i++) {
-        mem[i].clearTransactional();
-    }
-}
-
 
 #endif

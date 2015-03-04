@@ -18,14 +18,16 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
     TMCoherence* newCohManager;
 
     string method = SescConf->getCharPtr("TransactionalMemory","method");
-    int cacheLineSize = SescConf->getInt("TransactionalMemory","cacheLineSize");
-    int numLines = SescConf->getInt("TransactionalMemory","numLines");
+    int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
+    int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+    int lineSize = SescConf->getInt("TransactionalMemory","lineSize");
 	int returnArgType = SescConf->getInt("TransactionalMemory","returnArgType");
+
     if(method == "LE") {
-        newCohManager = new TMLECoherence(nProcs, cacheLineSize, numLines, returnArgType);
+        newCohManager = new TMLECoherence(nProcs, totalSize, assoc, lineSize, returnArgType);
     } else {
         MSG("unknown TM method, using LE");
-        newCohManager = new TMLECoherence(nProcs, cacheLineSize, numLines, returnArgType);
+        newCohManager = new TMLECoherence(nProcs, totalSize, assoc, lineSize, returnArgType);
     }
 
     return newCohManager;
@@ -35,8 +37,8 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 // Abstract super-class of all TM policies. Contains the external interface and common
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
-TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int lineSize, int lines, int argType):
-        nProcs(procs), cacheLineSize(lineSize), numLines(lines), returnArgType(argType),
+TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int size, int a, int line, int argType):
+        nProcs(procs), totalSize(size), assoc(a), lineSize(line), returnArgType(argType),
         nackStallBaseCycles(1), nackStallCap(1),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
@@ -51,8 +53,6 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int lineSize, int 
         linesWrittenHist("tm:linesWrittenHist") {
 
     MSG("Using %s TM", tmStyle);
-
-    caches = new PrivateCache("privatel1", nProcs);
 
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
@@ -152,7 +152,6 @@ void TMCoherence::commitTrans(Pid_t pid) {
 
     // Do the commit
     removeTransaction(pid);
-    caches->clearTransactional(pid);
     transStates[pid].commit();
 }
 void TMCoherence::abortTrans(Pid_t pid) {
@@ -168,7 +167,6 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 
     // Do the completeAbort
     removeTransaction(pid);
-    caches->clearTransactional(pid);
     transStates[pid].completeAbort();
 }
 
@@ -280,25 +278,6 @@ void TMCoherence::completeFallback(Pid_t pid) {
 }
 
 ///
-// Helper function that looks at all private caches and invalidates every active transaction.
-void TMCoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr) {
-    Pid_t pid   = context->getPid();
-	VAddr caddr = addrToCacheLine(raddr);
-
-    for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
-        if(p != pid) {
-            PrivateCache::Line* line = caches->findLine(p, raddr);
-            if(line) {
-                if(line->isTransactional()) {
-                    markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
-                }
-                line->invalidate();
-            }
-        }
-    } // End foreach(pid)
-}
-
-///
 // Entry point for TM read operation. Checks transaction state and then calls the real read.
 TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
@@ -309,14 +288,6 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
         nonTMRead(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
 	} else {
-        caches->doLoad(inst, context, raddr, p_opStatus);
-        tmLoads.inc();
-
-        if(p_opStatus->setConflict) {
-            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
-            return TMRW_ABORT;
-        }
-
         return TMRead(inst, context, raddr, p_opStatus);
     }
 }
@@ -332,16 +303,6 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
         nonTMWrite(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
 	} else {
-        invalidateSharers(inst, context, raddr);
-
-        caches->doStore(inst, context, raddr, p_opStatus);
-        tmStores.inc();
-
-        if(p_opStatus->setConflict) {
-            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
-            return TMRW_ABORT;
-        }
-
         return TMWrite(inst, context, raddr, p_opStatus);
     }
 }
@@ -376,8 +337,21 @@ void TMCoherence::myCompleteAbort(Pid_t pid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argType):
-        TMCoherence("Lazy/Eager", nProcs, lineSize, lines, argType) {
+TMLECoherence::TMLECoherence(int32_t nProcs, int size, int a, int line, int argType):
+        TMCoherence("Lazy/Eager", nProcs, size, a, line, argType) {
+    for(Pid_t pid = 0; pid < nProcs; pid++) {
+        caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
+    }
+}
+
+///
+// Destructor for PrivateCache. Delete all allocated members
+TMLECoherence::~TMLECoherence() {
+    for(size_t cid = caches.size() - 1; cid >= 0; cid--) {
+        Cache* cache = caches.back();
+        caches.pop_back();
+        delete cache;
+    }
 }
 
 ///
@@ -385,7 +359,20 @@ TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argTyp
 TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache = caches.at(pid);
     uint64_t utid = transStates[pid].getUtid();
+
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+        line = doFillLine(pid, true, raddr, p_opStatus);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+
+    // Update line
+    line->markTransactional();
 
     // Abort writers once we try to read
     set<Pid_t> aborted;
@@ -402,6 +389,28 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
+    Cache* cache = caches.at(pid);
+    bool isInTM = context->isInTM();
+
+    invalidateSharers(inst, context, raddr);
+
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+        line = doFillLine(pid, true, raddr, p_opStatus);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+
+    // Update line
+    line->markTransactional();
+    line->makeDirty();
+
+    if(p_opStatus->setConflict) {
+        markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
+        return TMRW_ABORT;
+    }
 
     // Abort everyone once we try to write
     set<Pid_t> aborted;
@@ -418,11 +427,19 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache = caches.at(pid);
 
     I(!hadRead(caddr, pid));
     I(!hadWrote(caddr, pid));
 
-    caches->doLoad(inst, context, raddr, p_opStatus);
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+        line = doFillLine(pid, false, raddr, p_opStatus);
+    } else {
+        p_opStatus->wasHit = true;
+    }
 
     // Abort writers once we try to read
     set<Pid_t> aborted;
@@ -436,14 +453,24 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
 void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache = caches.at(pid);
 
     I(!hadRead(caddr, pid));
     I(!hadWrote(caddr, pid));
 
     invalidateSharers(inst, context, raddr);
 
-    caches->doStore(inst, context, raddr, p_opStatus);
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+        line = doFillLine(pid, false, raddr, p_opStatus);
+    } else {
+        p_opStatus->wasHit = true;
+    }
 
+    // Update line
+    line->makeDirty();
 
     // Abort everyone once we try to write
     set<Pid_t> aborted;
@@ -452,3 +479,78 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
 
     markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
 }
+
+///
+// Helper function that looks at all private caches and invalidates every active transaction.
+void TMLECoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
+        if(p != pid) {
+            Line* line = findLine(p, raddr);
+            if(line) {
+                if(line->isTransactional()) {
+                    markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
+                }
+                line->invalidate();
+            }
+        }
+    } // End foreach(pid)
+}
+
+///
+// Add a line to the private cache of pid, evicting set conflicting lines
+// if necessary.
+TMLECoherence::Line* TMLECoherence::doFillLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus) {
+    Cache* cache = caches.at(pid);
+
+    // The "tag" contains both the set and the real tag
+    VAddr myTag = cache->calcTag(raddr);
+
+    // Find line to replace
+    Line* replaced  = cache->findLine2Replace(isInTM, raddr);
+    if(replaced == nullptr) {
+        fail("Replacing line is NULL!\n");
+    }
+
+    // Invalidate old line
+    if(replaced->isValid()) {
+        // Update MemOpStatus if this is a set conflict
+        if(isInTM && replaced->isTransactional() && replaced->isDirty()) {
+            p_opStatus->setConflict = true;
+        }
+
+        // Invalidate line
+        replaced->invalidate();
+    }
+
+    // Replace the line
+    replaced->setTag(myTag);
+
+    return replaced;
+}
+
+TMLECoherence::Line* TMLECoherence::findLine(Pid_t pid, VAddr raddr) {
+    Cache* cache = caches.at(pid);
+    return cache->findLine(raddr);
+}
+
+TMBCStatus TMLECoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMLECoherence::myCommit(Pid_t pid, int tid) {
+    Cache* cache = caches.at(pid);
+    cache->clearTransactional();
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+void TMLECoherence::myCompleteAbort(Pid_t pid) {
+    Cache* cache = caches.at(pid);
+    cache->clearTransactional();
+    completeAbortTrans(pid);
+}
+

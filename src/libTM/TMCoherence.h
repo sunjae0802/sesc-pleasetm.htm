@@ -23,10 +23,7 @@ enum TMRWStatus { TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
 class TMCoherence {
 public:
-    virtual ~TMCoherence() {
-        delete caches;
-        caches = 0;
-    }
+    virtual ~TMCoherence() { }
     static TMCoherence *create(int32_t nProcs);
 
     // Entry point functions for TM operations
@@ -63,9 +60,9 @@ public:
     }
 
 protected:
-    TMCoherence(const char* tmStyle, int32_t nProcs, int lineSize, int lines, int returnArgType);
+    TMCoherence(const char* tmStyle, int procs, int size, int a, int line, int argType);
     VAddr addrToCacheLine(VAddr raddr) {
-        while(raddr % cacheLineSize != 0) {
+        while(raddr % lineSize != 0) {
             raddr = raddr-1;
         }
         return raddr;
@@ -104,14 +101,14 @@ protected:
     // Common member variables
     static uint64_t nextUtid;
     int             nProcs;
-    int             cacheLineSize;
-    size_t          numLines;
+    int             totalSize;
+    int             assoc;
+    int             lineSize;
     int             returnArgType;
     uint32_t        nackStallBaseCycles;
     uint32_t        nackStallCap;
 
     std::vector<struct TransState>  transStates;
-    PrivateCache*   caches;
 
     // Statistics
     GStatsCntr      numCommits;
@@ -135,13 +132,25 @@ protected:
 
 class TMLECoherence: public TMCoherence {
 public:
-    TMLECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
-    virtual ~TMLECoherence() { }
+    TMLECoherence(int32_t nProcs, int size, int a, int line, int argType);
+    virtual ~TMLECoherence();
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
     virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-private:
+    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual void       myCompleteAbort(Pid_t pid);
+    Line* doFillLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
+    void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
+
+    Line* findLine(Pid_t pid, VAddr raddr);
+    std::vector<Cache*>         caches;
+
 };
 
 extern TMCoherence *tmCohManager;
