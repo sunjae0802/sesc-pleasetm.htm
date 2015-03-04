@@ -197,7 +197,7 @@ void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, V
         markTransAborted(*i_aborted, aborterPid, caddr, abortType);
 	}
 }
-void TMCoherence::readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
+void TMCoherence::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     I(transStates[pid].getState() == TM_RUNNING);
 
     if(!hadRead(caddr, pid)) {
@@ -210,7 +210,7 @@ void TMCoherence::readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
         }
     }
 }
-void TMCoherence::writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr) {
+void TMCoherence::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     I(transStates[pid].getState() == TM_RUNNING);
 
     if(!hadWrote(caddr, pid)) {
@@ -318,7 +318,7 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
             return TMRW_ABORT;
         }
 
-        return myRead(pid, 0, raddr);
+        return myRead(inst, context, raddr, p_opStatus);
     }
 }
 
@@ -340,7 +340,7 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
             return TMRW_ABORT;
         }
 
-        return myWrite(pid, 0, raddr);
+        return myWrite(inst, context, raddr, p_opStatus);
     }
 }
 
@@ -425,7 +425,8 @@ void TMCoherence::myCompleteAbort(Pid_t pid) {
 TMEECoherence::TMEECoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence("Eager/Eager", nProcs, lineSize, lines, argType), cycleFlags(nProcs) {
 }
-TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMEECoherence::myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
 	// If we had been NACKed, we can now be released
@@ -458,12 +459,13 @@ TMRWStatus TMEECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
             return TMRW_NACKED;
         }
     } else {
-        readTrans(pid, tid, raddr, caddr);
+        readTrans(pid, raddr, caddr);
         return TMRW_SUCCESS;
     }
 }
 
-TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMEECoherence::myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
 	// If we had been NACKed, we can now be released
@@ -521,7 +523,7 @@ TMRWStatus TMEECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
             return TMRW_NACKED;
         }
     } else {
-        writeTrans(pid, tid, raddr, caddr);
+        writeTrans(pid, raddr, caddr);
         return TMRW_SUCCESS;
     }
 }
@@ -555,17 +557,19 @@ TMLLCoherence::TMLLCoherence(int32_t nProcs, int lineSize, int lines, int argTyp
 
 	currentCommitter = INVALID_PID; 
 }
-TMRWStatus TMLLCoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMLLCoherence::myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    readTrans(pid, tid, raddr, caddr);
+    readTrans(pid, raddr, caddr);
     return TMRW_SUCCESS;
 }
 
-TMRWStatus TMLLCoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMLLCoherence::myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    writeTrans(pid, tid, raddr, caddr);
+    writeTrans(pid, raddr, caddr);
     return TMRW_SUCCESS;
 }
 
@@ -606,7 +610,8 @@ TMBCStatus TMLLCoherence::myCommit(Pid_t pid, int tid) {
 TMLECoherence::TMLECoherence(int32_t nProcs, int lineSize, int lines, int argType):
         TMCoherence("Lazy/Eager", nProcs, lineSize, lines, argType) {
 }
-TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMLECoherence::myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 
@@ -615,11 +620,12 @@ TMRWStatus TMLECoherence::myRead(Pid_t pid, int tid, VAddr raddr) {
     getWritersExcept(caddr, pid, aborted);
     markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
 
-    readTrans(pid, tid, raddr, caddr);
+    readTrans(pid, raddr, caddr);
     return TMRW_SUCCESS;
 }
 
-TMRWStatus TMLECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
+TMRWStatus TMLECoherence::myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     uint64_t utid = transStates[pid].getUtid();
 
@@ -629,7 +635,7 @@ TMRWStatus TMLECoherence::myWrite(Pid_t pid, int tid, VAddr raddr) {
     getWritersExcept(caddr, pid, aborted);
     markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
 
-    writeTrans(pid, tid, raddr, caddr);
+    writeTrans(pid, raddr, caddr);
     return TMRW_SUCCESS;
 }
 

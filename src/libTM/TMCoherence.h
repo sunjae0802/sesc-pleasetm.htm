@@ -79,15 +79,15 @@ protected:
     void abortTrans(Pid_t pid);
     void completeAbortTrans(Pid_t pid);
     void nackTrans(Pid_t pid);
-    void readTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
-    void writeTrans(Pid_t pid, int tid, VAddr raddr, VAddr caddr);
+    void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
+    void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
     void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
     void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
 
     // Interface for child classes to override and actually implement the TM OP
-    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr) = 0;
-    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr) = 0;
+    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
+    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
     virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
@@ -137,8 +137,8 @@ class TMEECoherence: public TMCoherence {
 public:
     TMEECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMEECoherence() { }
-    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
-    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual TMBCStatus myAbort(Pid_t pid, int tid);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
@@ -152,8 +152,8 @@ class TMLLCoherence: public TMCoherence {
 public:
     TMLLCoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLLCoherence() { }
-    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
-    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
 private:
     Pid_t   currentCommitter; // PID of the currently committing processor
@@ -165,8 +165,8 @@ class TMLECoherence: public TMCoherence {
 public:
     TMLECoherence(int32_t nProcs, int lineSize, int lines, int returnArgType);
     virtual ~TMLECoherence() { }
-    virtual TMRWStatus myRead(Pid_t pid, int tid, VAddr raddr);
-    virtual TMRWStatus myWrite(Pid_t pid, int tid, VAddr raddr);
+    virtual TMRWStatus myRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus myWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
 private:
 };
 
