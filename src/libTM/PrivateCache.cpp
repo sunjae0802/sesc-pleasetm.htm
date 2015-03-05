@@ -172,6 +172,9 @@ TMLine
     TMLine **theSet = &content[this->calcIndex4Tag(tag)];
 
     TMLine *replaced = findLine2Replace(isInTM, theSet);
+    if(replaced == NULL) {
+        fail("Replacing line is NULL!\n");
+    }
 
     // Do various checks to see if replaced line is correctly chosen
     if(isInTM && replaced->isTransactional() && replaced->isDirty() && countLines(theSet, &lineTransactionalDirty) < assoc) {
@@ -243,6 +246,7 @@ CacheAssocTM::countLines(TMLine** theSet, lineConditionFunc func) const
 
 void CacheAssocTM::clearTransactional() {
     for(uint32_t i = 0; i < numLines; i++) {
+        mem[i].makeClean();
         mem[i].clearTransactional();
     }
 }

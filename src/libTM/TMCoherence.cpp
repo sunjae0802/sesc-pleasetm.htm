@@ -173,7 +173,7 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = transStates[aborterPid].getUtid();
 
-    if(transStates[victimPid].getState() != TM_ABORTING) {
+    if(transStates[victimPid].getState() != TM_ABORTING && transStates[victimPid].getState() != TM_MARKABORT) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
         removeTransaction(victimPid);
         if(victimPid != aborterPid && transStates[aborterPid].getState() == TM_RUNNING) {
@@ -359,28 +359,54 @@ TMLECoherence::~TMLECoherence() {
 TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    Cache* cache = caches.at(pid);
-    uint64_t utid = transStates[pid].getUtid();
+    Cache* cache= caches.at(pid);
+    VAddr myTag = cache->calcTag(raddr);
+    bool setConflict = false;
 
     // Lookup line
+    abortWriters(pid, raddr);
+
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line = doFillLine(pid, true, raddr, p_opStatus);
+        line  = cache->findLine2Replace(true, raddr);
+
+        // Invalidate old line
+        if(line->isValid()) {
+            if(line->isTransactional()) {
+                if(line->isDirty()) {
+                    markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
+                    setConflict = true;
+                } else {
+                    overflow[pid].insert(line->getCaddr());
+                }
+            }
+
+            // Invalidate line
+            line->invalidate();
+        }
+
+        if(overflow[pid].find(caddr) != overflow[pid].end()) {
+            overflow[pid].erase(caddr);
+        }
+
+        // Replace the line
+        line->setTag(myTag);
+        line->setCaddr(caddr);
     } else {
         p_opStatus->wasHit = true;
+        if(!line->isTransactional()) {
+            line->makeClean();
+        }
     }
-
-    // Update line
     line->markTransactional();
 
-    // Abort writers once we try to read
-    set<Pid_t> aborted;
-    getWritersExcept(caddr, pid, aborted);
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
-
-    readTrans(pid, raddr, caddr);
-    return TMRW_SUCCESS;
+    if(setConflict) {
+        return TMRW_ABORT;
+    } else {
+        readTrans(pid, raddr, caddr);
+        return TMRW_SUCCESS;
+    }
 }
 
 ///
@@ -388,38 +414,51 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
 TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    uint64_t utid = transStates[pid].getUtid();
-    Cache* cache = caches.at(pid);
-    bool isInTM = context->isInTM();
-
-    invalidateSharers(inst, context, raddr);
+    Cache* cache= caches.at(pid);
+    VAddr myTag = cache->calcTag(raddr);
+    bool setConflict = false;
 
     // Lookup line
+    invalidateSharers(pid, raddr);
+
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line = doFillLine(pid, true, raddr, p_opStatus);
+        line  = cache->findLine2Replace(true, raddr);
+
+        // Invalidate old line
+        if(line->isValid()) {
+            if(line->isTransactional()) {
+                if(line->isDirty()) {
+                    markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
+                    setConflict = true;
+                } else {
+                    overflow[pid].insert(line->getCaddr());
+                }
+            }
+
+            // Invalidate line
+            line->invalidate();
+        }
+        if(overflow[pid].find(caddr) != overflow[pid].end()) {
+            overflow[pid].erase(caddr);
+        }
+
+        // Replace the line
+        line->setTag(myTag);
+        line->setCaddr(caddr);
     } else {
         p_opStatus->wasHit = true;
     }
-
-    // Update line
     line->markTransactional();
     line->makeDirty();
 
-    if(p_opStatus->setConflict) {
-        markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
+    if(setConflict) {
         return TMRW_ABORT;
+    } else {
+        writeTrans(pid, raddr, caddr);
+        return TMRW_SUCCESS;
     }
-
-    // Abort everyone once we try to write
-    set<Pid_t> aborted;
-    getReadersExcept(caddr, pid, aborted);
-    getWritersExcept(caddr, pid, aborted);
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
-
-    writeTrans(pid, raddr, caddr);
-    return TMRW_SUCCESS;
 }
 
 ///
@@ -427,25 +466,28 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    Cache* cache = caches.at(pid);
-
-    I(!hadRead(caddr, pid));
-    I(!hadWrote(caddr, pid));
+    Cache* cache= caches.at(pid);
+    VAddr myTag = cache->calcTag(raddr);
 
     // Lookup line
+    abortWriters(pid, raddr);
+
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line = doFillLine(pid, false, raddr, p_opStatus);
+        line  = cache->findLine2Replace(false, raddr);
+
+        // Invalidate old line
+        if(line->isValid()) {
+            line->invalidate();
+        }
+
+        // Replace the line
+        line->setTag(myTag);
+        line->setCaddr(caddr);
     } else {
         p_opStatus->wasHit = true;
     }
-
-    // Abort writers once we try to read
-    set<Pid_t> aborted;
-    getWritersExcept(caddr, pid, aborted);
-
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
 }
 
 ///
@@ -453,37 +495,34 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
 void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    Cache* cache = caches.at(pid);
-
-    I(!hadRead(caddr, pid));
-    I(!hadWrote(caddr, pid));
-
-    invalidateSharers(inst, context, raddr);
+    Cache* cache= caches.at(pid);
+    VAddr myTag = cache->calcTag(raddr);
 
     // Lookup line
+    invalidateSharers(pid, raddr);
+
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line = doFillLine(pid, false, raddr, p_opStatus);
+        line  = cache->findLine2Replace(false, raddr);
+
+        // Invalidate old line
+        if(line->isValid()) {
+            line->invalidate();
+        }
+
+        // Replace the line
+        line->setTag(myTag);
+        line->setCaddr(caddr);
     } else {
         p_opStatus->wasHit = true;
     }
-
-    // Update line
     line->makeDirty();
-
-    // Abort everyone once we try to write
-    set<Pid_t> aborted;
-    getReadersExcept(caddr, pid, aborted);
-    getWritersExcept(caddr, pid, aborted);
-
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
 }
 
 ///
 // Helper function that looks at all private caches and invalidates every active transaction.
-void TMLECoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr) {
-    Pid_t pid   = context->getPid();
+void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
@@ -494,41 +533,29 @@ void TMLECoherence::invalidateSharers(InstDesc* inst, ThreadContext* context, VA
                     markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
                 }
                 line->invalidate();
+            } else if(overflow[p].find(caddr) != overflow[p].end()) {
+                markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
             }
         }
     } // End foreach(pid)
 }
 
 ///
-// Add a line to the private cache of pid, evicting set conflicting lines
-// if necessary.
-TMLECoherence::Line* TMLECoherence::doFillLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus) {
-    Cache* cache = caches.at(pid);
+// Helper function that looks at all private caches and invalidates every active transaction.
+void TMLECoherence::abortWriters(Pid_t pid, VAddr raddr) {
+	VAddr caddr = addrToCacheLine(raddr);
 
-    // The "tag" contains both the set and the real tag
-    VAddr myTag = cache->calcTag(raddr);
-
-    // Find line to replace
-    Line* replaced  = cache->findLine2Replace(isInTM, raddr);
-    if(replaced == nullptr) {
-        fail("Replacing line is NULL!\n");
-    }
-
-    // Invalidate old line
-    if(replaced->isValid()) {
-        // Update MemOpStatus if this is a set conflict
-        if(isInTM && replaced->isTransactional() && replaced->isDirty()) {
-            p_opStatus->setConflict = true;
+    for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
+        if(p != pid) {
+            Line* line = findLine(p, raddr);
+            if(line) {
+                if(line->isTransactional() && line->isDirty()) {
+                    markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
+                }
+                // but don't invalidate line
+            }
         }
-
-        // Invalidate line
-        replaced->invalidate();
-    }
-
-    // Replace the line
-    replaced->setTag(myTag);
-
-    return replaced;
+    } // End foreach(pid)
 }
 
 TMLECoherence::Line* TMLECoherence::findLine(Pid_t pid, VAddr raddr) {
@@ -544,6 +571,7 @@ TMBCStatus TMLECoherence::myBegin(Pid_t pid, InstDesc* inst) {
 TMBCStatus TMLECoherence::myCommit(Pid_t pid, int tid) {
     Cache* cache = caches.at(pid);
     cache->clearTransactional();
+    overflow[pid].clear();
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
@@ -551,6 +579,7 @@ TMBCStatus TMLECoherence::myCommit(Pid_t pid, int tid) {
 void TMLECoherence::myCompleteAbort(Pid_t pid) {
     Cache* cache = caches.at(pid);
     cache->clearTransactional();
+    overflow[pid].clear();
     completeAbortTrans(pid);
 }
 

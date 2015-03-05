@@ -78,7 +78,6 @@ protected:
     void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
     void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
-    void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
 
     // Interface for child classes to override and actually implement the TM OP
     virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
@@ -145,12 +144,14 @@ protected:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void       myCompleteAbort(Pid_t pid);
-    Line* doFillLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
-    void invalidateSharers(InstDesc* inst, ThreadContext* context, VAddr raddr);
+    Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
+    void invalidateSharers(Pid_t pid, VAddr raddr);
+    void abortWriters(Pid_t pid, VAddr raddr);
 
     Line* findLine(Pid_t pid, VAddr raddr);
     std::vector<Cache*>         caches;
 
+    std::map<Pid_t, std::set<VAddr> >   overflow;
 };
 
 extern TMCoherence *tmCohManager;

@@ -20,9 +20,16 @@ class TMLine : public StateGeneric<> {
 private:
     bool dirty;
     bool transactional;
+    VAddr caddr;
 public:
     TMLine() {
         invalidate();
+    }
+    void setCaddr(VAddr c) {
+        caddr = c;
+    }
+    VAddr getCaddr() const {
+        return caddr;
     }
     bool isDirty() const {
         return dirty;
@@ -45,6 +52,7 @@ public:
     void invalidate() {
         dirty = false;
         transactional = false;
+        caddr = 0;
         clearTag();
     }
 };
