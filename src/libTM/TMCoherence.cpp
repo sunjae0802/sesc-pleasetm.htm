@@ -339,6 +339,12 @@ void TMCoherence::myCompleteAbort(Pid_t pid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 TMLECoherence::TMLECoherence(int32_t nProcs, int size, int a, int line, int argType):
         TMCoherence("Lazy/Eager", nProcs, size, a, line, argType) {
+    if(SescConf->checkInt("TransactionalMemory","overflowSize")) {
+        maxOverflowSize = SescConf->getInt("TransactionalMemory","overflowSize");
+    } else {
+        maxOverflowSize = 4;
+        MSG("Using default overflow size of %ld\n", maxOverflowSize);
+    }
     for(Pid_t pid = 0; pid < nProcs; pid++) {
         caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
     }
@@ -379,6 +385,10 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
                     setConflict = true;
                 } else {
                     overflow[pid].insert(line->getCaddr());
+                    if(overflow[pid].size() > maxOverflowSize) {
+                        markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
+                        setConflict = true;
+                    }
                 }
             }
 
@@ -434,6 +444,10 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
                     setConflict = true;
                 } else {
                     overflow[pid].insert(line->getCaddr());
+                    if(overflow[pid].size() > maxOverflowSize) {
+                        markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
+                        setConflict = true;
+                    }
                 }
             }
 

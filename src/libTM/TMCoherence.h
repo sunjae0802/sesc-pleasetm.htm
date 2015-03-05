@@ -152,6 +152,7 @@ protected:
     std::vector<Cache*>         caches;
 
     std::map<Pid_t, std::set<VAddr> >   overflow;
+    size_t                              maxOverflowSize;
 };
 
 extern TMCoherence *tmCohManager;
