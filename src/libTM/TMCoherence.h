@@ -144,13 +144,13 @@ protected:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void       myCompleteAbort(Pid_t pid);
+
+    bool handleTMSetConflict(Pid_t pid, Line* line);
     Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
     void invalidateSharers(Pid_t pid, VAddr raddr);
-    void abortWriters(Pid_t pid, VAddr raddr);
+    void cleanWriters(Pid_t pid, VAddr raddr);
 
-    Line* findLine(Pid_t pid, VAddr raddr);
     std::vector<Cache*>         caches;
-
     std::map<Pid_t, std::set<VAddr> >   overflow;
     size_t                              maxOverflowSize;
 };
