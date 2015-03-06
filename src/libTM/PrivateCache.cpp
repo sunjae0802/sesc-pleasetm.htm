@@ -8,6 +8,63 @@
 using namespace std;
 
 /*********************************************************
+ *  TMLine
+ *********************************************************/
+void TMLine::addReader(Pid_t reader) {
+    if(!transactional) {
+        fail("A non-TM line should not add reader\n");
+    }
+    if(tmWriter != INVALID_PID && !isReader(reader)) {
+        fail("A written line should be cleaned first\n");
+    }
+    tmReaders.insert(reader);
+}
+void TMLine::makeDirty() {
+    if(transactional) {
+        fail("A transactional line should use transactionalDirty\n");
+    }
+    dirty = true;
+}
+void TMLine::makeTransactionalDirty(Pid_t writer) {
+    if(!transactional) {
+        fail("A non-TM line should use dirty\n");
+    }
+    if(tmWriter != INVALID_PID && !isWriter(writer)) {
+        fail("Cannot have multiple writers\n");
+    }
+    
+    tmReaders.insert(writer);
+    tmWriter = writer;
+    dirty = true;
+}
+void TMLine::makeClean() {
+    tmWriter = INVALID_PID;
+    dirty = false;
+}
+void TMLine::clearTransactional() {
+    tmReaders.clear();
+    tmWriter = INVALID_PID;
+    transactional = false;
+}
+void TMLine::clearTransactional(Pid_t p) {
+    tmReaders.erase(p);
+    if(isWriter(p)) {
+        tmWriter = INVALID_PID;
+    }
+    if(tmReaders.empty() && tmWriter == INVALID_PID) {
+        transactional = false;
+    }
+}
+void TMLine::invalidate() {
+    dirty           = false;
+    transactional   = false;
+    caddr           = 0;
+    tmWriter        = INVALID_PID;
+    tmReaders.clear();
+    clearTag();
+}
+
+/*********************************************************
  *  CacheAssocTM
  *********************************************************/
 CacheAssocTM::CacheAssocTM(int32_t s, int32_t a, int32_t b, int32_t u)

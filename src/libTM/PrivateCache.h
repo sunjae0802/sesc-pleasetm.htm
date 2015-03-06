@@ -18,14 +18,27 @@ struct MemOpStatus {
 
 class TMLine : public StateGeneric<> {
 private:
-    bool dirty;
-    bool transactional;
-    VAddr caddr;
+    bool            dirty;
+    bool            transactional;
+    std::set<Pid_t> tmReaders;
+    Pid_t           tmWriter;
+    VAddr           caddr;
 public:
     TMLine() {
         invalidate();
     }
-    void setCaddr(VAddr c) {
+    bool isReader(Pid_t p) const {
+        return tmReaders.find(p) != tmReaders.end();
+    }
+    bool isWriter(Pid_t p) const {
+        return tmWriter == p;
+    }
+    void addReader(Pid_t p);
+    Pid_t getWriter() const {
+        return tmWriter;
+    }
+    void validate(VAddr t, VAddr c) {
+        setTag(t);
         caddr = c;
     }
     VAddr getCaddr() const {
@@ -34,27 +47,18 @@ public:
     bool isDirty() const {
         return dirty;
     }
-    void makeDirty() {
-        dirty = true;
-    }
-    void makeClean() {
-        dirty = false;
-    }
+    void makeDirty();
+    void makeTransactionalDirty(Pid_t writer);
+    void makeClean();
     bool isTransactional() const {
         return transactional;
     }
     void markTransactional() {
         transactional = true;
     }
-    void clearTransactional() {
-        transactional = false;
-    }
-    void invalidate() {
-        dirty = false;
-        transactional = false;
-        caddr = 0;
-        clearTag();
-    }
+    void clearTransactional();
+    void clearTransactional(Pid_t p);
+    void invalidate();
 };
 
 class CacheAssocTM {

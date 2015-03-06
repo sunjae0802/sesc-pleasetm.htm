@@ -401,8 +401,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
         }
 
         // Replace the line
-        line->setTag(myTag);
-        line->setCaddr(caddr);
+        line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
         if(!line->isTransactional()) {
@@ -410,6 +409,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
         }
     }
     line->markTransactional();
+    line->addReader(pid);
 
     if(setConflict) {
         return TMRW_ABORT;
@@ -459,13 +459,12 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
         }
 
         // Replace the line
-        line->setTag(myTag);
-        line->setCaddr(caddr);
+        line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
     }
     line->markTransactional();
-    line->makeDirty();
+    line->makeTransactionalDirty(pid);
 
     if(setConflict) {
         return TMRW_ABORT;
@@ -497,8 +496,7 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
         }
 
         // Replace the line
-        line->setTag(myTag);
-        line->setCaddr(caddr);
+        line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -526,8 +524,7 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
         }
 
         // Replace the line
-        line->setTag(myTag);
-        line->setCaddr(caddr);
+        line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
     }
