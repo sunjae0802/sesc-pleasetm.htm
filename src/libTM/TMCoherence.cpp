@@ -62,74 +62,6 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int size, int a, i
     }
 }
 
-bool TMCoherence::hadWrote(VAddr caddr, Pid_t pid) {
-    return linesWritten[pid].find(caddr) != linesWritten[pid].end();
-}
-
-bool TMCoherence::hadRead(VAddr caddr, Pid_t pid) {
-    return linesRead[pid].find(caddr) != linesRead[pid].end();
-}
-void TMCoherence::getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w) {
-    std::map<VAddr, std::list<Pid_t> >::iterator i_line;
-    i_line = writers.find(caddr);
-    if(i_line != writers.end()) {
-        w.insert(i_line->second.begin(), i_line->second.end());
-        w.erase(pid);
-    }
-}
-void TMCoherence::getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r) {
-    std::map<VAddr, std::list<Pid_t> >::iterator i_line;
-    i_line = readers.find(caddr);
-    if(i_line != readers.end()) {
-        r.insert(i_line->second.begin(), i_line->second.end());
-        r.erase(pid);
-    }
-}
-void TMCoherence::removeFromList(std::list<Pid_t>& list, Pid_t pid) {
-    std::list<Pid_t>::iterator i_list = list.begin();
-    while(i_list != list.end()) {
-        if(*i_list == pid) {
-            list.erase(i_list++);
-        } else {
-            ++i_list;
-        }
-    }
-}
-
-void TMCoherence::removeTransaction(Pid_t pid) {
-    std::map<VAddr, std::list<Pid_t> >::iterator i_line;
-    std::set<VAddr>::iterator i_wroteTo;
-    for(i_wroteTo = linesWritten[pid].begin(); i_wroteTo != linesWritten[pid].end(); ++i_wroteTo) {
-        i_line = writers.find(*i_wroteTo);
-        if(i_line == writers.end()) {
-            fail("linesWritten and writers mismatch\n");
-        }
-        removeFromList(i_line->second, pid);
-        if(i_line->second.empty()) {
-            writers.erase(i_line);
-        }
-        if(std::find(i_line->second.begin(), i_line->second.end(), pid) != i_line->second.end()) {
-            fail("Remove fail?");
-        }
-    }
-    std::set<VAddr>::iterator i_readFrom;
-    for(i_readFrom = linesRead[pid].begin(); i_readFrom != linesRead[pid].end(); ++i_readFrom) {
-        i_line = readers.find(*i_readFrom);
-        if(i_line == readers.end()) {
-            fail("linesRead and readers mismatch\n");
-        }
-        removeFromList(i_line->second, pid);
-        if(i_line->second.empty()) {
-            readers.erase(i_line);
-        }
-        if(std::find(i_line->second.begin(), i_line->second.end(), pid) != i_line->second.end()) {
-            fail("Remove fail?");
-        }
-    }
-    linesRead[pid].clear();
-    linesWritten[pid].clear();
-}
-
 void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 	if(!transStates[pid].getRestartPending()) {
         // This is a new transaction instance
@@ -139,7 +71,6 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
     numAbortsCaused[pid] = 0;
 
     // Do the begin
-    removeTransaction(pid);
 	transStates[pid].begin(TMCoherence::nextUtid++);
 }
 
@@ -175,7 +106,6 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr cadd
 
     if(transStates[victimPid].getState() != TM_ABORTING && transStates[victimPid].getState() != TM_MARKABORT) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
-        removeTransaction(victimPid);
         if(victimPid != aborterPid && transStates[aborterPid].getState() == TM_RUNNING) {
             numAbortsCaused[aborterPid]++;
         }
@@ -192,30 +122,14 @@ void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, V
 	}
 }
 void TMCoherence::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    I(transStates[pid].getState() == TM_RUNNING);
-
-    if(!hadRead(caddr, pid)) {
-        linesRead[pid].insert(caddr);
-        readers[caddr].push_back(pid);
-    } else {
-        if(find(readers[caddr].begin(), readers[caddr].end(), pid)
-                == readers[caddr].end()) {
-            fail("readers and linesRead mistmatch in add\n");
-        }
-    }
+    linesRead[pid].insert(caddr);
 }
 void TMCoherence::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    I(transStates[pid].getState() == TM_RUNNING);
-
-    if(!hadWrote(caddr, pid)) {
-        linesWritten[pid].insert(caddr);
-        writers[caddr].push_back(pid);
-    } else {
-        if(find(writers[caddr].begin(), writers[caddr].end(), pid)
-                == writers[caddr].end()) {
-            fail("writers and linesWritten mistmatch in add\n");
-        }
-    }
+    linesWritten[pid].insert(caddr);
+}
+void TMCoherence::removeTrans(Pid_t pid) {
+    linesRead[pid].clear();
+    linesWritten[pid].clear();
 }
 void TMCoherence::nackTrans(Pid_t pid) {
     transStates[pid].startNacking();
@@ -274,7 +188,6 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
 // so reset any statistics. Used for statistics that run across multiple retires.
 void TMCoherence::completeFallback(Pid_t pid) {
     transStates[pid].completeFallback();
-    removeTransaction(pid);
 }
 
 ///
@@ -332,6 +245,9 @@ TMBCStatus TMCoherence::myCommit(Pid_t pid, int tid) {
 // A basic type of TM complete abort if child does not override
 void TMCoherence::myCompleteAbort(Pid_t pid) {
     completeAbortTrans(pid);
+}
+void TMCoherence::removeTransaction(Pid_t pid) {
+    removeTrans(pid);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -586,17 +502,17 @@ TMBCStatus TMLECoherence::myBegin(Pid_t pid, InstDesc* inst) {
 }
 
 TMBCStatus TMLECoherence::myCommit(Pid_t pid, int tid) {
-    Cache* cache = caches.at(pid);
-    cache->clearTransactional();
-    overflow[pid].clear();
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
 void TMLECoherence::myCompleteAbort(Pid_t pid) {
-    Cache* cache = caches.at(pid);
-    cache->clearTransactional();
-    overflow[pid].clear();
     completeAbortTrans(pid);
 }
 
+void TMLECoherence::removeTransaction(Pid_t pid) {
+    Cache* cache = caches.at(pid);
+    cache->clearTransactional();
+    overflow[pid].clear();
+    removeTrans(pid);
+}

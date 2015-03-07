@@ -76,6 +76,7 @@ protected:
     void nackTrans(Pid_t pid);
     void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
+    void removeTrans(Pid_t pid);
     void markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
     void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
 
@@ -88,14 +89,7 @@ protected:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void       myCompleteAbort(Pid_t pid);
-
-    // Functions for managing reads/writes
-    void removeTransaction(Pid_t pid);
-    void removeFromList(std::list<Pid_t>& list, Pid_t pid);
-    bool hadWrote(VAddr caddr, Pid_t pid);
-    bool hadRead(VAddr caddr, Pid_t pid);
-    void getWritersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& w);
-    void getReadersExcept(VAddr caddr, Pid_t pid, std::set<Pid_t>& r);
+    virtual void       removeTransaction(Pid_t pid);
 
     // Common member variables
     static uint64_t nextUtid;
@@ -125,8 +119,6 @@ protected:
     std::map<VAddr, size_t>             numAbortsCaused;
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
-    std::map<VAddr, std::list<Pid_t> >  writers;
-    std::map<VAddr, std::list<Pid_t> >  readers;
 };
 
 class TMLECoherence: public TMCoherence {
@@ -144,6 +136,7 @@ protected:
     virtual TMBCStatus myCommit(Pid_t pid, int tid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void       myCompleteAbort(Pid_t pid);
+    virtual void       removeTransaction(Pid_t pid);
 
     bool handleTMSetConflict(Pid_t pid, Line* line);
     Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
