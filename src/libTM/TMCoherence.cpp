@@ -115,8 +115,8 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr cadd
 void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
 	set<Pid_t>::iterator i_aborted;
     for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
-		if(*i_aborted == aborterPid) {
-            fail("Aborter is also the aborted?");
+		if(*i_aborted == INVALID_PID) {
+            fail("Trying to abort invalid Pid?");
         }
         markTransAborted(*i_aborted, aborterPid, caddr, abortType);
 	}
@@ -139,7 +139,7 @@ void TMCoherence::nackTrans(Pid_t pid) {
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
     if(transStates[pid].getDepth() > 0) {
-        fail("Nested transactions not tested\n");
+        fail("%d nested transactions not tested: %d\n", pid, transStates[pid].getState());
 		transStates[pid].beginNested();
 		return TMBC_IGNORE;
 	} else {
@@ -281,9 +281,8 @@ TMLECoherence::~TMLECoherence() {
 TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    Cache* cache= caches.at(pid);
+    Cache* cache= getCache(pid);
     VAddr myTag = cache->calcTag(raddr);
-    bool setConflict = false;
 
     // Handle any sharers
     cleanWriters(pid, raddr);
@@ -296,16 +295,14 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
 
         // Invalidate old line
         if(line->isValid()) {
-            setConflict = handleTMSetConflict(pid, line);
+            if(line->isTransactional()) {
+                handleTMSetConflict(pid, line);
+            }
             line->invalidate();
         }
 
-        // If this line had been sent to the overflow set, bring it back
-        if(overflow[pid].find(caddr) != overflow[pid].end()) {
-            overflow[pid].erase(caddr);
-        }
-
         // Replace the line
+        updateOverflow(pid, caddr);
         line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
@@ -319,8 +316,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     line->markTransactional();
     line->addReader(pid);
 
-    if(setConflict) {
-        markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
+    if(markedForAbort(pid)) {
         return TMRW_ABORT;
     } else {
         readTrans(pid, raddr, caddr);
@@ -333,9 +329,8 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
 TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    Cache* cache= caches.at(pid);
+    Cache* cache= getCache(pid);
     VAddr myTag = cache->calcTag(raddr);
-    bool setConflict = false;
 
     // Handle any sharers
     invalidateSharers(pid, raddr);
@@ -348,16 +343,14 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 
         // Invalidate old line
         if(line->isValid()) {
-            setConflict = handleTMSetConflict(pid, line);
+            if(line->isTransactional()) {
+                handleTMSetConflict(pid, line);
+            }
             line->invalidate();
         }
 
-        // If this line had been sent to the overflow set, bring it back
-        if(overflow[pid].find(caddr) != overflow[pid].end()) {
-            overflow[pid].erase(caddr);
-        }
-
         // Replace the line
+        updateOverflow(pid, caddr);
         line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
@@ -367,8 +360,7 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     line->markTransactional();
     line->makeTransactionalDirty(pid);
 
-    if(setConflict) {
-        markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
+    if(markedForAbort(pid)) {
         return TMRW_ABORT;
     } else {
         writeTrans(pid, raddr, caddr);
@@ -381,7 +373,7 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    Cache* cache= caches.at(pid);
+    Cache* cache= getCache(pid);
     VAddr myTag = cache->calcTag(raddr);
 
     // Handle any sharers
@@ -410,7 +402,7 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
 void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-    Cache* cache= caches.at(pid);
+    Cache* cache= getCache(pid);
     VAddr myTag = cache->calcTag(raddr);
 
     // Handle any sharers
@@ -439,20 +431,30 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
 
 ///
 // Helper function that indicates whether a set conflict lead to a TM set conflict abort
-bool TMLECoherence::handleTMSetConflict(Pid_t pid, Line* line) {
-    bool setConflict = false;
+void TMLECoherence::handleTMSetConflict(Pid_t pid, Line* line) {
+    set<Pid_t> aborted;
 
-    if(line->isTransactional()) {
-        if(line->isDirty()) {
-            setConflict = true;
-        } else {
+    if(line->isWriter(pid)) {
+        aborted.insert(pid);
+        line->clearTransactional();
+    } else if(line->isReader(pid)) {
+        if(overflow[pid].size() < maxOverflowSize) {
             overflow[pid].insert(line->getCaddr());
-            if(overflow[pid].size() > maxOverflowSize) {
-                setConflict = true;
-            }
+        } else {
+            aborted.insert(pid);
         }
+        line->clearTransactional();
     }
-    return setConflict;
+
+    markTransAborted(aborted, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
+}
+
+///
+// If this line had been sent to the overflow set, bring it back.
+void TMLECoherence::updateOverflow(Pid_t pid, VAddr newCaddr) {
+    if(overflow[pid].find(newCaddr) != overflow[pid].end()) {
+        overflow[pid].erase(newCaddr);
+    }
 }
 
 ///

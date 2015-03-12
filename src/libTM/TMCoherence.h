@@ -138,7 +138,11 @@ protected:
     virtual void       myCompleteAbort(Pid_t pid);
     virtual void       removeTransaction(Pid_t pid);
 
-    bool handleTMSetConflict(Pid_t pid, Line* line);
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+
+    void handleTMSetConflict(Pid_t pid, Line* line);
+    void updateOverflow(Pid_t pid, VAddr newCaddr);
+
     Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
     void invalidateSharers(Pid_t pid, VAddr raddr);
     void cleanWriters(Pid_t pid, VAddr raddr);
