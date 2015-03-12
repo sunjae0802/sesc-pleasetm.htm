@@ -50,6 +50,7 @@ void TMLine::clearTransactional(Pid_t p) {
     tmReaders.erase(p);
     if(isWriter(p)) {
         tmWriter = INVALID_PID;
+        dirty = false;
     }
     if(tmReaders.empty() && tmWriter == INVALID_PID) {
         transactional = false;
@@ -61,7 +62,7 @@ void TMLine::invalidate() {
     caddr           = 0;
     tmWriter        = INVALID_PID;
     tmReaders.clear();
-    clearTag();
+    StateGeneric::invalidate();
 }
 
 /*********************************************************
