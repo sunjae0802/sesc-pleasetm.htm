@@ -78,7 +78,7 @@ protected:
     TMLine *mem;
     TMLine **content;
     void moveToMRU(TMLine** theSet, TMLine** theTMLine);
-    TMLine *findLine2Replace(bool isInTM, TMLine** theSet);
+    TMLine *findLine2Replace(TMLine** theSet);
     TMLine **findInvalid(TMLine **theSet);
     TMLine **findOldestNonTMClean(TMLine **theSet);
     TMLine **findOldestClean(TMLine **theSet);
@@ -98,7 +98,7 @@ public:
         delete [] mem;
     }
 
-    TMLine *findLine2Replace(bool isInTM, VAddr addr);
+    TMLine *findLine2Replace(VAddr addr);
     TMLine *lookupLine(VAddr addr);
     TMLine *findLine(VAddr addr);
     void clearTransactional();

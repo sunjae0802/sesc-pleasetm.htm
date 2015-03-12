@@ -223,18 +223,18 @@ TMLine
 }
 
 TMLine
-*CacheAssocTM::findLine2Replace(bool isInTM, VAddr addr)
+*CacheAssocTM::findLine2Replace(VAddr addr)
 {
     VAddr tag    = this->calcTag(addr);
     TMLine **theSet = &content[this->calcIndex4Tag(tag)];
 
-    TMLine *replaced = findLine2Replace(isInTM, theSet);
+    TMLine *replaced = findLine2Replace(theSet);
     if(replaced == NULL) {
         fail("Replacing line is NULL!\n");
     }
 
     // Do various checks to see if replaced line is correctly chosen
-    if(isInTM && replaced->isTransactional() && replaced->isDirty() && countLines(theSet, &lineTransactionalDirty) < assoc) {
+    if(replaced->isTransactional() && replaced->isDirty() && countLines(theSet, &lineTransactionalDirty) < assoc) {
         fail("Evicted transactional line too early: %d\n", countLines(theSet, &lineTransactionalDirty));
     }
 
@@ -247,7 +247,7 @@ TMLine
 }
 
 TMLine
-*CacheAssocTM::findLine2Replace(bool isInTM, TMLine** theSet)
+*CacheAssocTM::findLine2Replace(TMLine** theSet)
 {
     TMLine **lineFree=0; // Order of preference, invalid
     TMLine **setEnd = theSet + assoc;
@@ -258,7 +258,7 @@ TMLine
         return *lineFree;
     }
 
-    if(isInTM == false || (countLines(theSet, &lineTransactionalDirty) == assoc)) {
+    if(countLines(theSet, &lineTransactionalDirty) == assoc) {
         // If not inside a transaction, or if we ran out of non-transactional or clean lines
         // Get the oldest line possible
         lineFree = setEnd-1;

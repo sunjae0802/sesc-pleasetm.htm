@@ -292,7 +292,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(true, raddr);
+        line  = cache->findLine2Replace(raddr);
 
         // Invalidate old line
         if(line->isValid()) {
@@ -344,7 +344,7 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(true, raddr);
+        line  = cache->findLine2Replace(raddr);
 
         // Invalidate old line
         if(line->isValid()) {
@@ -391,7 +391,7 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(false, raddr);
+        line  = cache->findLine2Replace(raddr);
 
         // Invalidate old line
         if(line->isValid()) {
@@ -420,7 +420,7 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(false, raddr);
+        line  = cache->findLine2Replace(raddr);
 
         // Invalidate old line
         if(line->isValid()) {
