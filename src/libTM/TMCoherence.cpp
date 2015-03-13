@@ -493,7 +493,11 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
         }
     } // End foreach(pid)
 
-    markTransAborted(sharers, pid, caddr, TM_ATYPE_EVICTION);
+    if(getState(pid) == TM_RUNNING) {
+        markTransAborted(sharers, pid, caddr, TM_ATYPE_EVICTION);
+    } else {
+        markTransAborted(sharers, pid, caddr, TM_ATYPE_NONTM);
+    }
 }
 
 ///
@@ -507,7 +511,11 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr) {
         if(line) {
             Pid_t writer = line->getWriter();
             if(writer != INVALID_PID && writer != pid) {
-                markTransAborted(writer, pid, caddr, TM_ATYPE_EVICTION);
+                if(getState(pid) == TM_RUNNING) {
+                    markTransAborted(writer, pid, caddr, TM_ATYPE_EVICTION);
+                } else {
+                    markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
+                }
                 // but don't invalidate line
                 line->clearTransactional();
             } else if(!line->isTransactional() && line->isDirty()) {
