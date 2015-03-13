@@ -142,9 +142,9 @@ public:
     // Transactional Helper Methods
     int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
     bool isInTM()           const { return getTMdepth() > 0; }
-    bool isTMAborting()     const { return tmCohManager->checkAborting(pid); }
-    bool markedForAbort()   const { return tmCohManager->markedForAbort(pid); }
-    bool tmNacked()         const { return tmCohManager->checkNacked(pid); }
+    bool isTMAborting()     const { return tmCohManager->getState(pid) == TM_ABORTING; }
+    bool markedForAbort()   const { return tmCohManager->getState(pid) == TM_MARKABORT; }
+    bool tmNacked()         const { return tmCohManager->getState(pid) == TM_NACKED; }
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }

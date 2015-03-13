@@ -37,13 +37,11 @@ public:
     void completeFallback(Pid_t pid);
 
     // Query functions
-    const TransState& getTransState(Pid_t pid) { return transStates.at(pid); }
-    int getReturnArgType()          const { return returnArgType; }
+    const TransState& getTransState(Pid_t pid) const { return transStates.at(pid); }
+    TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
-    size_t getDepth(Pid_t pid)      const { return transStates.at(pid).getDepth(); }
-    bool checkNacked(Pid_t pid)    const { return transStates.at(pid).getState() == TM_NACKED; }
-    bool checkAborting(Pid_t pid)   const { return transStates.at(pid).getState() == TM_ABORTING; }
-    bool markedForAbort(Pid_t pid)  const { return transStates.at(pid).getState() == TM_MARKABORT; }
+    size_t  getDepth(Pid_t pid)     const { return transStates.at(pid).getDepth(); }
+    int     getReturnArgType()      const { return returnArgType; }
 
     uint32_t getNackStallCycles(size_t numNacks)   const {
         uint32_t stallCycles = nackStallBaseCycles * numNacks;
@@ -52,12 +50,8 @@ public:
         }
         return stallCycles;
     }
-    size_t getNumReads(Pid_t pid) const {
-        return linesRead.at(pid).size();
-    }
-    size_t getNumWrites(Pid_t pid) const {
-        return linesWritten.at(pid).size();
-    }
+    size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
+    size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
 
 protected:
     TMCoherence(const char* tmStyle, int procs, int size, int a, int line, int argType);

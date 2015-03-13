@@ -565,7 +565,7 @@ InstDesc *emulNop(InstDesc *inst, ThreadContext *context) {
 #if (defined TM)
 InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     Pid_t pid = context->getPid();
-    if(tmCohManager->checkAborting(pid)) {
+    if(context->isTMAborting()) {
         uint32_t abortArg = context->completeAbort(inst);
         ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, abortArg);
     } else {

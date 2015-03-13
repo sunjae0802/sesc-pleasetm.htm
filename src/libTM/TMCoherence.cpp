@@ -102,11 +102,11 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 }
 
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
-    uint64_t aborterUtid = transStates[aborterPid].getUtid();
+    uint64_t aborterUtid = getUtid(aborterPid);
 
-    if(transStates[victimPid].getState() != TM_ABORTING && transStates[victimPid].getState() != TM_MARKABORT) {
+    if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
-        if(victimPid != aborterPid && transStates[aborterPid].getState() == TM_RUNNING) {
+        if(victimPid != aborterPid && getState(aborterPid) == TM_RUNNING) {
             numAbortsCaused[aborterPid]++;
         }
     } // Else victim is already aborting, so leave it alone
@@ -138,8 +138,8 @@ void TMCoherence::nackTrans(Pid_t pid) {
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
-    if(transStates[pid].getDepth() > 0) {
-        fail("%d nested transactions not tested: %d\n", pid, transStates[pid].getState());
+    if(getDepth(pid) > 0) {
+        fail("%d nested transactions not tested: %d\n", pid, getState(pid));
 		transStates[pid].beginNested();
 		return TMBC_IGNORE;
 	} else {
@@ -150,9 +150,9 @@ TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
-	if(transStates[pid].getState() == TM_MARKABORT) {
+	if(getState(pid) == TM_MARKABORT) {
 		return TMBC_ABORT;
-	} else if(transStates[pid].getDepth() > 1) {
+	} else if(getDepth(pid) > 1) {
 		transStates[pid].commitNested();
 		return TMBC_IGNORE;
 	} else {
@@ -165,7 +165,7 @@ TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
 // then mark the transaction as aborted, else 
 TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
     if(abortType == TM_ATYPE_SYSCALL || abortType == TM_ATYPE_USER) {
-        transStates[pid].markAbort(pid, transStates[pid].getUtid(), 0, abortType);
+        transStates[pid].markAbort(pid, getUtid(pid), 0, abortType);
     } else if(abortType != 0) {
         // Abort type internal, so should not be set
         fail("Unknown abort type");
@@ -177,7 +177,7 @@ TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
 // Entry point for TM complete abort operation (to be called after an aborted TM returns to
 // tm.begin).
 TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
-    if(transStates[pid].getState() == TM_ABORTING) {
+    if(getState(pid) == TM_ABORTING) {
         myCompleteAbort(pid);
     }
     return TMBC_SUCCESS;
@@ -195,9 +195,9 @@ void TMCoherence::completeFallback(Pid_t pid) {
 TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-	if(transStates[pid].getState() == TM_MARKABORT) {
+	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
-	} else if(transStates[pid].getState() == TM_INVALID) {
+	} else if(getState(pid) == TM_INVALID) {
         nonTMRead(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
 	} else {
@@ -210,9 +210,9 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-	if(transStates[pid].getState() == TM_MARKABORT) {
+	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
-	} else if(transStates[pid].getState() == TM_INVALID) {
+	} else if(getState(pid) == TM_INVALID) {
         nonTMWrite(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
 	} else {
@@ -316,7 +316,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     line->markTransactional();
     line->addReader(pid);
 
-    if(markedForAbort(pid)) {
+    if(getState(pid) == TM_MARKABORT) {
         return TMRW_ABORT;
     } else {
         readTrans(pid, raddr, caddr);
@@ -360,7 +360,7 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     line->markTransactional();
     line->makeTransactionalDirty(pid);
 
-    if(markedForAbort(pid)) {
+    if(getState(pid) == TM_MARKABORT) {
         return TMRW_ABORT;
     } else {
         writeTrans(pid, raddr, caddr);
@@ -532,7 +532,7 @@ void TMLECoherence::myCompleteAbort(Pid_t pid) {
 }
 
 void TMLECoherence::removeTransaction(Pid_t pid) {
-    Cache* cache = caches.at(pid);
+    Cache* cache = getCache(pid);
     cache->clearTransactional();
     overflow[pid].clear();
     removeTrans(pid);
