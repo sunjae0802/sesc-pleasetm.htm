@@ -56,6 +56,12 @@ void TMLine::clearTransactional(Pid_t p) {
         transactional = false;
     }
 }
+void TMLine::getAccessors(std::set<Pid_t>& accessors) const {
+    if(tmWriter != INVALID_PID) {
+        accessors.insert(tmWriter);
+    }
+    accessors.insert(tmReaders.begin(), tmReaders.end());
+}
 void TMLine::invalidate() {
     dirty           = false;
     transactional   = false;

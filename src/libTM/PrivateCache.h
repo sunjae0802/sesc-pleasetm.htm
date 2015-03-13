@@ -34,9 +34,13 @@ public:
         return tmWriter == p;
     }
     void addReader(Pid_t p);
+    const std::set<Pid_t>& getReaders() const {
+        return tmReaders;
+    }
     Pid_t getWriter() const {
         return tmWriter;
     }
+    void getAccessors(std::set<Pid_t>& accessors) const;
     void validate(VAddr t, VAddr c) {
         setTag(t);
         caddr = c;

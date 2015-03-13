@@ -461,21 +461,39 @@ void TMLECoherence::updateOverflow(Pid_t pid, VAddr newCaddr) {
 // Helper function that looks at all private caches and invalidates all sharers, while aborting
 // transactions.
 void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
-	VAddr caddr = addrToCacheLine(raddr);
+    set<Pid_t> sharers;
 
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
+        Line* line = cache->findLine(raddr);
+        if(line) {
+            set<Pid_t> lineSharers;
+            line->getAccessors(lineSharers);
+
+            for(Pid_t s: lineSharers) {
+                if(s != pid) {
+                    line->clearTransactional();
+                    sharers.insert(s);
+                }
+            }
+            if(getCache(pid) != cache) {
+                // "Other" cache, so invalidate
+                line->invalidate();
+            }
+        }
+    }
+
+	VAddr caddr = addrToCacheLine(raddr);
+    // Look at everyone's overflow set to see if the line is in there
     for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
         if(p != pid) {
-            Line* line = caches.at(p)->findLine(raddr);
-            if(line) {
-                if(line->isTransactional()) {
-                    markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
-                }
-                line->invalidate();
-            } else if(overflow[p].find(caddr) != overflow[p].end()) {
-                markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
+            if(overflow[p].find(caddr) != overflow[p].end()) {
+                sharers.insert(p);
             }
         }
     } // End foreach(pid)
+
+    markTransAborted(sharers, pid, caddr, TM_ATYPE_EVICTION);
 }
 
 ///
@@ -484,18 +502,19 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
 void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
 
-    for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
-        if(p != pid) {
-            Line* line = caches.at(p)->findLine(raddr);
-            if(line) {
-                if(line->isTransactional() && line->isDirty()) {
-                    markTransAborted(p, pid, caddr, TM_ATYPE_EVICTION);
-                }
+    for(Cache* cache: caches) {
+        Line* line = cache->findLine(raddr);
+        if(line) {
+            Pid_t writer = line->getWriter();
+            if(writer != INVALID_PID && writer != pid) {
+                markTransAborted(writer, pid, caddr, TM_ATYPE_EVICTION);
                 // but don't invalidate line
+                line->clearTransactional();
+            } else if(!line->isTransactional() && line->isDirty()) {
                 line->makeClean();
             }
         }
-    } // End foreach(pid)
+    } // End foreach(cache)
 }
 
 TMBCStatus TMLECoherence::myBegin(Pid_t pid, InstDesc* inst) {
