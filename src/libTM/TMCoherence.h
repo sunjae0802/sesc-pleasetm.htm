@@ -53,7 +53,7 @@ public:
     size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
 
 protected:
-    TMCoherence(const char* tmStyle, int procs, int size, int a, int line);
+    TMCoherence(const char* tmStyle, int procs, int line);
     VAddr addrToCacheLine(VAddr raddr) {
         while(raddr % lineSize != 0) {
             raddr = raddr-1;
@@ -88,8 +88,6 @@ protected:
     // Common member variables
     static uint64_t nextUtid;
     int             nProcs;
-    int             totalSize;
-    int             assoc;
     int             lineSize;
     uint32_t        nackStallBaseCycles;
     uint32_t        nackStallCap;
@@ -118,7 +116,7 @@ protected:
 
 class TMLECoherence: public TMCoherence {
 public:
-    TMLECoherence(int32_t nProcs, int size, int a, int line);
+    TMLECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
     virtual ~TMLECoherence();
 
     typedef CacheAssocTM    Cache;
@@ -142,9 +140,14 @@ protected:
     void invalidateSharers(Pid_t pid, VAddr raddr);
     void cleanWriters(Pid_t pid, VAddr raddr);
 
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+    size_t          maxOverflowSize;
+
+    // State member variables
     std::vector<Cache*>         caches;
     std::map<Pid_t, std::set<VAddr> >   overflow;
-    size_t                              maxOverflowSize;
 };
 
 extern TMCoherence *tmCohManager;
