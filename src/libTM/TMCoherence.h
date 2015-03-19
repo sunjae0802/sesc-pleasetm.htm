@@ -67,7 +67,8 @@ protected:
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
     void completeAbortTrans(Pid_t pid);
-    void nackTrans(Pid_t pid);
+    void nackTrans(Pid_t victimPid, Pid_t byPid);
+    void resumeAllTrans(Pid_t pid);
     void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void removeTrans(Pid_t pid);
@@ -113,6 +114,8 @@ protected:
     std::map<VAddr, size_t>             numAbortsCaused;
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
+    std::map<Pid_t, std::set<Pid_t> >   nacking;
+    std::map<Pid_t, Pid_t>              nackedBy;
 };
 
 class TMLECoherence: public TMCoherence {

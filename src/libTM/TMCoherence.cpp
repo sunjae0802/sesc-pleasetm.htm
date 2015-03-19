@@ -104,6 +104,11 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 
+    if(getState(victimPid) == TM_NACKED) {
+        Pid_t nacker = nackedBy.at(victimPid);
+        nacking.at(nacker).erase(victimPid);
+        nackedBy.erase(victimPid);
+    }
     if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
         if(victimPid != aborterPid && getState(aborterPid) == TM_RUNNING) {
@@ -131,8 +136,34 @@ void TMCoherence::removeTrans(Pid_t pid) {
     linesRead[pid].clear();
     linesWritten[pid].clear();
 }
-void TMCoherence::nackTrans(Pid_t pid) {
-    transStates[pid].startNacking();
+void TMCoherence::nackTrans(Pid_t victimPid, Pid_t byPid) {
+    if(victimPid == INVALID_PID || byPid == INVALID_PID) {
+        fail("Trying to NACK invalid pid?");
+    }
+    if(victimPid == byPid) {
+        fail("Trying to NACK myself?");
+    }
+    auto iVictimNackedBy = nackedBy.find(victimPid);
+
+    if(iVictimNackedBy != nackedBy.end() && iVictimNackedBy->second == byPid) {
+        fail("Duplicate NACK");
+    }
+
+    nacking[byPid].insert(victimPid);
+    nackedBy[victimPid] = byPid;
+    transStates[victimPid].startNacking();
+}
+void TMCoherence::resumeAllTrans(Pid_t pid) {
+    for(auto iNacking = nacking[pid].begin(); iNacking != nacking[pid].end(); ++iNacking) {
+        Pid_t victimPid = *iNacking;
+        auto iVictimNackedBy = nackedBy.find(victimPid);
+        if(iVictimNackedBy == nackedBy.end() || iVictimNackedBy->second != pid) {
+            fail("Nacking/nackedBy mismatch");
+        }
+        nackedBy.erase(iVictimNackedBy);
+        transStates[victimPid].resumeAfterNack();
+    }
+    nacking.erase(pid);
 }
 
 ///
@@ -197,6 +228,8 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
+	} else if(getState(pid) == TM_NACKED) {
+		return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMRead(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
@@ -212,6 +245,8 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
+	} else if(getState(pid) == TM_NACKED) {
+		return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMWrite(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
