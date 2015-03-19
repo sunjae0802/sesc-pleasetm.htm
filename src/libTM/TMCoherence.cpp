@@ -21,13 +21,12 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
     int lineSize = SescConf->getInt("TransactionalMemory","lineSize");
-	int returnArgType = SescConf->getInt("TransactionalMemory","returnArgType");
 
     if(method == "LE") {
-        newCohManager = new TMLECoherence(nProcs, totalSize, assoc, lineSize, returnArgType);
+        newCohManager = new TMLECoherence(nProcs, totalSize, assoc, lineSize);
     } else {
         MSG("unknown TM method, using LE");
-        newCohManager = new TMLECoherence(nProcs, totalSize, assoc, lineSize, returnArgType);
+        newCohManager = new TMLECoherence(nProcs, totalSize, assoc, lineSize);
     }
 
     return newCohManager;
@@ -37,8 +36,8 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 // Abstract super-class of all TM policies. Contains the external interface and common
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
-TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int size, int a, int line, int argType):
-        nProcs(procs), totalSize(size), assoc(a), lineSize(line), returnArgType(argType),
+TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int size, int a, int line):
+        nProcs(procs), totalSize(size), assoc(a), lineSize(line),
         nackStallBaseCycles(1), nackStallCap(1),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
@@ -288,8 +287,8 @@ void TMCoherence::removeTransaction(Pid_t pid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLECoherence::TMLECoherence(int32_t nProcs, int size, int a, int line, int argType):
-        TMCoherence("Lazy/Eager", nProcs, size, a, line, argType) {
+TMLECoherence::TMLECoherence(int32_t nProcs, int size, int a, int line):
+        TMCoherence("Lazy/Eager", nProcs, size, a, line) {
     if(SescConf->checkInt("TransactionalMemory","overflowSize")) {
         maxOverflowSize = SescConf->getInt("TransactionalMemory","overflowSize");
     } else {

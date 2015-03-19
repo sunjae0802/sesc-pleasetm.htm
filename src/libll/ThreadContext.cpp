@@ -193,23 +193,14 @@ uint32_t ThreadContext::completeAbort(InstDesc* inst) {
 }
 
 uint32_t ThreadContext::getAbortRV(const TransState& transState) {
+    // LSB is 1 to show that this is an abort
     uint32_t abortRV = 1;
-    abortRV |= tmAbortArg << 8; // bottom 8 bits are reserved
 
-    // Set per-type return arg in upper bits
-    switch(tmCohManager->getReturnArgType()) {
-        case 0:
-            abortRV |= (transState.getAborterPid()) << 12;
-            break;
-        case 1:
-            abortRV |= (transState.getAbortBy());
-            break;
-        case 2:
-            abortRV |= (transState.getAborterPid()) << 12;
-            break;
-        default:
-            fail("TM Abort return arg type not specified");
-    }
+    // bottom 8 bits are reserved
+    abortRV |= tmAbortArg << 8;
+    // Set aborter Pid in upper bits
+    abortRV |= (transState.getAborterPid()) << 12;
+
     TMAbortType_e abortType = transState.getAbortType();
     switch(abortType) {
         case TM_ATYPE_SYSCALL:

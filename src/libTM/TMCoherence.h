@@ -41,7 +41,6 @@ public:
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
     size_t  getDepth(Pid_t pid)     const { return transStates.at(pid).getDepth(); }
-    int     getReturnArgType()      const { return returnArgType; }
 
     uint32_t getNackStallCycles(size_t numNacks)   const {
         uint32_t stallCycles = nackStallBaseCycles * numNacks;
@@ -54,7 +53,7 @@ public:
     size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
 
 protected:
-    TMCoherence(const char* tmStyle, int procs, int size, int a, int line, int argType);
+    TMCoherence(const char* tmStyle, int procs, int size, int a, int line);
     VAddr addrToCacheLine(VAddr raddr) {
         while(raddr % lineSize != 0) {
             raddr = raddr-1;
@@ -92,7 +91,6 @@ protected:
     int             totalSize;
     int             assoc;
     int             lineSize;
-    int             returnArgType;
     uint32_t        nackStallBaseCycles;
     uint32_t        nackStallCap;
 
@@ -120,7 +118,7 @@ protected:
 
 class TMLECoherence: public TMCoherence {
 public:
-    TMLECoherence(int32_t nProcs, int size, int a, int line, int argType);
+    TMLECoherence(int32_t nProcs, int size, int a, int line);
     virtual ~TMLECoherence();
 
     typedef CacheAssocTM    Cache;
