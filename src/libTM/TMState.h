@@ -5,10 +5,13 @@
 #include "libemul/Addressing.h"
 
 enum TMState_e { TM_INVALID, TM_RUNNING, TM_NACKED, TM_ABORTING, TM_MARKABORT };
-enum TMAbortType_e { TM_ATYPE_NONTM = 255,
-                TM_ATYPE_DEFAULT = 0, TM_ATYPE_USER = 1, TM_ATYPE_SYSCALL = 2, TM_ATYPE_SETCONFLICT = 3, TM_ATYPE_EVICTION = 4,
-                TM_ATYPE_PREFETCH = 5,
-                TM_ATYPE_CIRCULAR = 10, TM_ATYPE_NACKOVERFLOW = 11
+enum TMAbortType_e {
+    TM_ATYPE_DEFAULT            = 0,    // Aborts due to data conflict
+    TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
+    TM_ATYPE_SYSCALL            = 2,    // Aborts due to syscall (external abort)
+    TM_ATYPE_SETCONFLICT_DIRTY  = 3,    // Aborts due to a set conflict evicting a dirty line
+    TM_ATYPE_SETCONFLICT_CLEAN  = 4,    // Aborts due to a set conflict evicting a clean line
+    TM_ATYPE_NONTM              = 255
 };
 
 static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
@@ -63,13 +66,13 @@ public:
     VAddr       getAbortBy()    const { return abortState.abortByAddr; }
 
 private:
-    Pid_t   myPid;
-    TMState_e state;
-    Time_t  timestamp;
-    uint64_t utid;
-    size_t  depth;
-    bool    restartPending;
-    TMAbortState abortState;
+    Pid_t           myPid;
+    TMState_e       state;
+    Time_t          timestamp;
+    uint64_t        utid;
+    size_t          depth;
+    bool            restartPending;
+    TMAbortState    abortState;
 };
 
 #endif

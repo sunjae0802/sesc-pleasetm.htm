@@ -480,21 +480,17 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
 ///
 // Helper function that indicates whether a set conflict lead to a TM set conflict abort
 void TMLECoherence::handleTMSetConflict(Pid_t pid, Line* line) {
-    set<Pid_t> aborted;
-
     if(line->isWriter(pid)) {
-        aborted.insert(pid);
+        markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT_DIRTY);
         line->clearTransactional();
     } else if(line->isReader(pid)) {
         if(overflow[pid].size() < maxOverflowSize) {
             overflow[pid].insert(line->getCaddr());
         } else {
-            aborted.insert(pid);
+            markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT_CLEAN);
         }
         line->clearTransactional();
     }
-
-    markTransAborted(aborted, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT);
 }
 
 ///
@@ -542,7 +538,7 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
     } // End foreach(pid)
 
     if(getState(pid) == TM_RUNNING) {
-        markTransAborted(sharers, pid, caddr, TM_ATYPE_EVICTION);
+        markTransAborted(sharers, pid, caddr, TM_ATYPE_DEFAULT);
     } else {
         markTransAborted(sharers, pid, caddr, TM_ATYPE_NONTM);
     }
@@ -560,7 +556,7 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr) {
             Pid_t writer = line->getWriter();
             if(writer != INVALID_PID && writer != pid) {
                 if(getState(pid) == TM_RUNNING) {
-                    markTransAborted(writer, pid, caddr, TM_ATYPE_EVICTION);
+                    markTransAborted(writer, pid, caddr, TM_ATYPE_DEFAULT);
                 } else {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
                 }

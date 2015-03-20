@@ -206,11 +206,10 @@ uint32_t ThreadContext::getAbortRV(const TransState& transState) {
         case TM_ATYPE_SYSCALL:
             abortRV |= 2;
             break;
-        case TM_ATYPE_SETCONFLICT:
+        case TM_ATYPE_SETCONFLICT_DIRTY:
+            // Fall through
+        case TM_ATYPE_SETCONFLICT_CLEAN:
             abortRV |= 8;
-            break;
-        case TM_ATYPE_EVICTION:
-            abortRV |= 16;
             break;
         default:
             // Do nothing
