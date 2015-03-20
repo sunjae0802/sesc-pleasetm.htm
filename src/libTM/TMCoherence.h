@@ -67,7 +67,8 @@ protected:
     void abortTrans(Pid_t pid);
     void completeAbortTrans(Pid_t pid);
     void nackTrans(Pid_t victimPid, Pid_t byPid);
-    void resumeAllTrans(Pid_t pid);
+    void clearNackedTrans(Pid_t victimPid);
+    void resumeAllNackedTrans(Pid_t pid);
     void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void removeTrans(Pid_t pid);
@@ -126,9 +127,6 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
-    virtual void       myCompleteAbort(Pid_t pid);
     virtual void       removeTransaction(Pid_t pid);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }

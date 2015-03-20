@@ -104,9 +104,7 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr cadd
     uint64_t aborterUtid = getUtid(aborterPid);
 
     if(getState(victimPid) == TM_NACKED) {
-        Pid_t nacker = nackedBy.at(victimPid);
-        nacking.at(nacker).erase(victimPid);
-        nackedBy.erase(victimPid);
+        clearNackedTrans(victimPid);
     }
     if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
@@ -135,7 +133,10 @@ void TMCoherence::removeTrans(Pid_t pid) {
     linesRead[pid].clear();
     linesWritten[pid].clear();
 }
+///
+// Mark a transaction as being NACKed. It also handles any nacker/nackee relationships
 void TMCoherence::nackTrans(Pid_t victimPid, Pid_t byPid) {
+    // Extensive checks
     if(victimPid == INVALID_PID || byPid == INVALID_PID) {
         fail("Trying to NACK invalid pid?");
     }
@@ -148,11 +149,21 @@ void TMCoherence::nackTrans(Pid_t victimPid, Pid_t byPid) {
         fail("Duplicate NACK");
     }
 
+    // Do the NACK
     nacking[byPid].insert(victimPid);
     nackedBy[victimPid] = byPid;
     transStates[victimPid].startNacking();
 }
-void TMCoherence::resumeAllTrans(Pid_t pid) {
+///
+// Clear a transaction that was being NACKed, i.e. because a NACKed transaction has been aborted.
+void TMCoherence::clearNackedTrans(Pid_t victimPid) {
+    Pid_t nacker = nackedBy.at(victimPid);
+    nacking.at(nacker).erase(victimPid);
+    nackedBy.erase(victimPid);
+}
+///
+// Resume all transactions that was being nacked by pid
+void TMCoherence::resumeAllNackedTrans(Pid_t pid) {
     for(auto iNacking = nacking[pid].begin(); iNacking != nacking[pid].end(); ++iNacking) {
         Pid_t victimPid = *iNacking;
         auto iVictimNackedBy = nackedBy.find(victimPid);
@@ -562,19 +573,6 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr) {
     } // End foreach(cache)
 }
 
-TMBCStatus TMLECoherence::myBegin(Pid_t pid, InstDesc* inst) {
-    beginTrans(pid, inst);
-    return TMBC_SUCCESS;
-}
-
-TMBCStatus TMLECoherence::myCommit(Pid_t pid, int tid) {
-    commitTrans(pid);
-    return TMBC_SUCCESS;
-}
-
-void TMLECoherence::myCompleteAbort(Pid_t pid) {
-    completeAbortTrans(pid);
-}
 
 void TMLECoherence::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
