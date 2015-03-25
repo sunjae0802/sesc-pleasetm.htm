@@ -103,8 +103,8 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 
-    if(getState(victimPid) == TM_NACKED) {
-        clearNackedTrans(victimPid);
+    if(getState(victimPid) == TM_SUSPENDED) {
+        removeSuspendedTrans(victimPid);
     }
     if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
         transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
@@ -134,46 +134,46 @@ void TMCoherence::removeTrans(Pid_t pid) {
     linesWritten[pid].clear();
 }
 ///
-// Mark a transaction as being NACKed. It also handles any nacker/nackee relationships
-void TMCoherence::nackTrans(Pid_t victimPid, Pid_t byPid) {
+// Mark a transaction as being suspended/stalled. It also handles any stalling/stalledBy relationships
+void TMCoherence::suspendTrans(Pid_t victimPid, Pid_t byPid) {
     // Extensive checks
     if(victimPid == INVALID_PID || byPid == INVALID_PID) {
-        fail("Trying to NACK invalid pid?");
+        fail("Trying to suspend invalid pid?");
     }
     if(victimPid == byPid) {
-        fail("Trying to NACK myself?");
+        fail("Trying to suspend myself?");
     }
-    auto iVictimNackedBy = nackedBy.find(victimPid);
+    auto iVictimStalledBy = stalledBy.find(victimPid);
 
-    if(iVictimNackedBy != nackedBy.end() && iVictimNackedBy->second == byPid) {
-        fail("Duplicate NACK");
+    if(iVictimStalledBy != stalledBy.end() && iVictimStalledBy->second == byPid) {
+        fail("Duplicate suspend");
     }
 
-    // Do the NACK
-    nacking[byPid].insert(victimPid);
-    nackedBy[victimPid] = byPid;
-    transStates[victimPid].startNacking();
+    // Do the suspend/stall
+    stalling[byPid].insert(victimPid);
+    stalledBy[victimPid] = byPid;
+    transStates[victimPid].suspend();
 }
 ///
-// Clear a transaction that was being NACKed, i.e. because a NACKed transaction has been aborted.
-void TMCoherence::clearNackedTrans(Pid_t victimPid) {
-    Pid_t nacker = nackedBy.at(victimPid);
-    nacking.at(nacker).erase(victimPid);
-    nackedBy.erase(victimPid);
+// Remove a transaction that was being suspended/stalled, i.e. because a stalled transaction has been aborted.
+void TMCoherence::removeSuspendedTrans(Pid_t victimPid) {
+    Pid_t byPid = stalledBy.at(victimPid);
+    stalling.at(byPid).erase(victimPid);
+    stalledBy.erase(victimPid);
 }
 ///
 // Resume all transactions that was being nacked by pid
-void TMCoherence::resumeAllNackedTrans(Pid_t pid) {
-    for(auto iNacking = nacking[pid].begin(); iNacking != nacking[pid].end(); ++iNacking) {
-        Pid_t victimPid = *iNacking;
-        auto iVictimNackedBy = nackedBy.find(victimPid);
-        if(iVictimNackedBy == nackedBy.end() || iVictimNackedBy->second != pid) {
-            fail("Nacking/nackedBy mismatch");
+void TMCoherence::resumeAllSuspendedTrans(Pid_t pid) {
+    for(auto iStalling = stalling[pid].begin(); iStalling != stalling[pid].end(); ++iStalling) {
+        Pid_t victimPid = *iStalling;
+        auto iVictimStalledBy = stalledBy.find(victimPid);
+        if(iVictimStalledBy == stalledBy.end() || iVictimStalledBy->second != pid) {
+            fail("Stalling/stalledBy mismatch");
         }
-        nackedBy.erase(iVictimNackedBy);
-        transStates[victimPid].resumeAfterNack();
+        stalledBy.erase(iVictimStalledBy);
+        transStates[victimPid].resume();
     }
-    nacking.erase(pid);
+    stalling.erase(pid);
 }
 
 ///
@@ -238,8 +238,6 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
-	} else if(getState(pid) == TM_NACKED) {
-		return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMRead(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
@@ -255,8 +253,6 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
-	} else if(getState(pid) == TM_NACKED) {
-		return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMWrite(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;

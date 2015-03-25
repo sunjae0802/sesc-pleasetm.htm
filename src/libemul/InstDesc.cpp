@@ -1503,6 +1503,7 @@ public:
                 setReg<Taddr_t,RegTypeSpc>(context,static_cast<RegName>(RegLink),addr-(addr&0x7));
                 linkset.insert(context->getPid());
             }
+            TMRWStatus tmRWStatus = TMRW_INVALID;
             if(kind&LdStLR) {
                 size_t offs=(addr%sizeof(MemT));
                 addr       = addr - offs;
@@ -1510,9 +1511,9 @@ public:
 #if (defined TM)
                 MemOpStatus opStatus;
                 if(tmCohManager) {
-                    TMRWStatus status = tmCohManager->read(inst, context, addr, &opStatus);
+                    tmRWStatus = tmCohManager->read(inst, context, addr, &opStatus);
                     context->setL1Hit(opStatus.wasHit);
-                    if(status == TMRW_SUCCESS) {
+                    if(tmRWStatus == TMRW_SUCCESS) {
                         mval = readMemTM<MemT>(context, addr);
                     }
                 }
@@ -1528,7 +1529,7 @@ public:
                     rval|=((mval>>(8*(sizeof(MemT)-offs-1)))&(~(MemT(-256)<<(8*offs))));
                 }
 #if (defined TM)
-                if((!markedForAbort(inst, context) && !context->tmNacked())) {
+                if((!markedForAbort(inst, context) && !context->tmSuspended())) {
 #endif
                     setReg<Tregv_t,DTyp>(context,inst->regDst,Extend<MemT,Tregv_t>::ext(rval));
 #if (defined TM)
@@ -1539,15 +1540,15 @@ public:
 #if (defined TM)
                 MemOpStatus opStatus;
                 if(tmCohManager) {
-                    TMRWStatus status = tmCohManager->read(inst, context, addr, &opStatus);
+                    tmRWStatus = tmCohManager->read(inst, context, addr, &opStatus);
                     context->setL1Hit(opStatus.wasHit);
-                    if(status == TMRW_SUCCESS) {
+                    if(tmRWStatus == TMRW_SUCCESS) {
                         val = readMemTM<MemT>(context, addr);
                     }
                 }
 #endif
 #if (defined TM)
-                if((!markedForAbort(inst, context) && !context->tmNacked())) {
+                if((!markedForAbort(inst, context) && !context->tmSuspended())) {
 #endif
                     if(kind&LdStNoExt)
                         setReg<MemT,DTyp>(context,inst->regDst,val);
@@ -1561,11 +1562,11 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
-            if(context->tmNacked()) {
-                context->startNackStalling();
+            if(tmRWStatus == TMRW_NACKED) {
+                context->startRetryTimer();
                 return inst;
             } else {
-                context->tmNumNacks = 0;
+                context->tmNumNackRetries = 0;
             }
 #endif
             return nextInst<NTyp>(inst,context);
@@ -1589,7 +1590,7 @@ public:
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
 // 	  printf("St %d bytes 0x%016llx from 0x%08x (instr 0x%08x %s)\n",
 // 		 sizeof(MemT),(unsigned long long)(getReg<MemT,S2Typ>(context,inst->regSrc2)),addr,inst->addr,inst->name);
-            std::map<Pid_t, EvictCause> evicted;
+            TMRWStatus tmRWStatus = TMRW_INVALID;
             if((kind==LdStLlSc)&&(getReg<Taddr_t,RegTypeSpc>(context,RegLink)!=(addr-(addr&0x7)))) {
                 setReg<Tregv_t,DTyp>(context,inst->regDst,0);
             } else {
@@ -1601,12 +1602,12 @@ public:
                     EndianDefs<mode>::cvtEndian(val);
                     MemOpStatus opStatus;
                     if(tmCohManager) {
-                        TMRWStatus status = tmCohManager->write(inst, context, addr, &opStatus);
+                        tmRWStatus = tmCohManager->write(inst, context, addr, &opStatus);
                         context->setL1Hit(opStatus.wasHit);
-                        if(status == TMRW_SUCCESS) {
+                        if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush
-                        } else if(status == TMRW_NONTM) {
+                        } else if(tmRWStatus == TMRW_NONTM) {
                             if((kind==LdStLeft)^((mode&ExecModeEndianMask)==ExecModeEndianLittle)) {
                                 context->writeMemFromBuf(addr,tsiz-offs,&val);
                             } else {
@@ -1617,12 +1618,12 @@ public:
                 } else {
                     MemOpStatus opStatus;
                     if(tmCohManager) {
-                        TMRWStatus status = tmCohManager->write(inst, context, addr, &opStatus);
+                        tmRWStatus = tmCohManager->write(inst, context, addr, &opStatus);
                         context->setL1Hit(opStatus.wasHit);
-                        if(status == TMRW_SUCCESS) {
+                        if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush
-                        } else if(status == TMRW_NONTM) {
+                        } else if(tmRWStatus == TMRW_NONTM) {
                             writeMem<MemT>(context,addr,val);
                         }
                     }
@@ -1647,11 +1648,11 @@ public:
 //            if(markedForAbort(inst, context)) {
 //                context->abortTransaction();
 //                return inst;
-            if(context->tmNacked()) {
-                context->startNackStalling();
+            if(tmRWStatus == TMRW_NACKED) {
+                context->startRetryTimer();
                 return inst;
             } else {
-                context->tmNumNacks = 0;
+                context->tmNumNackRetries = 0;
             }
 #endif    
             return nextInst<NTyp>(inst,context);

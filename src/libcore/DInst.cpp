@@ -287,7 +287,6 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
             i->tmLat        = context->getTMNumWrites();
         }
     }
-    i->tmNacked     = context->tmNacked();
     i->tmAborted    = context->isTMAborting();
 
     return i;

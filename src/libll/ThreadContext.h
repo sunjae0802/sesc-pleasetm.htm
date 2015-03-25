@@ -75,8 +75,6 @@ private:
     uint32_t tmAbortArg;
     // The IAddr when we found out TM has aborted
     VAddr  tmAbortIAddr;
-    // Count how many cycles we're being nacked from tm.begin
-    size_t tmBeginNackCycles;
 #endif
 
     // Memory Mapping
@@ -137,14 +135,14 @@ public:
     // Debug flag for making sure we have consistent view of SW tid and HW tid
     int32_t tmlibUserTid;
     // Count how many times we NACKed a memop, so that we can implement linear backoff
-    size_t tmNumNacks;
+    size_t tmNumNackRetries;
 
     // Transactional Helper Methods
     int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
     bool isInTM()           const { return getTMdepth() > 0; }
     bool isTMAborting()     const { return tmCohManager->getState(pid) == TM_ABORTING; }
     bool markedForAbort()   const { return tmCohManager->getState(pid) == TM_MARKABORT; }
-    bool tmNacked()         const { return tmCohManager->getState(pid) == TM_NACKED; }
+    bool tmSuspended()      const { return tmCohManager->getState(pid) == TM_SUSPENDED; }
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
@@ -170,9 +168,9 @@ public:
     void completeFallback();
 
     // memop NACK handling methods
-    void startNackStalling() {
-        tmNumNacks++;
-        startStalling(tmCohManager->getNackStallCycles(tmNumNacks));
+    void startRetryTimer() {
+        tmNumNackRetries++;
+        startStalling(tmCohManager->getNackRetryStallCycles());
     }
     void startStalling(TimeDelta_t amount) {
         tmStallUntil = globalClock + amount;

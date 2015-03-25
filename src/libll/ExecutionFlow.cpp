@@ -89,7 +89,7 @@ void ExecutionFlow::dump(const char *str) const
 DInst *ExecutionFlow::executePC()
 {
     ThreadContext *thread=context;
-    if(thread->checkStall()) {
+    if(thread->checkStall() || thread->tmSuspended()) {
         return 0;
     }
     InstDesc *iDesc=thread->getIDesc();

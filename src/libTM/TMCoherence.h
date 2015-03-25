@@ -19,7 +19,7 @@ typedef unsigned long long ID;
 typedef unsigned long long INSTCOUNT;
 
 enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT, TMBC_IGNORE };
-enum TMRWStatus { TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
+enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
 class TMCoherence {
 public:
@@ -42,12 +42,8 @@ public:
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
     size_t  getDepth(Pid_t pid)     const { return transStates.at(pid).getDepth(); }
 
-    uint32_t getNackStallCycles(size_t numNacks)   const {
-        uint32_t stallCycles = nackStallBaseCycles * numNacks;
-        if(stallCycles > nackStallCap) {
-            stallCycles = nackStallCap;
-        }
-        return stallCycles;
+    uint32_t getNackRetryStallCycles()   const {
+        return nackStallBaseCycles;
     }
     size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
     size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
@@ -66,9 +62,9 @@ protected:
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
     void completeAbortTrans(Pid_t pid);
-    void nackTrans(Pid_t victimPid, Pid_t byPid);
-    void clearNackedTrans(Pid_t victimPid);
-    void resumeAllNackedTrans(Pid_t pid);
+    void suspendTrans(Pid_t victimPid, Pid_t byPid);
+    void removeSuspendedTrans(Pid_t victimPid);
+    void resumeAllSuspendedTrans(Pid_t pid);
     void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void removeTrans(Pid_t pid);
@@ -111,8 +107,8 @@ protected:
     std::map<VAddr, size_t>             numAbortsCaused;
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
-    std::map<Pid_t, std::set<Pid_t> >   nacking;
-    std::map<Pid_t, Pid_t>              nackedBy;
+    std::map<Pid_t, std::set<Pid_t> >   stalling;
+    std::map<Pid_t, Pid_t>              stalledBy;
 };
 
 class TMLECoherence: public TMCoherence {

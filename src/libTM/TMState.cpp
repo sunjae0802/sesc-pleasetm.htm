@@ -34,11 +34,11 @@ void TransState::startAborting() {
     // We can't just decrement because we should be going back to the original begin
     //depth       = 0;
 }
-void TransState::startNacking() {
-    state       = TM_NACKED;
+void TransState::suspend() {
+    state       = TM_SUSPENDED;
 }
-void TransState::resumeAfterNack() {
-    I(state == TM_NACKED);
+void TransState::resume() {
+    I(state == TM_SUSPENDED);
     state       = TM_RUNNING;
 }
 void TransState::completeAbort() {
@@ -71,7 +71,7 @@ void TransState::print() const {
     switch(state) {
         case TM_INVALID:    cout << "INVALID";  break;
         case TM_RUNNING:    cout << "RUNNING";  break;
-        case TM_NACKED:     cout << "NACKED";   break;
+        case TM_SUSPENDED:  cout << "SUSPENDED";   break;
         case TM_ABORTING:   cout << "ABORING";  break;
         case TM_MARKABORT:  cout << "MARK_ABORT"; break;
         default:            cout << "??????";   break;

@@ -119,7 +119,6 @@ private:
 
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
-    bool tmNacked;
     bool tmAborted;
 public:
     std::vector<FuncBoundaryData> funcData;
@@ -416,10 +415,6 @@ public:
 	InstType getOpcode() const {
 		return inst->getOpcode();
 	}
-
-    bool wasTMNacked() const {
-        return tmNacked;
-    }
 
     bool wasTMAborted() const {
         return tmAborted;

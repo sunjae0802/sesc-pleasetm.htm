@@ -52,13 +52,12 @@ void ThreadContext::initialize(bool child) {
 
 #if (defined TM)
     tmStallUntil= 0;
-    tmNumNacks  = 0;
+    tmNumNackRetries  = 0;
     tmNumWrites = 0;
     tmAbortArg  = 0;
     tmAbortIAddr= 0;
     tmContext   = NULL;
     tmCallsite  = 0;
-    tmBeginNackCycles = 0;
     tmlibUserTid= -1;
 #endif
     retireContext.nRetiredInsts =0;
@@ -77,7 +76,6 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         tmAbortIAddr= 0;
         tmAbortArg  = 0;
         tmNumWrites = 0;
-        tmBeginNackCycles = 0;
 
         uint64_t utid = transState.getUtid();
         tmContext   = new TMContext(this, inst, utid);
@@ -94,7 +92,6 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
 
         return getBeginRV(status);
     } else if(status == TMBC_NACK) {
-        tmBeginNackCycles++;
         // And "return" from TM Begin, returning 4|1 from getBeginRV
         updIAddr(inst->aupdate,1);
 
@@ -126,7 +123,6 @@ void ThreadContext::commitTransaction(InstDesc* inst) {
         tmAbortIAddr= 0;
         tmAbortArg  = 0;
         tmNumWrites = numWrites;
-        assert(tmBeginNackCycles == 0);
 
         TMContext* oldTMContext = tmContext;
         if(isInTM()) {
@@ -232,7 +228,6 @@ void ThreadContext::completeFallback() {
 
     tmAbortIAddr= 0;
     tmAbortArg  = 0;
-    tmBeginNackCycles = 0;
 }
 
 #endif
