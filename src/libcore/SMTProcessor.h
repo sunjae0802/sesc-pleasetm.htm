@@ -40,9 +40,6 @@ private:
     int32_t cIssueId;
 
     const int32_t smtContexts;
-    const int32_t smtFetchs4Clk;
-    const int32_t smtDecodes4Clk;
-    const int32_t smtIssues4Clk;
     const int32_t firstContext;
 
     GStatsHist fetchDist;
