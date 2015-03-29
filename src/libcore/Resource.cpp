@@ -206,13 +206,7 @@ void FUMemory::traceTM(DInst* dinst)
     std::ofstream& out = context->getDatafile();
     Pid_t pid = context->getPid();
 
-    if(dinst->tmBeginOp()) {
-        out<<pid<<" T"
-                    <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                    <<" "<<dinst->tmState.getUtid()
-                    <<" "<< (context->getNRetiredInsts() + 1)
-                    <<" "<< globalClock << std::endl;
-    } else if(dinst->tmAbortCompleteOp()) {
+    if(dinst->tmAbortCompleteOp()) {
         // Get abort state
         Pid_t aborter = dinst->tmState.getAborterPid();
         TMAbortType_e abortType = dinst->tmState.getAbortType();
@@ -254,6 +248,20 @@ void FUMemory::traceTM(DInst* dinst)
                             <<" 0"
                             <<" "<< (context->getNRetiredInsts() + 1)
                             <<" "<< globalClock << std::endl;
+        }
+    } else if(dinst->tmBeginOp()) {
+        if(dinst->getTMBeginSubtype() == TM_BEGIN_REGULAR) {
+            out<<pid<<" T"
+                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
+                        <<" "<<dinst->tmState.getUtid()
+                        <<" "<< (context->getNRetiredInsts() + 1)
+                        <<" "<< globalClock << std::endl;
+        } else if(dinst->getTMBeginSubtype() == TM_BEGIN_NACKED) {
+            out<<pid<<" N"
+                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
+                        <<" 0"
+                        <<" "<< (context->getNRetiredInsts() + 1)
+                        <<" "<< globalClock << std::endl;
         }
     } else if(dinst->tmCommitOp()) {
         out<<pid<<" C"

@@ -16,6 +16,14 @@
 #include "libTM/TMContext.h"
 #endif
 
+enum TMBeginSubtype {
+    TM_BEGIN_INVALID,
+    TM_BEGIN_REGULAR,
+    TM_BEGIN_IGNORE,
+    TM_BEGIN_NACKED,
+    TM_COMPLETE_ABORT
+};
+
 struct FuncBoundaryData {
     static FuncBoundaryData createCall(enum FuncName name,
             uint32_t retA, uint32_t a0, uint32_t a1) {
@@ -75,6 +83,7 @@ private:
     uint32_t tmAbortArg;
     // The IAddr when we found out TM has aborted
     VAddr  tmAbortIAddr;
+    TMBeginSubtype tmBeginSubtype;
 #endif
 
     // Memory Mapping
@@ -150,6 +159,8 @@ public:
     void setTMCallsite(VAddr ra) { tmCallsite = ra; }
     VAddr getTMCallsite() const { return tmCallsite; }
 
+    TMBeginSubtype getTMBeginSubtype() const { return tmBeginSubtype; }
+    void clearTMBeginSubtype() { tmBeginSubtype = TM_BEGIN_INVALID; }
     uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
     uint32_t getTMAbortArg()  const { return tmAbortArg; }
     size_t   getTMNumWrites() const { return tmNumWrites; }
@@ -164,7 +175,7 @@ public:
     void abortTransaction(TMAbortType_e abortType = TM_ATYPE_DEFAULT);
     uint32_t completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
-    uint32_t getAbortRV(const TransState& transState);
+    uint32_t getAbortRV(TMBCStatus status);
     void completeFallback();
 
     // memop NACK handling methods

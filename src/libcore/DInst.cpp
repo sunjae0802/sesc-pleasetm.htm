@@ -280,6 +280,8 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
         i->tmCallsite   = context->getTMCallsite();
+        i->tmBeginSubtype   = context->getTMBeginSubtype();
+        context->clearTMBeginSubtype();
         if(i->tmAbortCompleteOp()) {
             i->tmAbortIAddr = context->getTMAbortIAddr();
             i->tmAbortArg   = context->getTMAbortArg();

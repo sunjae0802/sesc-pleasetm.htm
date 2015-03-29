@@ -119,6 +119,7 @@ private:
 
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
+    TMBeginSubtype tmBeginSubtype;
     bool tmAborted;
 public:
     std::vector<FuncBoundaryData> funcData;
@@ -420,12 +421,16 @@ public:
         return tmAborted;
     }
 
+    TMBeginSubtype getTMBeginSubtype() const {
+        return tmBeginSubtype;
+    }
+
     bool tmBeginOp() const {
-        return inst->getSubCode() == TMBegin && tmState.getState() == TM_RUNNING;
+        return inst->getSubCode() == TMBegin && !tmAbortCompleteOp();
     }
 
     bool tmAbortCompleteOp() const {
-        return inst->getSubCode() == TMBegin && tmState.getState() == TM_INVALID;
+        return inst->getSubCode() == TMBegin && getTMBeginSubtype() == TM_COMPLETE_ABORT;
     }
 
     bool tmCommitOp() const {

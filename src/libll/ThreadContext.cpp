@@ -59,6 +59,7 @@ void ThreadContext::initialize(bool child) {
     tmContext   = NULL;
     tmCallsite  = 0;
     tmlibUserTid= -1;
+    tmBeginSubtype=TM_BEGIN_INVALID;
 #endif
     retireContext.nRetiredInsts =0;
     retireContext.nackStallStart= 0;
@@ -76,6 +77,7 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         tmAbortIAddr= 0;
         tmAbortArg  = 0;
         tmNumWrites = 0;
+        tmBeginSubtype=TM_BEGIN_REGULAR;
 
         uint64_t utid = transState.getUtid();
         tmContext   = new TMContext(this, inst, utid);
@@ -88,13 +90,17 @@ uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
         return getBeginRV(status);
     } else if(status == TMBC_IGNORE) {
         fail("Nesting not tested yet");
+
+        tmBeginSubtype=TM_BEGIN_IGNORE;
         updIAddr(inst->aupdate,1);
 
         return getBeginRV(status);
     } else if(status == TMBC_NACK) {
-        // And "return" from TM Begin, returning 4|1 from getBeginRV
+        tmBeginSubtype=TM_BEGIN_NACKED;
+
         updIAddr(inst->aupdate,1);
 
+        // And "return" from TM Begin, returning 4 from getBeginRV
         return getBeginRV(status);
     } else {
         fail("Unhanded TM begin");
@@ -175,20 +181,21 @@ void ThreadContext::abortTransaction(TMAbortType_e abortType) {
 
 uint32_t ThreadContext::completeAbort(InstDesc* inst) {
     tmCohManager->completeAbort(pid);
-
-    // Get abort state
-    const TransState &transState = tmCohManager->getTransState(pid);
+    tmBeginSubtype=TM_COMPLETE_ABORT;
 
     // set return arg
-    uint32_t returnArg = getAbortRV(transState);
+    uint32_t returnVal = getAbortRV(TMBC_IGNORE);
 
     // And "return" from TM Begin
     updIAddr(inst->aupdate,1);
 
-    return returnArg;
+    return returnVal;
 }
 
-uint32_t ThreadContext::getAbortRV(const TransState& transState) {
+uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
+    // Get abort state
+    const TransState &transState = tmCohManager->getTransState(pid);
+
     // LSB is 1 to show that this is an abort
     uint32_t abortRV = 1;
 
@@ -205,7 +212,7 @@ uint32_t ThreadContext::getAbortRV(const TransState& transState) {
         case TM_ATYPE_SETCONFLICT_DIRTY:
             // Fall through
         case TM_ATYPE_SETCONFLICT_CLEAN:
-            abortRV |= 8;
+            abortRV |= 4;
             break;
         default:
             // Do nothing
@@ -217,7 +224,7 @@ uint32_t ThreadContext::getAbortRV(const TransState& transState) {
 
 uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
     if(status == TMBC_NACK) {
-        return 4 | 1;
+        return 2;
     } else {
         return 0;
     }

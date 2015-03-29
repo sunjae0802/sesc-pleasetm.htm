@@ -565,13 +565,15 @@ InstDesc *emulNop(InstDesc *inst, ThreadContext *context) {
 #if (defined TM)
 InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     Pid_t pid = context->getPid();
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+    uint32_t rv = 0;
+
     if(context->isTMAborting()) {
-        uint32_t abortArg = context->completeAbort(inst);
-        ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, abortArg);
+        rv = context->completeAbort(inst);
     } else {
-        uint32_t beginArg = context->beginTransaction(inst);
-        ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, beginArg);
+        rv = context->beginTransaction(inst);
     }
+    ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, rv);
 
     return inst;
 }
