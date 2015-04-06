@@ -1531,7 +1531,7 @@ public:
                     rval|=((mval>>(8*(sizeof(MemT)-offs-1)))&(~(MemT(-256)<<(8*offs))));
                 }
 #if (defined TM)
-                if((!markedForAbort(inst, context) && !context->tmSuspended())) {
+                if(tmRWStatus == TMRW_NONTM || tmRWStatus == TMRW_SUCCESS) {
 #endif
                     setReg<Tregv_t,DTyp>(context,inst->regDst,Extend<MemT,Tregv_t>::ext(rval));
 #if (defined TM)
@@ -1550,7 +1550,7 @@ public:
                 }
 #endif
 #if (defined TM)
-                if((!markedForAbort(inst, context) && !context->tmSuspended())) {
+                if(tmRWStatus == TMRW_NONTM || tmRWStatus == TMRW_SUCCESS) {
 #endif
                     if(kind&LdStNoExt)
                         setReg<MemT,DTyp>(context,inst->regDst,val);
