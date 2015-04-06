@@ -148,6 +148,10 @@ void TMCoherence::suspendTrans(Pid_t victimPid, Pid_t byPid) {
     if(iVictimStalledBy != stalledBy.end() && iVictimStalledBy->second == byPid) {
         fail("Duplicate suspend");
     }
+    auto iAgressorStalledBy = stalledBy.find(byPid);
+    if(iAgressorStalledBy != stalledBy.end()) {
+        fail("Circular suspend");
+    }
 
     // Do the suspend/stall
     stalling[byPid].insert(victimPid);

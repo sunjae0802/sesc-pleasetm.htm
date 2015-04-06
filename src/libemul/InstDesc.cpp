@@ -582,6 +582,9 @@ InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
     Pid_t pid = context->getPid();
     uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
 
+    if(context->isInTM() == false) {
+        fail("Calling tm.abort(0x%x) outside of transaction!", arg);
+    }
     context->userAbort(arg);
     return inst;
 }
