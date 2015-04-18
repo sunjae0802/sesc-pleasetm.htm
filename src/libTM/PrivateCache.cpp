@@ -241,8 +241,9 @@ TMLine
     }
 
     // Do various checks to see if replaced line is correctly chosen
-    if(replaced->isTransactional() && replaced->isDirty() && countLines(theSet, &lineTransactionalDirty) < assoc) {
-        fail("Evicted transactional line too early: %d\n", countLines(theSet, &lineTransactionalDirty));
+    LineTMDirtyComparator tmDirtyComparator;
+    if(replaced->isTransactional() && replaced->isDirty() && countLines(theSet, tmDirtyComparator) < assoc) {
+        fail("Evicted transactional line too early: %d\n", countLines(theSet, tmDirtyComparator));
     }
 
     VAddr replTag = replaced->getTag();
@@ -265,13 +266,14 @@ TMLine
         return *lineFree;
     }
 
-    if(countLines(theSet, &lineTransactionalDirty) == assoc) {
+    LineTMDirtyComparator tmDirtyComparator;
+    if(countLines(theSet, tmDirtyComparator) == assoc) {
         // If not inside a transaction, or if we ran out of non-transactional or clean lines
         // Get the oldest line possible
         lineFree = setEnd-1;
     } else {
         lineFree = findOldestNonTMClean(theSet);
-        if(lineFree && (*lineFree)->isDirty() && (*lineFree)->isTransactional()) {
+        if(lineFree && tmDirtyComparator(*lineFree)) {
             fail("Replacing transactional dirty line");
         }
     }
@@ -291,7 +293,7 @@ TMLine
 }
 
 size_t
-CacheAssocTM::countLines(TMLine** theSet, lineConditionFunc func) const
+CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 {
     TMLine **setEnd = theSet + assoc;
 
@@ -299,7 +301,7 @@ CacheAssocTM::countLines(TMLine** theSet, lineConditionFunc func) const
     {
         TMLine **l = theSet;
         while(l < setEnd) {
-            if (func(*l)) {
+            if (comp(*l)) {
                 count++;
             }
             l++;

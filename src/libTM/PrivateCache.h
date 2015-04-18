@@ -65,6 +65,20 @@ public:
     void invalidate();
 };
 
+struct LineComparator {
+    virtual bool operator()(TMLine* l) const = 0;
+};
+
+struct LineValidComparator: public LineComparator {
+    virtual bool operator()(TMLine* l) const { return l->isValid(); }
+};
+struct LineTMDirtyComparator: public LineComparator {
+    virtual bool operator()(TMLine* l) const {
+        return l->isValid() && l->isTransactional() && l->isDirty();
+    }
+};
+
+
 class CacheAssocTM {
     const uint32_t  size;
     const uint32_t  lineSize;
@@ -88,12 +102,7 @@ protected:
     TMLine **findOldestClean(TMLine **theSet);
     TMLine **findOldestNonTM(TMLine **theSet);
 
-    typedef bool (*lineConditionFunc)(TMLine *l);
-    static bool lineValid(TMLine *l) { return l->isValid(); }
-    static bool lineDirty(TMLine *l) { return l->isDirty(); }
-    static bool lineTransactional(TMLine *l) { return l->isTransactional(); }
-    static bool lineTransactionalDirty(TMLine *l) { return l->isTransactional() && l->isDirty(); }
-    size_t countLines(TMLine **theSet, lineConditionFunc func) const;
+    size_t countLines(TMLine **theSet, const LineComparator& comp) const;
 
 public:
     CacheAssocTM(int32_t size, int32_t assoc, int32_t blksize, int32_t addrUnit);
