@@ -317,7 +317,7 @@ TMLECoherence::TMLECoherence(const char tmStyle[], int32_t nProcs, int32_t line)
 ///
 // Destructor for PrivateCache. Delete all allocated members
 TMLECoherence::~TMLECoherence() {
-    for(size_t cid = caches.size() - 1; cid >= 0; cid--) {
+    while(caches.size() > 0) {
         Cache* cache = caches.back();
         caches.pop_back();
         delete cache;
@@ -339,18 +339,19 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(raddr);
+        line  = findLine2ReplaceTM(pid, raddr);
 
-        // Invalidate old line
-        if(line->isValid()) {
-            if(line->isTransactional()) {
-                handleTMSetConflict(pid, line);
-            }
-            line->invalidate();
+        if(getState(pid) == TM_MARKABORT) {
+            return TMRW_ABORT;
+        }
+        if(getState(pid) == TM_SUSPENDED) {
+            return TMRW_NACKED;
         }
 
-        // Replace the line
         updateOverflow(pid, caddr);
+
+        // Replace the line
+        line->invalidate();
         line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
@@ -387,18 +388,19 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(raddr);
+        line  = findLine2ReplaceTM(pid, raddr);
 
-        // Invalidate old line
-        if(line->isValid()) {
-            if(line->isTransactional()) {
-                handleTMSetConflict(pid, line);
-            }
-            line->invalidate();
+        if(getState(pid) == TM_MARKABORT) {
+            return TMRW_ABORT;
+        }
+        if(getState(pid) == TM_SUSPENDED) {
+            return TMRW_NACKED;
         }
 
-        // Replace the line
         updateOverflow(pid, caddr);
+
+        // Replace the line
+        line->invalidate();
         line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
@@ -431,14 +433,10 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(raddr);
-
-        // Invalidate old line
-        if(line->isValid()) {
-            line->invalidate();
-        }
+        line  = findLine2Replace(pid, raddr);
 
         // Replace the line
+        line->invalidate();
         line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
@@ -460,14 +458,10 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        line  = cache->findLine2Replace(raddr);
-
-        // Invalidate old line
-        if(line->isValid()) {
-            line->invalidate();
-        }
+        line  = findLine2Replace(pid, raddr);
 
         // Replace the line
+        line->invalidate();
         line->validate(myTag, caddr);
     } else {
         p_opStatus->wasHit = true;
@@ -477,19 +471,58 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
     line->makeDirty();
 }
 
-///
-// Helper function that indicates whether a set conflict lead to a TM set conflict abort
-void TMLECoherence::handleTMSetConflict(Pid_t pid, Line* line) {
-    if(line->isWriter(pid)) {
-        markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT_DIRTY);
-        line->clearTransactional();
-    } else if(line->isReader(pid)) {
-        if(overflow[pid].size() < maxOverflowSize) {
-            overflow[pid].insert(line->getCaddr());
-        } else {
-            markTransAborted(pid, pid, line->getCaddr(), TM_ATYPE_SETCONFLICT_CLEAN);
+TMLECoherence::Line* TMLECoherence::findLine2Replace(Pid_t pid, VAddr raddr) {
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+
+    // Find line to replace
+    Line* line = cache->findLine2Replace(raddr);
+
+    // Invalidate old line
+    if(line->isValid()) {
+        if(line->isTransactional()) {
+            handleTMSetConflict(pid, caddr, line);
         }
-        line->clearTransactional();
+        line->invalidate();
+    }
+    return line;
+}
+
+TMLECoherence::Line* TMLECoherence::findLine2ReplaceTM(Pid_t pid, VAddr raddr) {
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+
+    // Too many transactional dirty lines, just give up
+    LineTMWrittenByComparator writtenByMeCmp(pid);
+    if(cache->countLines(caddr, writtenByMeCmp) == cache->getAssoc()) {
+        markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
+        return nullptr;
+    }
+
+    // Find line to replace
+    Line* line  = cache->findLine2Replace(raddr);
+
+    if(line->isValid()) {
+        if(line->isTransactional()) {
+            handleTMSetConflict(pid, caddr, line);
+        }
+    }
+    return line;
+}
+
+void TMLECoherence::handleTMSetConflict(Pid_t pid, VAddr caddr, Line* replaced) {
+    Pid_t writer = replaced->getWriter();
+    if(writer != INVALID_PID) {
+        markTransAborted(writer, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
+        replaced->clearTransactional(writer);
+    }
+    for(Pid_t reader: replaced->getReaders()) {
+        if(overflow[reader].size() < maxOverflowSize) {
+            overflow[reader].insert(replaced->getCaddr());
+        } else {
+            markTransAborted(reader, pid, caddr, TM_ATYPE_SETCONFLICT_CLEAN);
+        }
+        replaced->clearTransactional(reader);
     }
 }
 

@@ -77,6 +77,22 @@ struct LineTMDirtyComparator: public LineComparator {
         return l->isValid() && l->isTransactional() && l->isDirty();
     }
 };
+struct LineTMWrittenByComparator: public LineComparator {
+    LineTMWrittenByComparator(Pid_t p): pid(p) {}
+    virtual bool operator()(TMLine* l) const {
+        return (l->isValid() && l->isTransactional() && l->isWriter(pid));
+    }
+private:
+    Pid_t pid;
+};
+struct LineTMOwnedByComparator: public LineComparator {
+    LineTMOwnedByComparator(Pid_t p): pid(p) {}
+    virtual bool operator()(TMLine* l) const {
+        return (l->isValid() && l->isTransactional() && (l->isReader(pid) || l->isWriter(pid)));
+    }
+private:
+    Pid_t pid;
+};
 
 
 class CacheAssocTM {
@@ -115,6 +131,7 @@ public:
     TMLine *lookupLine(VAddr addr);
     TMLine *findLine(VAddr addr);
     void clearTransactional();
+    size_t countLines(VAddr addr, const LineComparator& comp) const;
 
     uint32_t  getTMLineSize() const   {
         return lineSize;

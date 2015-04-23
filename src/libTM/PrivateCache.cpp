@@ -293,6 +293,15 @@ TMLine
 }
 
 size_t
+CacheAssocTM::countLines(VAddr addr, const LineComparator& comp) const
+{
+    VAddr tag    = this->calcTag(addr);
+    TMLine **theSet = &content[this->calcIndex4Tag(tag)];
+
+    return countLines(theSet, comp);
+}
+
+size_t
 CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 {
     TMLine **setEnd = theSet + assoc;

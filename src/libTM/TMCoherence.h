@@ -124,13 +124,14 @@ protected:
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
+    virtual Line*      findLine2Replace(Pid_t pid, VAddr raddr);
+    virtual Line*      findLine2ReplaceTM(Pid_t pid, VAddr raddr);
 
+    // Helper functions for handling Cache lines
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
-
-    void handleTMSetConflict(Pid_t pid, Line* line);
-    void updateOverflow(Pid_t pid, VAddr newCaddr);
-
     Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
+    void handleTMSetConflict(Pid_t pid, VAddr caddr, Line* replaced);
+    void updateOverflow(Pid_t pid, VAddr newCaddr);
     void invalidateSharers(Pid_t pid, VAddr raddr);
     void cleanWriters(Pid_t pid, VAddr raddr);
 
