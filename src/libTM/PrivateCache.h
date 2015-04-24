@@ -85,8 +85,8 @@ struct LineTMWrittenByComparator: public LineComparator {
 private:
     Pid_t pid;
 };
-struct LineTMOwnedByComparator: public LineComparator {
-    LineTMOwnedByComparator(Pid_t p): pid(p) {}
+struct LineTMAccessedByComparator: public LineComparator {
+    LineTMAccessedByComparator(Pid_t p): pid(p) {}
     virtual bool operator()(TMLine* l) const {
         return (l->isValid() && l->isTransactional() && (l->isReader(pid) || l->isWriter(pid)));
     }
