@@ -321,7 +321,9 @@ CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 
 void CacheAssocTM::clearTransactional() {
     for(uint32_t i = 0; i < numLines; i++) {
-        mem[i].makeClean();
+        if(mem[i].isDirty()) {
+            mem[i].makeClean();
+        }
         mem[i].clearTransactional();
     }
 }
