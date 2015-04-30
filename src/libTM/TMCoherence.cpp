@@ -337,7 +337,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     VAddr myTag = cache->calcTag(raddr);
 
     // Handle any sharers
-    cleanWriters(pid, raddr);
+    cleanWriters(pid, raddr, true);
 
     // Lookup line
     Line*   line  = cache->lookupLine(raddr);
@@ -386,7 +386,7 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     VAddr myTag = cache->calcTag(raddr);
 
     // Handle any sharers
-    invalidateSharers(pid, raddr);
+    invalidateSharers(pid, raddr, true);
 
     // Lookup line
     Line*   line  = cache->lookupLine(raddr);
@@ -431,7 +431,7 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
     VAddr myTag = cache->calcTag(raddr);
 
     // Handle any sharers
-    cleanWriters(pid, raddr);
+    cleanWriters(pid, raddr, false);
 
     // Lookup line
     Line*   line  = cache->lookupLine(raddr);
@@ -456,7 +456,7 @@ void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
     VAddr myTag = cache->calcTag(raddr);
 
     // Handle any sharers
-    invalidateSharers(pid, raddr);
+    invalidateSharers(pid, raddr, false);
 
     // Lookup line
     Line*   line  = cache->lookupLine(raddr);
@@ -541,7 +541,7 @@ void TMLECoherence::updateOverflow(Pid_t pid, VAddr newCaddr) {
 ///
 // Helper function that looks at all private caches and invalidates all sharers, while aborting
 // transactions.
-void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
+void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
     set<Pid_t> sharers;
 
     for(size_t cid = 0; cid < caches.size(); cid++) {
@@ -574,7 +574,7 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
         }
     } // End foreach(pid)
 
-    if(getState(pid) == TM_RUNNING) {
+    if(isTM) {
         markTransAborted(sharers, pid, caddr, TM_ATYPE_DEFAULT);
     } else {
         markTransAborted(sharers, pid, caddr, TM_ATYPE_NONTM);
@@ -584,7 +584,7 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr) {
 ///
 // Helper function that looks at all private caches and makes clean writers, while aborting
 // transactional writers.
-void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr) {
+void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     for(Cache* cache: caches) {
@@ -592,7 +592,7 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr) {
         if(line) {
             Pid_t writer = line->getWriter();
             if(writer != INVALID_PID && writer != pid) {
-                if(getState(pid) == TM_RUNNING) {
+                if(isTM) {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_DEFAULT);
                 } else {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);

@@ -132,8 +132,8 @@ protected:
     Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
     void handleTMSetConflict(Pid_t pid, VAddr caddr, Line* replaced);
     void updateOverflow(Pid_t pid, VAddr newCaddr);
-    void invalidateSharers(Pid_t pid, VAddr raddr);
-    void cleanWriters(Pid_t pid, VAddr raddr);
+    void invalidateSharers(Pid_t pid, VAddr raddr, bool isTM);
+    void cleanWriters(Pid_t pid, VAddr raddr, bool isTM);
 
     // Configurable member variables
     int             totalSize;
