@@ -483,11 +483,8 @@ TMLECoherence::Line* TMLECoherence::findLine2Replace(Pid_t pid, VAddr raddr) {
     Line* line = cache->findLine2Replace(raddr);
 
     // Invalidate old line
-    if(line->isValid()) {
-        if(line->isTransactional()) {
-            handleTMSetConflict(pid, caddr, line);
-        }
-        line->invalidate();
+    if(line->isValid() && line->isTransactional()) {
+        handleTMSetConflict(pid, caddr, line);
     }
     return line;
 }
@@ -498,16 +495,14 @@ TMLECoherence::Line* TMLECoherence::findLine2ReplaceTM(Pid_t pid, VAddr raddr) {
 
     // Find line to replace
     Line* line  = cache->findLine2Replace(raddr);
-    if(line->isValid()) {
-        if(line->isTransactional()) {
+    if(line->isValid() && line->isTransactional()) {
+        LineTMDirtyComparator dirtyCmp;
+        if(cache->countLines(caddr, dirtyCmp) == cache->getAssoc()) {
             // Too many transactional dirty lines, just give up
-            LineTMWrittenByComparator writtenByMeCmp(pid);
-            if(cache->countLines(caddr, writtenByMeCmp) == cache->getAssoc()) {
-                markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
-                return nullptr;
-            }
-            handleTMSetConflict(pid, caddr, line);
+            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
+            return nullptr;
         }
+        handleTMSetConflict(pid, caddr, line);
     }
     return line;
 }
