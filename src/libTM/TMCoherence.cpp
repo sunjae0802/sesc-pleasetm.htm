@@ -496,18 +496,16 @@ TMLECoherence::Line* TMLECoherence::findLine2ReplaceTM(Pid_t pid, VAddr raddr) {
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    // Too many transactional dirty lines, just give up
-    LineTMWrittenByComparator writtenByMeCmp(pid);
-    if(cache->countLines(caddr, writtenByMeCmp) == cache->getAssoc()) {
-        markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
-        return nullptr;
-    }
-
     // Find line to replace
     Line* line  = cache->findLine2Replace(raddr);
-
     if(line->isValid()) {
         if(line->isTransactional()) {
+            // Too many transactional dirty lines, just give up
+            LineTMWrittenByComparator writtenByMeCmp(pid);
+            if(cache->countLines(caddr, writtenByMeCmp) == cache->getAssoc()) {
+                markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
+                return nullptr;
+            }
             handleTMSetConflict(pid, caddr, line);
         }
     }
