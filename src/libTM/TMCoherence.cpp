@@ -242,6 +242,8 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
+    } else if(getState(pid) == TM_SUSPENDED) {
+        return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMRead(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
@@ -257,6 +259,8 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
+    } else if(getState(pid) == TM_SUSPENDED) {
+        return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMWrite(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
