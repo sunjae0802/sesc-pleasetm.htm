@@ -599,6 +599,7 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
                 }
                 // but don't invalidate line
                 line->clearTransactional();
+                line->makeClean();
             } else if(!line->isTransactional() && line->isDirty()) {
                 line->makeClean();
             }
