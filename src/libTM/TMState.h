@@ -9,8 +9,7 @@ enum TMAbortType_e {
     TM_ATYPE_DEFAULT            = 0,    // Aborts due to data conflict
     TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
     TM_ATYPE_SYSCALL            = 2,    // Aborts due to syscall (external abort)
-    TM_ATYPE_SETCONFLICT_DIRTY  = 3,    // Aborts due to a set conflict evicting a dirty line
-    TM_ATYPE_SETCONFLICT_CLEAN  = 4,    // Aborts due to a set conflict evicting a clean line
+    TM_ATYPE_SETCONFLICT        = 3,    // Aborts due to a set conflict (capacity)
     TM_ATYPE_NONTM              = 255
 };
 

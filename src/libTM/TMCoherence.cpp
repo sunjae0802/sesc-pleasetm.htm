@@ -99,7 +99,6 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
     removeTransaction(pid);
     transStates[pid].completeAbort();
 }
-
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 
@@ -484,7 +483,7 @@ TMLECoherence::Line* TMLECoherence::findLine2Replace(Pid_t pid, VAddr raddr) {
 
     // Invalidate old line
     if(line->isValid() && line->isTransactional()) {
-        handleTMSetConflict(pid, caddr, line);
+        abortReplaced(line, pid, caddr, TM_ATYPE_NONTM);
     }
     return line;
 }
@@ -499,25 +498,27 @@ TMLECoherence::Line* TMLECoherence::findLine2ReplaceTM(Pid_t pid, VAddr raddr) {
         LineTMDirtyComparator dirtyCmp;
         if(cache->countLines(caddr, dirtyCmp) == cache->getAssoc()) {
             // Too many transactional dirty lines, just give up
-            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
+            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
             return nullptr;
         }
-        handleTMSetConflict(pid, caddr, line);
+        abortReplaced(line, pid, caddr, TM_ATYPE_SETCONFLICT);
     }
     return line;
 }
 
-void TMLECoherence::handleTMSetConflict(Pid_t pid, VAddr caddr, Line* replaced) {
+///
+// Abort all transactions that had accessed the line ``replaced.''
+void TMLECoherence::abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbortType_e abortType) {
     Pid_t writer = replaced->getWriter();
     if(writer != INVALID_PID) {
-        markTransAborted(writer, pid, caddr, TM_ATYPE_SETCONFLICT_DIRTY);
+        markTransAborted(writer, byPid, byCaddr, abortType);
         replaced->clearTransactional(writer);
     }
     for(Pid_t reader: replaced->getReaders()) {
         if(overflow[reader].size() < maxOverflowSize) {
             overflow[reader].insert(replaced->getCaddr());
         } else {
-            markTransAborted(reader, pid, caddr, TM_ATYPE_SETCONFLICT_CLEAN);
+            markTransAborted(reader, byPid, byCaddr, abortType);
         }
         replaced->clearTransactional(reader);
     }

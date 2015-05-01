@@ -212,9 +212,7 @@ uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
         case TM_ATYPE_USER:
             abortRV |= 4;
             break;
-        case TM_ATYPE_SETCONFLICT_DIRTY:
-            // Fall through
-        case TM_ATYPE_SETCONFLICT_CLEAN:
+        case TM_ATYPE_SETCONFLICT:
             abortRV |= 8;
             break;
         default:
