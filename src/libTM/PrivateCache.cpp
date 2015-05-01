@@ -185,10 +185,8 @@ CacheAssocTM::moveToMRU(TMLine** theSet, TMLine** theTMLine)
     }
 }
 
-///
-// Find and return the oldest invalid block
 TMLine
-**CacheAssocTM::findInvalid(TMLine **theSet)
+**CacheAssocTM::findOldestLine(TMLine **theSet, const LineComparator& comp)
 {
     TMLine **lineFree = 0;
     TMLine **setEnd = theSet + assoc;
@@ -196,32 +194,10 @@ TMLine
     {
         TMLine **l = setEnd -1;
         while(l >= theSet) {
-            if (!(*l)->isValid()) {
+            if (comp(*l)) {
                 lineFree = l;
                 break;
             }
-            l--;
-        }
-    }
-
-    return lineFree;
-}
-///
-// Find and return the oldest block that is clean or non-transactional
-TMLine
-**CacheAssocTM::findOldestNonTMClean(TMLine **theSet)
-{
-    TMLine **lineFree = 0;
-    TMLine **setEnd = theSet + assoc;
-
-    {
-        TMLine **l = setEnd -1;
-        while(l >= theSet) {
-            if (!(*l)->isDirty() || !(*l)->isTransactional()) {
-                lineFree = l;
-                break;
-            }
-
             l--;
         }
     }
@@ -260,7 +236,8 @@ TMLine
     TMLine **lineFree=0; // Order of preference, invalid
     TMLine **setEnd = theSet + assoc;
 
-    lineFree = findInvalid(theSet);
+    LineInvalidComparator invalCmp;
+    lineFree = findOldestLine(theSet, invalCmp);
 
     if (lineFree) {
         return *lineFree;
@@ -272,7 +249,8 @@ TMLine
         // Get the oldest line possible
         lineFree = setEnd-1;
     } else {
-        lineFree = findOldestNonTMClean(theSet);
+        LineInvalidOrNonTMOrCleanComparator invalNonTMCleanCmp;
+        lineFree = findOldestLine(theSet, invalNonTMCleanCmp);
         if(lineFree && tmDirtyComparator(*lineFree)) {
             fail("Replacing transactional dirty line");
         }

@@ -72,6 +72,14 @@ struct LineComparator {
 struct LineValidComparator: public LineComparator {
     virtual bool operator()(TMLine* l) const { return l->isValid(); }
 };
+struct LineInvalidComparator: public LineComparator {
+    virtual bool operator()(TMLine* l) const { return l->isValid() == false; }
+};
+struct LineInvalidOrNonTMOrCleanComparator: public LineComparator {
+    virtual bool operator()(TMLine* l) const {
+        return (l->isValid() == false) || (l->isTransactional() == false) || (l->isDirty() == false);
+    }
+};
 struct LineTMDirtyComparator: public LineComparator {
     virtual bool operator()(TMLine* l) const {
         return l->isValid() && l->isTransactional() && l->isDirty();
@@ -113,11 +121,8 @@ protected:
     TMLine **content;
     void moveToMRU(TMLine** theSet, TMLine** theTMLine);
     TMLine *findLine2Replace(TMLine** theSet);
-    TMLine **findInvalid(TMLine **theSet);
-    TMLine **findOldestNonTMClean(TMLine **theSet);
-    TMLine **findOldestClean(TMLine **theSet);
-    TMLine **findOldestNonTM(TMLine **theSet);
 
+    TMLine **findOldestLine(TMLine **theSet, const LineComparator& comp);
     size_t countLines(TMLine **theSet, const LineComparator& comp) const;
 
 public:
