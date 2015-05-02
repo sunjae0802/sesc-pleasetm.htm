@@ -479,7 +479,15 @@ TMLECoherence::Line* TMLECoherence::findLine2Replace(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     // Find line to replace
-    Line* line = cache->findLine2Replace(raddr);
+    LineNonTMOrCleanComparator nonTMCleanCmp;
+    Line* line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+    if(line == nullptr) {
+        line = cache->findOldestLine2Replace(raddr);
+    }
+
+    if(line == nullptr) {
+        fail("Replacement policy failed");
+    }
 
     // Invalidate old line
     if(line->isValid() && line->isTransactional()) {
@@ -493,7 +501,16 @@ TMLECoherence::Line* TMLECoherence::findLine2ReplaceTM(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     // Find line to replace
-    Line* line  = cache->findLine2Replace(raddr);
+    LineNonTMOrCleanComparator nonTMCleanCmp;
+    Line* line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+    if(line == nullptr) {
+        line = cache->findOldestLine2Replace(raddr);
+    }
+
+    if(line == nullptr) {
+        fail("Replacement policy failed");
+    }
+
     if(line->isValid() && line->isTransactional()) {
         LineTMDirtyComparator dirtyCmp;
         if(cache->countLines(caddr, dirtyCmp) == cache->getAssoc()) {

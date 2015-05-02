@@ -80,6 +80,11 @@ struct LineInvalidOrNonTMOrCleanComparator: public LineComparator {
         return (l->isValid() == false) || (l->isTransactional() == false) || (l->isDirty() == false);
     }
 };
+struct LineNonTMOrCleanComparator: public LineComparator {
+    virtual bool operator()(TMLine* l) const {
+        return (l->isTransactional() == false) || (l->isDirty() == false);
+    }
+};
 struct LineTMDirtyComparator: public LineComparator {
     virtual bool operator()(TMLine* l) const {
         return l->isValid() && l->isTransactional() && l->isDirty();
@@ -132,6 +137,8 @@ public:
         delete [] mem;
     }
 
+    TMLine *findOldestLine2Replace(VAddr addr);
+    TMLine *findOldestLine2Replace(VAddr addr, const LineComparator& comp);
     TMLine *findLine2Replace(VAddr addr);
     TMLine *lookupLine(VAddr addr);
     TMLine *findLine(VAddr addr);

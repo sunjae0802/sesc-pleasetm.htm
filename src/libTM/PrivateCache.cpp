@@ -206,6 +206,61 @@ TMLine
 }
 
 TMLine
+*CacheAssocTM::findOldestLine2Replace(VAddr addr)
+{
+    VAddr tag    = this->calcTag(addr);
+    TMLine **theSet = &content[this->calcIndex4Tag(tag)];
+
+    TMLine **lineFree=0;
+    TMLine **setEnd = theSet + assoc;
+
+    // Always return invalid line if available
+    LineInvalidComparator invalCmp;
+    lineFree = findOldestLine(theSet, invalCmp);
+
+    if (lineFree) {
+        return *lineFree;
+    }
+
+    lineFree = setEnd-1;
+
+    // No matter what is the policy, move lineHit to the *theSet. This
+    // increases locality
+    moveToMRU(theSet, lineFree);
+
+    return *theSet;
+}
+
+TMLine
+*CacheAssocTM::findOldestLine2Replace(VAddr addr, const LineComparator& comp)
+{
+    VAddr tag    = this->calcTag(addr);
+    TMLine **theSet = &content[this->calcIndex4Tag(tag)];
+
+    TMLine **lineFree=0;
+    TMLine **setEnd = theSet + assoc;
+
+    // Always return invalid line if available
+    LineInvalidComparator invalCmp;
+    lineFree = findOldestLine(theSet, invalCmp);
+
+    if (lineFree) {
+        return *lineFree;
+    }
+
+    lineFree = findOldestLine(theSet, comp);
+    if (lineFree == theSet) {
+        return *lineFree; // Hit in the first possition
+    }
+
+    // No matter what is the policy, move lineHit to the *theSet. This
+    // increases locality
+    moveToMRU(theSet, lineFree);
+
+    return *theSet;
+}
+
+TMLine
 *CacheAssocTM::findLine2Replace(VAddr addr)
 {
     VAddr tag    = this->calcTag(addr);
