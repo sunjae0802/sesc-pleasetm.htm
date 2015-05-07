@@ -185,6 +185,8 @@ CacheAssocTM::moveToMRU(TMLine** theSet, TMLine** theTMLine)
     }
 }
 
+///
+// Search through the set and find the oldest line satisfying comp
 TMLine
 **CacheAssocTM::findOldestLine(TMLine **theSet, const LineComparator& comp)
 {
@@ -205,6 +207,10 @@ TMLine
     return lineFree;
 }
 
+///
+// Search through the set indicated by addr, and return the oldest invalid line.
+// If all lines are valid, the return the LRU line instead. Either case the returned
+// line is now the MRU.
 TMLine
 *CacheAssocTM::findOldestLine2Replace(VAddr addr)
 {
@@ -218,19 +224,25 @@ TMLine
     LineInvalidComparator invalCmp;
     lineFree = findOldestLine(theSet, invalCmp);
 
-    if (lineFree) {
-        return *lineFree;
+    if (lineFree == NULL) {
+        // Else return the oldest line
+        lineFree = setEnd-1;
     }
 
-    lineFree = setEnd-1;
-
-    // No matter what is the policy, move lineHit to the *theSet. This
+    // No matter what is the policy, move lineFree to the *theSet. This
     // increases locality
-    moveToMRU(theSet, lineFree);
-
-    return *theSet;
+    if (lineFree == theSet) {
+        return *lineFree; // Hit in the first possition
+    } else {
+        moveToMRU(theSet, lineFree);
+        return *theSet;
+    }
 }
 
+///
+// Search through the set indicated by addr, and return the oldest line that
+// satisfies comp. If there is any invalid line return that instead, however.
+// and if no line is found, return NULL. The returned line is moved to MRU.
 TMLine
 *CacheAssocTM::findOldestLine2Replace(VAddr addr, const LineComparator& comp)
 {
@@ -244,20 +256,22 @@ TMLine
     LineInvalidComparator invalCmp;
     lineFree = findOldestLine(theSet, invalCmp);
 
-    if (lineFree) {
-        return *lineFree;
+    if (lineFree == NULL) {
+        // Return oldest line that satisfies comp
+        lineFree = findOldestLine(theSet, comp);
+        if (lineFree == NULL) {
+            return NULL;
+        }
     }
 
-    lineFree = findOldestLine(theSet, comp);
+    // No matter what is the policy, move lineFree to the *theSet. This
+    // increases locality
     if (lineFree == theSet) {
         return *lineFree; // Hit in the first possition
+    } else {
+        moveToMRU(theSet, lineFree);
+        return *theSet;
     }
-
-    // No matter what is the policy, move lineHit to the *theSet. This
-    // increases locality
-    moveToMRU(theSet, lineFree);
-
-    return *theSet;
 }
 
 TMLine
@@ -325,6 +339,8 @@ TMLine
     return *theSet;
 }
 
+///
+// Search through the set and count lines that satisfy comp.
 size_t
 CacheAssocTM::countLines(VAddr addr, const LineComparator& comp) const
 {
@@ -334,6 +350,9 @@ CacheAssocTM::countLines(VAddr addr, const LineComparator& comp) const
     return countLines(theSet, comp);
 }
 
+///
+// Search through the set and count lines that satisfy comp. Private version
+// that accepts theSet as the argument.
 size_t
 CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 {
@@ -352,6 +371,8 @@ CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
     return count;
 }
 
+///
+// Mass-clear all transactional lines in the core.
 void CacheAssocTM::clearTransactional() {
     for(uint32_t i = 0; i < numLines; i++) {
         if(mem[i].isDirty()) {
