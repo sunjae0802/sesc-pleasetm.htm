@@ -72,12 +72,22 @@ struct LineComparator {
 struct LineValidComparator: public LineComparator {
     virtual bool operator()(TMLine* l) const { return l->isValid(); }
 };
+struct LineTMComparator: public LineComparator {
+    virtual bool operator()(TMLine* l) const {
+        return l->isValid() && l->isTransactional();
+    }
+};
 struct LineInvalidComparator: public LineComparator {
     virtual bool operator()(TMLine* l) const { return l->isValid() == false; }
 };
 struct LineInvalidOrNonTMOrCleanComparator: public LineComparator {
     virtual bool operator()(TMLine* l) const {
         return (l->isValid() == false) || (l->isTransactional() == false) || (l->isDirty() == false);
+    }
+};
+struct LineNonTMComparator: public LineComparator {
+    virtual bool operator()(TMLine* l) const {
+        return l->isTransactional() == false;
     }
 };
 struct LineNonTMOrCleanComparator: public LineComparator {

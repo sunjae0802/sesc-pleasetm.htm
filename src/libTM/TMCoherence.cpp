@@ -479,10 +479,14 @@ TMLECoherence::Line* TMLECoherence::findLine2Replace(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     // Find line to replace
-    LineNonTMOrCleanComparator nonTMCleanCmp;
-    Line* line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+    LineNonTMComparator nonTMCmp;
+    Line* line = cache->findOldestLine2Replace(raddr, nonTMCmp);
     if(line == nullptr) {
-        line = cache->findOldestLine2Replace(raddr);
+        LineNonTMOrCleanComparator nonTMCleanCmp;
+        line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+        if(line == nullptr) {
+            line = cache->findOldestLine2Replace(raddr);
+        }
     }
 
     if(line == nullptr) {
@@ -501,10 +505,14 @@ TMLECoherence::Line* TMLECoherence::findLine2ReplaceTM(Pid_t pid, VAddr raddr) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     // Find line to replace
-    LineNonTMOrCleanComparator nonTMCleanCmp;
-    Line* line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+    LineNonTMComparator nonTMCmp;
+    Line* line = cache->findOldestLine2Replace(raddr, nonTMCmp);
     if(line == nullptr) {
-        line = cache->findOldestLine2Replace(raddr);
+        LineNonTMOrCleanComparator nonTMCleanCmp;
+        line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+        if(line == nullptr) {
+            line = cache->findOldestLine2Replace(raddr);
+        }
     }
 
     if(line == nullptr) {
