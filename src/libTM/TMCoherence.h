@@ -34,8 +34,7 @@ public:
     TMBCStatus begin(Pid_t pid, InstDesc *inst);
 
     TMBCStatus completeAbort(Pid_t pid);
-    void beginFallback(Pid_t pid);
-    void beginRetFallback(Pid_t pid);
+    void beginFallback(Pid_t pid, uint32_t pFallbackMutex);
     void completeFallback(Pid_t pid);
 
     // Query functions
@@ -109,7 +108,7 @@ protected:
     std::map<VAddr, size_t>             numAbortsCaused;
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
-    std::set<Pid_t>                     inFallback;
+    std::set<uint32_t>                  fallbackMutexCAddrs;
     std::map<Pid_t, std::set<Pid_t> >   stalling;
     std::map<Pid_t, Pid_t>              stalledBy;
 };

@@ -2329,13 +2329,13 @@ void handleTMBeginCall(InstDesc *inst, ThreadContext *context) {
 void handleTMBeginFallbackCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         funcDataInitCall(context, FUNC_TM_BEGIN_FALLBACK, &handleTMBeginFallbackRet);
-        context->beginFallback();
+        uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+        context->beginFallback(arg);
     }
 }
 void handleTMBeginFallbackRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         funcDataInitRet(context, FUNC_TM_BEGIN_FALLBACK);
-        context->beginRetFallback();
     }
 }
 void handleTMEndFallbackCall(InstDesc *inst, ThreadContext *context) {

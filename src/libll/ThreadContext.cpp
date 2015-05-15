@@ -230,8 +230,8 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
         return 0;
     }
 }
-void ThreadContext::beginFallback() {
-    tmCohManager->beginFallback(pid);
+void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
+    tmCohManager->beginFallback(pid, pFallbackMutex);
 
     tmAbortIAddr= 0;
     tmAbortArg  = 0;
