@@ -10,6 +10,7 @@ enum TMAbortType_e {
     TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
     TM_ATYPE_SYSCALL            = 2,    // Aborts due to syscall (external abort)
     TM_ATYPE_SETCONFLICT        = 3,    // Aborts due to a set conflict (capacity)
+    TM_ATYPE_FALLBACK           = 254,
     TM_ATYPE_NONTM              = 255
 };
 

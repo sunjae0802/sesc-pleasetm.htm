@@ -230,6 +230,15 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
 ///
 // Function that tells the TM engine that a fallback path for this transaction has been used,
 // so reset any statistics. Used for statistics that run across multiple retires.
+void TMCoherence::beginFallback(Pid_t pid) {
+    inFallback.insert(pid); // Can have multiple fallbacks (i.e. threads waiting for mutex)
+}
+void TMCoherence::beginRetFallback(Pid_t pid) {
+    inFallback.erase(pid);
+}
+
+///
+// Function that tells the TM engine that a fallback path for this transaction has been completed.
 void TMCoherence::completeFallback(Pid_t pid) {
     transStates[pid].completeFallback();
 }
@@ -595,8 +604,10 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
 
     if(isTM) {
         markTransAborted(sharers, pid, caddr, TM_ATYPE_DEFAULT);
-    } else {
+    } else if(inFallback.find(pid) == inFallback.end()) {
         markTransAborted(sharers, pid, caddr, TM_ATYPE_NONTM);
+    } else {
+        markTransAborted(sharers, pid, caddr, TM_ATYPE_FALLBACK);
     }
 }
 
@@ -613,8 +624,10 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
             if(writer != INVALID_PID && writer != pid) {
                 if(isTM) {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_DEFAULT);
-                } else {
+                } else if(inFallback.find(pid) == inFallback.end()) {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
+                } else {
+                    markTransAborted(writer, pid, caddr, TM_ATYPE_FALLBACK);
                 }
                 // but don't invalidate line
                 line->clearTransactional();

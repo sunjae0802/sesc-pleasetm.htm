@@ -176,6 +176,10 @@ public:
     uint32_t completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
     uint32_t getAbortRV(TMBCStatus status);
+    void beginFallback();
+    void beginRetFallback() {
+        tmCohManager->beginRetFallback(pid);
+    }
     void completeFallback();
 
     // memop NACK handling methods

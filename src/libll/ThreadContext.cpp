@@ -230,12 +230,15 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
         return 0;
     }
 }
-
-void ThreadContext::completeFallback() {
-    tmCohManager->completeFallback(pid);
+void ThreadContext::beginFallback() {
+    tmCohManager->beginFallback(pid);
 
     tmAbortIAddr= 0;
     tmAbortArg  = 0;
+}
+
+void ThreadContext::completeFallback() {
+    tmCohManager->completeFallback(pid);
 }
 
 #endif
