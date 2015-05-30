@@ -212,11 +212,15 @@ void FUMemory::traceTM(DInst* dinst)
         TMAbortType_e abortType = dinst->tmState.getAbortType();
 
         // Trace this instruction
-        if(abortType == TM_ATYPE_USER) {
-            out<<pid<<" Z"
+        if(abortType == TM_ATYPE_DEFAULT) {
+            VAddr abortByAddr = dinst->tmState.getAbortBy();
+            if(abortByAddr == 0) {
+                fail("Why abort addr NULL?\n");
+            }
+            out<<pid<<" A"
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" "<<abortType
-                            <<" "<<dinst->tmAbortArg
+                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
+                            <<" "<<aborter
                             <<" "<< (context->getNRetiredInsts() + 1)
                             <<" "<< globalClock << std::endl;
         } else if(abortType == TM_ATYPE_NONTM) {
@@ -230,22 +234,17 @@ void FUMemory::traceTM(DInst* dinst)
                             <<" "<<aborter
                             <<" "<< (context->getNRetiredInsts() + 1)
                             <<" "<< globalClock << std::endl;
-        } else if(abortType == TM_ATYPE_DEFAULT) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
-            if(abortByAddr == 0) {
-                fail("Why abort addr NULL?\n");
-            }
-            out<<pid<<" A"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
-                            <<" "<<aborter
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
         } else {
+            uint32_t abortArg = 0;
+            if(abortType == TM_ATYPE_USER) {
+                abortArg = dinst->tmAbortArg;
+            } else {
+                abortArg = dinst->tmState.getAbortBy();
+            }
             out<<pid<<" Z"
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
                             <<" "<<abortType
-                            <<" 0"
+                            <<" 0x"<<std::hex<<abortArg<<std::dec
                             <<" "<< (context->getNRetiredInsts() + 1)
                             <<" "<< globalClock << std::endl;
         }
