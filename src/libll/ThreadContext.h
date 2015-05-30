@@ -79,6 +79,8 @@ private:
     VAddr tmCallsite;
     // Number of transactional writes done on tm.commit
     size_t tmNumWrites;
+    // User-passed HTM command arg
+    uint32_t tmArg;
     // User-passed abort arg
     uint32_t tmAbortArg;
     // The IAddr when we found out TM has aborted
@@ -161,19 +163,32 @@ public:
 
     TMBeginSubtype getTMBeginSubtype() const { return tmBeginSubtype; }
     void clearTMBeginSubtype() { tmBeginSubtype = TM_BEGIN_INVALID; }
+    uint32_t getTMArg()       const { return tmArg; }
     uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
     uint32_t getTMAbortArg()  const { return tmAbortArg; }
     size_t   getTMNumWrites() const { return tmNumWrites; }
 
     // Transactional Methods
-    uint32_t beginTransaction(InstDesc* inst);
-    void commitTransaction(InstDesc* inst);
-    void userAbort(uint32_t arg) {
-        tmAbortArg = arg;
+    TMBCStatus beginTransaction(InstDesc* inst);
+    TMBCStatus commitTransaction(InstDesc* inst);
+    TMBCStatus abortTransaction(TMAbortType_e abortType);
+
+    TMBCStatus userBeginTM(InstDesc* inst, uint32_t arg) {
+        tmArg = arg;
+        TMBCStatus status = beginTransaction(inst);
+        return status;
+    }
+    TMBCStatus userCommitTM(InstDesc* inst, uint32_t arg) {
+        tmArg = arg;
+        TMBCStatus status = commitTransaction(inst);
+        return status;
+    }
+    void userAbortTM(InstDesc* inst, uint32_t arg) {
+        tmArg       = arg;
+        tmAbortArg  = tmArg;
         abortTransaction(TM_ATYPE_USER);
     }
-    void abortTransaction(TMAbortType_e abortType = TM_ATYPE_DEFAULT);
-    uint32_t completeAbort(InstDesc* inst);
+    void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
     uint32_t getAbortRV(TMBCStatus status);
     void beginFallback(uint32_t pFallbackMutex);

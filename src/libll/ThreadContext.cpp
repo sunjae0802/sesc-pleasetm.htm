@@ -54,6 +54,7 @@ void ThreadContext::initialize(bool child) {
     tmStallUntil= 0;
     tmNumNackRetries  = 0;
     tmNumWrites = 0;
+    tmArg       = 0;
     tmAbortArg  = 0;
     tmAbortIAddr= 0;
     tmContext   = NULL;
@@ -70,126 +71,128 @@ void ThreadContext::cleanup() {
     closeTrace();
 }
 #if defined(TM)
-uint32_t ThreadContext::beginTransaction(InstDesc* inst) {
+TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     TMBCStatus status = tmCohManager->begin(pid, inst);
-    if(status == TMBC_SUCCESS) {
-        const TransState& transState = tmCohManager->getTransState(pid);
-        tmAbortIAddr= 0;
-        tmAbortArg  = 0;
-        tmNumWrites = 0;
-        tmBeginSubtype=TM_BEGIN_REGULAR;
+    switch(status) {
+        case TMBC_SUCCESS: {
+            const TransState& transState = tmCohManager->getTransState(pid);
+            tmAbortIAddr= 0;
+            tmAbortArg  = 0;
+            tmNumWrites = 0;
+            tmBeginSubtype=TM_BEGIN_REGULAR;
 
-        uint64_t utid = transState.getUtid();
-        tmContext   = new TMContext(this, inst, utid);
-        tmContext->saveContext();
-        saveCallRetStack();
+            uint64_t utid = transState.getUtid();
+            tmContext   = new TMContext(this, inst, utid);
+            tmContext->saveContext();
+            saveCallRetStack();
 
-        // Move instruction pointer to next instruction
-        updIAddr(inst->aupdate,1);
-
-        return getBeginRV(status);
-    } else if(status == TMBC_IGNORE) {
-        fail("Nesting not tested yet");
-
-        tmBeginSubtype=TM_BEGIN_IGNORE;
-        updIAddr(inst->aupdate,1);
-
-        return getBeginRV(status);
-    } else if(status == TMBC_NACK) {
-        tmBeginSubtype=TM_BEGIN_NACKED;
-
-        updIAddr(inst->aupdate,1);
-
-        // And "return" from TM Begin, returning 4 from getBeginRV
-        return getBeginRV(status);
-    } else {
-        fail("Unhanded TM begin");
+            break;
+        }
+        case TMBC_IGNORE: {
+            fail("Nesting not tested yet");
+            tmBeginSubtype=TM_BEGIN_IGNORE;
+            break;
+        }
+        case TMBC_NACK: {
+            tmBeginSubtype=TM_BEGIN_NACKED;
+            break;
+        }
+        default:
+            fail("Unhanded TM begin");
     }
+    return status;
 }
-void ThreadContext::commitTransaction(InstDesc* inst) {
-    assert(tmContext);
+TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
+    if(tmContext == NULL) {
+        fail("Commit fail: tmContext is NULL\n");
+    }
 
     // Save UTID before committing
     uint64_t utid = tmCohManager->getUtid(pid);
     size_t numWrites = tmCohManager->getNumWrites(pid);
 
     TMBCStatus status = tmCohManager->commit(pid, tmContext->getId());
-    if(status == TMBC_IGNORE) {
-        fail("Nesting not tested yet");
-        updIAddr(inst->aupdate,1);
-    } else if(status == TMBC_NACK) {
-        // In the case of a Lazy model that can not commit yet
-    } else if(status == TMBC_ABORT) {
-        // In the case of a Lazy model where we are forced to Abort
-        abortTransaction();
-    } else if(status == TMBC_SUCCESS) {
-        // If we have already delayed, go ahead and finalize commit in memory
-        tmContext->flushMemory();
-
-        tmAbortIAddr= 0;
-        tmAbortArg  = 0;
-        tmNumWrites = numWrites;
-
-        TMContext* oldTMContext = tmContext;
-        if(isInTM()) {
-            tmContext = oldTMContext->getParentContext();
-        } else {
-            tmContext = NULL;
+    switch(status) {
+        case TMBC_IGNORE: {
+            fail("Nesting not tested yet");
+            break;
         }
+        case TMBC_NACK: {
+            // In the case of a Lazy model that can not commit yet
+            break;
+        }
+        case TMBC_ABORT: {
+            // In the case of a Lazy model where we are forced to Abort
+            abortTransaction(TM_ATYPE_DEFAULT);
+            break;
+        }
+        case TMBC_SUCCESS: {
+            // If we have already delayed, go ahead and finalize commit in memory
+            tmContext->flushMemory();
 
-        // Move instruction pointer to next instruction
-        updIAddr(inst->aupdate,1);
+            tmAbortIAddr= 0;
+            tmAbortArg  = 0;
+            tmNumWrites = numWrites;
 
-        delete oldTMContext;
-    } else {
-        assert(0);
+            TMContext* oldTMContext = tmContext;
+            if(isInTM()) {
+                tmContext = oldTMContext->getParentContext();
+            } else {
+                tmContext = NULL;
+            }
+            delete oldTMContext;
+
+            break;
+        }
+        default:
+            fail("Unhanded TM commit");
     }
+    return status;
 }
-void ThreadContext::abortTransaction(TMAbortType_e abortType) {
-    assert(tmContext);
+TMBCStatus ThreadContext::abortTransaction(TMAbortType_e abortType) {
+    if(tmContext == NULL) {
+        fail("Abort fail: tmContext is NULL\n");
+    }
 
     // Save UTID before aborting
     uint64_t utid = tmCohManager->getUtid(pid);
 
     TMBCStatus status = tmCohManager->abort(pid, tmContext->getId(), abortType);
-    if(status == TMBC_SUCCESS) {
-        const TransState& transState = tmCohManager->getTransState(pid);
+    switch(status) {
+        case TMBC_SUCCESS: {
+            const TransState& transState = tmCohManager->getTransState(pid);
 
-        // Since we jump to the outer-most context, find it first
-        TMContext* rootTMContext = tmContext;
-        while(rootTMContext->getParentContext()) {
-            TMContext* oldTMContext = rootTMContext;
-            rootTMContext = rootTMContext->getParentContext();
-            delete oldTMContext;
+            // Since we jump to the outer-most context, find it first
+            TMContext* rootTMContext = tmContext;
+            while(rootTMContext->getParentContext()) {
+                TMContext* oldTMContext = rootTMContext;
+                rootTMContext = rootTMContext->getParentContext();
+                delete oldTMContext;
+            }
+            rootTMContext->restoreContext();
+
+            tmAbortIAddr= iAddr;
+            VAddr beginIAddr = rootTMContext->getBeginIAddr();
+
+            tmContext = NULL;
+            delete rootTMContext;
+
+            restoreCallRetStack();
+
+            // Move instruction pointer to BEGIN
+            setIAddr(beginIAddr);
+
+            break;
         }
-        rootTMContext->restoreContext();
-
-        tmAbortIAddr= iAddr;
-        VAddr beginIAddr = rootTMContext->getBeginIAddr();
-
-        tmContext = NULL;
-        delete rootTMContext;
-
-        restoreCallRetStack();
-
-        // Move instruction pointer to BEGIN
-        setIAddr(beginIAddr);
-    } else {
-        assert(0);
+        default:
+            fail("Unhanded TM abort");
     }
+    return status;
 }
 
-uint32_t ThreadContext::completeAbort(InstDesc* inst) {
+void ThreadContext::completeAbort(InstDesc* inst) {
     tmCohManager->completeAbort(pid);
     tmBeginSubtype=TM_COMPLETE_ABORT;
-
-    // set return arg
-    uint32_t returnVal = getAbortRV(TMBC_IGNORE);
-
-    // And "return" from TM Begin
-    updIAddr(inst->aupdate,1);
-
-    return returnVal;
 }
 
 uint32_t ThreadContext::getAbortRV(TMBCStatus status) {

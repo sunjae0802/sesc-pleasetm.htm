@@ -569,9 +569,19 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     uint32_t rv = 0;
 
     if(context->isTMAborting()) {
-        rv = context->completeAbort(inst);
+        context->completeAbort(inst);
+        rv = context->getAbortRV(TMBC_IGNORE);
+
+        // And "return" from TM Begin
+        context->updIAddr(inst->aupdate,1);
     } else {
-        rv = context->beginTransaction(inst);
+        TMBCStatus status = context->userBeginTM(inst, arg);
+
+        // Move instruction pointer to next instruction
+        if(status != TMBC_NACK) {
+            context->updIAddr(inst->aupdate,1);
+        }
+        rv = context->getBeginRV(status);
     }
     ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, rv);
 
@@ -585,12 +595,19 @@ InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
     if(context->isInTM() == false) {
         fail("Calling tm.abort(0x%x) outside of transaction!", arg);
     }
-    context->userAbort(arg);
+    context->userAbortTM(inst, arg);
+
+    context->updIAddr(inst->aupdate,1);
     return inst;
 }
 
 InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context) {
-    context->commitTransaction(inst);
+    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+
+    TMBCStatus status = context->userCommitTM(inst, arg);
+    if(status != TMBC_NACK) {
+        context->updIAddr(inst->aupdate,1);
+    }
     return inst;
 }
 
@@ -1494,7 +1511,7 @@ public:
             preExec(inst,context);
 #if (defined TM)
             if(markedForAbort(inst, context)) {
-                context->abortTransaction();
+                context->abortTransaction(TM_ATYPE_DEFAULT);
                 return inst;
             }
 #endif
@@ -1586,7 +1603,7 @@ public:
             preExec(inst,context);
 #if (defined TM)
             if(markedForAbort(inst, context)) {
-                context->abortTransaction();
+                context->abortTransaction(TM_ATYPE_DEFAULT);
                 return inst;
             }
 #endif
@@ -1673,7 +1690,7 @@ public:
             preExec(inst,context);
 #if (defined TM)
             if(markedForAbort(inst, context)) {
-                context->abortTransaction();
+                context->abortTransaction(TM_ATYPE_DEFAULT);
                 return inst;
             }
 #endif
