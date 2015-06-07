@@ -111,7 +111,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     uint64_t utid = tmCohManager->getUtid(pid);
     size_t numWrites = tmCohManager->getNumWrites(pid);
 
-    TMBCStatus status = tmCohManager->commit(pid, tmContext->getId());
+    TMBCStatus status = tmCohManager->commit(pid);
     switch(status) {
         case TMBC_IGNORE: {
             fail("Nesting not tested yet");
@@ -157,7 +157,7 @@ TMBCStatus ThreadContext::abortTransaction(TMAbortType_e abortType) {
     // Save UTID before aborting
     uint64_t utid = tmCohManager->getUtid(pid);
 
-    TMBCStatus status = tmCohManager->abort(pid, tmContext->getId(), abortType);
+    TMBCStatus status = tmCohManager->abort(pid, abortType);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);

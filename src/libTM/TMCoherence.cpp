@@ -193,28 +193,28 @@ TMBCStatus TMCoherence::begin(Pid_t pid, InstDesc* inst) {
 
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
-TMBCStatus TMCoherence::commit(Pid_t pid, int tid) {
+TMBCStatus TMCoherence::commit(Pid_t pid) {
 	if(getState(pid) == TM_MARKABORT) {
 		return TMBC_ABORT;
 	} else if(getDepth(pid) > 1) {
 		transStates[pid].commitNested();
 		return TMBC_IGNORE;
 	} else {
-		return myCommit(pid, tid);
+		return myCommit(pid);
 	}
 }
 
 ///
 // Entry point for TM abort operation. If the abort type is driven externally (syscall/user),
 // then mark the transaction as aborted, else 
-TMBCStatus TMCoherence::abort(Pid_t pid, int tid, TMAbortType_e abortType) {
+TMBCStatus TMCoherence::abort(Pid_t pid, TMAbortType_e abortType) {
     if(abortType == TM_ATYPE_SYSCALL || abortType == TM_ATYPE_USER) {
         transStates[pid].markAbort(pid, getUtid(pid), 0, abortType);
     } else if(abortType != 0) {
         // Abort type internal, so should not be set
         fail("Unknown abort type");
     }
-    return myAbort(pid, tid);
+    return myAbort(pid);
 }
 
 ///
@@ -284,14 +284,14 @@ TMBCStatus TMCoherence::myBegin(Pid_t pid, InstDesc* inst) {
 
 ///
 // A basic type of TM abort if child does not override
-TMBCStatus TMCoherence::myAbort(Pid_t pid, int tid) {
+TMBCStatus TMCoherence::myAbort(Pid_t pid) {
 	abortTrans(pid);
 	return TMBC_SUCCESS;
 }
 
 ///
 // A basic type of TM commit if child does not override
-TMBCStatus TMCoherence::myCommit(Pid_t pid, int tid) {
+TMBCStatus TMCoherence::myCommit(Pid_t pid) {
     commitTrans(pid);
     return TMBC_SUCCESS;
 }

@@ -29,8 +29,8 @@ public:
     // Entry point functions for TM operations
     TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    TMBCStatus abort(Pid_t pid, int tid, TMAbortType_e abortType);
-    TMBCStatus commit(Pid_t pid, int tid);
+    TMBCStatus abort(Pid_t pid, TMAbortType_e abortType);
+    TMBCStatus commit(Pid_t pid);
     TMBCStatus begin(Pid_t pid, InstDesc *inst);
 
     TMBCStatus completeAbort(Pid_t pid);
@@ -77,8 +77,8 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
-    virtual TMBCStatus myAbort(Pid_t pid, int tid);
-    virtual TMBCStatus myCommit(Pid_t pid, int tid);
+    virtual TMBCStatus myAbort(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void       myCompleteAbort(Pid_t pid);
     virtual void       removeTransaction(Pid_t pid);

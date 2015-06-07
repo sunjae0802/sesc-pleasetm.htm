@@ -9,7 +9,6 @@ using namespace std;
 
 TMContext::TMContext(ThreadContext* c, InstDesc* inst, uint64_t tmUtid): context(c), utid(tmUtid) {
     pid         = context->getPid();
-    tid         = inst->imm;
     tmBeginCode = inst;
     beginIAddr  = inst->getSescInst()->getAddr();
 

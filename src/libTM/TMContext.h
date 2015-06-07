@@ -14,7 +14,6 @@ public:
 
     /* Public Methods */
     InstDesc*   getBeginCode() { return tmBeginCode; }
-    int         getId() const { return tid; }
     uint64_t    getUtid() const { return utid; }
     TMContext*  getParentContext() { return parent; }
     VAddr       getBeginIAddr() { return beginIAddr; }
@@ -36,10 +35,9 @@ private:
     InstDesc*   tmBeginCode;  // TM Begin Code Pointer
     VAddr       beginIAddr;
     Pid_t       pid;          // Copy of PID of owner thread
-    int         tid;          // Transaction ID
     uint64_t    utid;         // Unique transaction identifier
     RegVal      regs[NumOfRegs];      // Int Register Backup
-    TMStorage     cache;        // The Memory Cache
+    TMStorage   cache;        // The Memory Cache
     TMContext  *parent;      // Parent Transaction
 };
 
