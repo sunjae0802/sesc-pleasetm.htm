@@ -29,10 +29,11 @@ public:
     // Entry point functions for TM operations
     TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    TMBCStatus abort(Pid_t pid, TMAbortType_e abortType);
-    TMBCStatus commit(Pid_t pid);
-    TMBCStatus begin(Pid_t pid, InstDesc *inst);
+    TMBCStatus abort(InstDesc* inst, ThreadContext* context);
+    TMBCStatus commit(InstDesc* inst, ThreadContext* context);
+    TMBCStatus begin(InstDesc* inst, ThreadContext* context);
 
+    void markAbort(InstDesc* inst, ThreadContext* context, TMAbortType_e abortType);
     TMBCStatus completeAbort(Pid_t pid);
     void beginFallback(Pid_t pid, uint32_t pFallbackMutex);
     void completeFallback(Pid_t pid);

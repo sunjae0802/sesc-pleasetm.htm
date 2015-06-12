@@ -650,7 +650,7 @@ InstDesc *emulBreak(InstDesc *inst, ThreadContext *context) {
 InstDesc *emulSyscl(InstDesc *inst, ThreadContext *context) {
 #if (defined TM)
 	if(context->isInTM()) {
-        context->abortTransaction(TM_ATYPE_SYSCALL);
+        context->abortTransaction(inst, TM_ATYPE_SYSCALL);
 		return inst;
     }
 #endif
@@ -1511,7 +1511,7 @@ public:
             preExec(inst,context);
 #if (defined TM)
             if(markedForAbort(inst, context)) {
-                context->abortTransaction(TM_ATYPE_DEFAULT);
+                context->abortTransaction(inst);
                 return inst;
             }
 #endif
@@ -1582,7 +1582,7 @@ public:
             }
 #if (defined TM)
 //            if(markedForAbort(inst, context)) {
-//                context->abortTransaction();
+//                context->abortTransaction(inst);
 //                return inst;
             if(tmRWStatus == TMRW_NACKED) {
                 context->startRetryTimer();
@@ -1603,7 +1603,7 @@ public:
             preExec(inst,context);
 #if (defined TM)
             if(markedForAbort(inst, context)) {
-                context->abortTransaction(TM_ATYPE_DEFAULT);
+                context->abortTransaction(inst);
                 return inst;
             }
 #endif
@@ -1668,7 +1668,7 @@ public:
             }
 #if (defined TM)
 //            if(markedForAbort(inst, context)) {
-//                context->abortTransaction();
+//                context->abortTransaction(inst);
 //                return inst;
             if(tmRWStatus == TMRW_NACKED) {
                 context->startRetryTimer();
@@ -1690,7 +1690,7 @@ public:
             preExec(inst,context);
 #if (defined TM)
             if(markedForAbort(inst, context)) {
-                context->abortTransaction(TM_ATYPE_DEFAULT);
+                context->abortTransaction(inst);
                 return inst;
             }
 #endif

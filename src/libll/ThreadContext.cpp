@@ -72,7 +72,7 @@ void ThreadContext::cleanup() {
 }
 #if defined(TM)
 TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
-    TMBCStatus status = tmCohManager->begin(pid, inst);
+    TMBCStatus status = tmCohManager->begin(inst, this);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
@@ -111,7 +111,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     uint64_t utid = tmCohManager->getUtid(pid);
     size_t numWrites = tmCohManager->getNumWrites(pid);
 
-    TMBCStatus status = tmCohManager->commit(pid);
+    TMBCStatus status = tmCohManager->commit(inst, this);
     switch(status) {
         case TMBC_IGNORE: {
             fail("Nesting not tested yet");
@@ -123,7 +123,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
         }
         case TMBC_ABORT: {
             // In the case of a Lazy model where we are forced to Abort
-            abortTransaction(TM_ATYPE_DEFAULT);
+            abortTransaction(inst);
             break;
         }
         case TMBC_SUCCESS: {
@@ -149,7 +149,12 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     }
     return status;
 }
-TMBCStatus ThreadContext::abortTransaction(TMAbortType_e abortType) {
+TMBCStatus ThreadContext::abortTransaction(InstDesc* inst, TMAbortType_e abortType) {
+    tmCohManager->markAbort(inst, this, abortType);
+
+    return abortTransaction(inst);
+}
+TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     if(tmContext == NULL) {
         fail("Abort fail: tmContext is NULL\n");
     }
@@ -157,7 +162,7 @@ TMBCStatus ThreadContext::abortTransaction(TMAbortType_e abortType) {
     // Save UTID before aborting
     uint64_t utid = tmCohManager->getUtid(pid);
 
-    TMBCStatus status = tmCohManager->abort(pid, abortType);
+    TMBCStatus status = tmCohManager->abort(inst, this);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);

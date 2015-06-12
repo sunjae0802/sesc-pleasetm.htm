@@ -171,7 +171,8 @@ public:
     // Transactional Methods
     TMBCStatus beginTransaction(InstDesc* inst);
     TMBCStatus commitTransaction(InstDesc* inst);
-    TMBCStatus abortTransaction(TMAbortType_e abortType);
+    TMBCStatus abortTransaction(InstDesc* inst, TMAbortType_e abortType);
+    TMBCStatus abortTransaction(InstDesc* inst);
 
     TMBCStatus userBeginTM(InstDesc* inst, uint32_t arg) {
         tmArg = arg;
@@ -186,7 +187,7 @@ public:
     void userAbortTM(InstDesc* inst, uint32_t arg) {
         tmArg       = arg;
         tmAbortArg  = tmArg;
-        abortTransaction(TM_ATYPE_USER);
+        abortTransaction(inst, TM_ATYPE_USER);
     }
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
