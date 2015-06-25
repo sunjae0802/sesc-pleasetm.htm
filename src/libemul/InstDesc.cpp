@@ -1587,8 +1587,6 @@ public:
             if(tmRWStatus == TMRW_NACKED) {
                 context->startRetryTimer();
                 return inst;
-            } else {
-                context->tmNumNackRetries = 0;
             }
 #endif
             return nextInst<NTyp>(inst,context);
@@ -1673,8 +1671,6 @@ public:
             if(tmRWStatus == TMRW_NACKED) {
                 context->startRetryTimer();
                 return inst;
-            } else {
-                context->tmNumNackRetries = 0;
             }
 #endif    
             return nextInst<NTyp>(inst,context);

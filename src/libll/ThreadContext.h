@@ -24,6 +24,9 @@ enum TMBeginSubtype {
     TM_COMPLETE_ABORT
 };
 
+// Contains information for instructions that are at function boundaries about
+// the function itself. Entry point instructions (calls) contain arguments and
+// the return address, exit point instructions (returns) contain the return value.
 struct FuncBoundaryData {
     static FuncBoundaryData createCall(enum FuncName name,
             uint32_t retA, uint32_t a0, uint32_t a1) {
@@ -77,14 +80,16 @@ private:
     TMContext *tmContext;
     // Where user had called HTM "instructions"
     VAddr tmCallsite;
-    // Number of transactional writes done on tm.commit
-    size_t tmNumWrites;
     // User-passed HTM command arg
     uint32_t tmArg;
     // User-passed abort arg
     uint32_t tmAbortArg;
     // The IAddr when we found out TM has aborted
     VAddr  tmAbortIAddr;
+    // Number of transactional writes done on tm.commit
+    size_t      tmNumWrites;
+    // Cycles for stalling retire of a tm instruction
+    uint32_t    tmLat;
     TMBeginSubtype tmBeginSubtype;
 #endif
 
@@ -145,8 +150,6 @@ public:
 #if (defined TM)
     // Debug flag for making sure we have consistent view of SW tid and HW tid
     int32_t tmlibUserTid;
-    // Count how many times we NACKed a memop, so that we can implement linear backoff
-    size_t tmNumNackRetries;
 
     // Transactional Helper Methods
     int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
@@ -163,10 +166,12 @@ public:
 
     TMBeginSubtype getTMBeginSubtype() const { return tmBeginSubtype; }
     void clearTMBeginSubtype() { tmBeginSubtype = TM_BEGIN_INVALID; }
+
+    // TM getters
     uint32_t getTMArg()       const { return tmArg; }
     uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
     uint32_t getTMAbortArg()  const { return tmAbortArg; }
-    size_t   getTMNumWrites() const { return tmNumWrites; }
+    uint32_t getTMLat()       const { return tmLat; }
 
     // Transactional Methods
     TMBCStatus beginTransaction(InstDesc* inst);
@@ -197,7 +202,6 @@ public:
 
     // memop NACK handling methods
     void startRetryTimer() {
-        tmNumNackRetries++;
         startStalling(tmCohManager->getNackRetryStallCycles());
     }
     void startStalling(TimeDelta_t amount) {

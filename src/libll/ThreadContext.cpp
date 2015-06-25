@@ -52,8 +52,6 @@ void ThreadContext::initialize(bool child) {
 
 #if (defined TM)
     tmStallUntil= 0;
-    tmNumNackRetries  = 0;
-    tmNumWrites = 0;
     tmArg       = 0;
     tmAbortArg  = 0;
     tmAbortIAddr= 0;
@@ -78,7 +76,6 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
             const TransState& transState = tmCohManager->getTransState(pid);
             tmAbortIAddr= 0;
             tmAbortArg  = 0;
-            tmNumWrites = 0;
             tmBeginSubtype=TM_BEGIN_REGULAR;
 
             uint64_t utid = transState.getUtid();
@@ -132,7 +129,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
 
             tmAbortIAddr= 0;
             tmAbortArg  = 0;
-            tmNumWrites = numWrites;
+            tmLat       = numWrites;
 
             TMContext* oldTMContext = tmContext;
             if(isInTM()) {
