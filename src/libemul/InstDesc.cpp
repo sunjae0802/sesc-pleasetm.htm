@@ -2353,7 +2353,7 @@ void handleTMBeginFallbackRet(InstDesc *inst, ThreadContext *context) {
 }
 void handleTMEndFallbackCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
-        addRetHandler(context, &handleTMEndFallbackRet);
+        funcDataInitCall(context, FUNC_TM_END_FALLBACK, &handleTMEndFallbackRet);
     }
 }
 void handleTMEndFallbackRet(InstDesc *inst, ThreadContext *context) {
