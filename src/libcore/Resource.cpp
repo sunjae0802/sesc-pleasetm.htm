@@ -693,6 +693,8 @@ void Resource::traceEvent(DInst *dinst) {
     // XXX
     context->incNRetiredInsts();
 
+    context->markRetire(dinst);
+
     for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
             i_funcData != dinst->funcData.end(); ++i_funcData) {
         char eventType = '?';

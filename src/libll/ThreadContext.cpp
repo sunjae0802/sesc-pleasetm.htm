@@ -24,14 +24,110 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "ThreadContext.h"
 #include "libemul/FileSys.h"
 #include "libcore/ProcessId.h"
+#include "libcore/DInst.h"
 
 ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
+TimeTrackerStats ThreadContext::timeTrackerStats;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
 size_t ThreadContext::numThreads = 0;
+
+
+void TimeTracker::calculate(TimeTrackerStats* p_stats) {
+    for(auto& region: allRegions) {
+        if(region.startPC == 0) {
+            fail("Unclosed region");
+        }
+        p_stats->totalLengths += region.endAt - region.startAt;
+        for(auto& attempt: region.committed) {
+            p_stats->totalCommitted  += attempt.endAt - attempt.startAt;
+        }
+        for(auto& attempt: region.aborted) {
+            p_stats->totalAborted    += attempt.endAt - attempt.startAt;
+        }
+        if(region.usedCS) {
+            if(region.currentCS.acquiredAt == 0 || region.currentCS.releasedAt == 0) {
+                fail("Unclosed CS[%lld]", region.startAt);
+            }
+            p_stats->totalMutexWait  += region.currentCS.acquiredAt - region.currentCS.requestedAt;
+            p_stats->totalMutex  += region.currentCS.releasedAt - region.currentCS.acquiredAt;
+        }
+    }
+}
+void AtomicRegionStats::clear() {
+    startPC = startAt = endAt = 0;
+    usedCS = false;
+    currentTM.clear();
+    committed.clear();
+    aborted.clear();
+    currentCS.clear();
+}
+void TimeTrackerStats::print() {
+    uint64_t totalOther = totalLengths -
+        (totalCommitted + totalAborted + totalMutexWait + totalMutex);
+    std::cout << "Committed: " << totalCommitted << "\n";
+    std::cout << "Aborted: " << totalAborted << "\n";
+    std::cout << "WaitForMutex: " << totalMutexWait << "\n";
+    std::cout << "InMutex: " << totalMutex << "\n";
+    std::cout << "Other: " << totalOther << "\n";
+}
+void TimeTracker::markRetire(DInst* dinst) {
+    const Instruction* inst = dinst->getInst();
+
+    if(inst->isTM()) {
+        if(dinst->tmAbortCompleteOp()) {
+            TMAttemptStats& attempt = currentRegion.currentTM;
+
+            attempt.endAt = globalClock;
+            currentRegion.aborted.push_back(attempt);
+            attempt.startAt = 0;
+            attempt.endAt = 0;
+        } else if(dinst->tmBeginOp()) {
+            currentRegion.currentTM.startAt = globalClock;
+        } else if(dinst->tmCommitOp()) {
+            TMAttemptStats& attempt = currentRegion.currentTM;
+
+            attempt.endAt = globalClock;
+            currentRegion.committed.push_back(attempt);
+            attempt.startAt = 0;
+            attempt.endAt = 0;
+        }
+    } // end tmDInst
+
+    for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
+            i_funcData != dinst->funcData.end(); ++i_funcData) {
+        switch(i_funcData->funcName) {
+            case FUNC_TM_BEGIN:
+                currentRegion = AtomicRegionStats(dinst->getInst()->getAddr());
+                currentRegion.startAt = globalClock;
+                break;
+            case FUNC_TM_END:
+                currentRegion.endAt = globalClock;
+                allRegions.push_back(currentRegion);
+                currentRegion.clear();
+                break;
+            case FUNC_TM_BEGIN_FALLBACK:
+                if(i_funcData->isCall) {
+                    currentRegion.usedCS = true;
+                    currentRegion.currentCS.requestedAt = globalClock;
+                } else {
+                    currentRegion.currentCS.acquiredAt = globalClock;
+                }
+                break;
+            case FUNC_TM_END_FALLBACK:
+                if(i_funcData->isCall) {
+                    currentRegion.currentCS.releasedAt = globalClock;
+                }
+                break;
+            default:
+                // Do nothing
+                break;
+        } // end switch(funcName)
+    } // end foreach funcBoundaryData
+}
 
 void ThreadContext::initialize(bool child) {
     initTrace();
@@ -66,8 +162,16 @@ void ThreadContext::initialize(bool child) {
 
 void ThreadContext::cleanup() {
 	getMainThreadContext()->decParallel(pid);
+    timeTracker.calculate(&(ThreadContext::timeTrackerStats));
+	if(getPid()==getMainThreadContext()->getPid()) {
+        ThreadContext::timeTrackerStats.print();
+    }
     closeTrace();
 }
+void ThreadContext::markRetire(DInst* dinst) {
+    timeTracker.markRetire(dinst);
+}
+
 #if defined(TM)
 TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     TMBCStatus status = tmCohManager->begin(inst, this);

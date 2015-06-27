@@ -48,6 +48,68 @@ struct FuncBoundaryData {
     uint32_t arg1;
 };
 
+struct TMAttemptStats {
+    TMAttemptStats() { clear(); }
+    void clear() {
+        startAt = 0;
+        endAt   = 0;
+    }
+    Time_t      startAt;
+    Time_t      endAt;
+};
+struct CSRegionStats {
+    CSRegionStats() { clear(); }
+    void clear() {
+        requestedAt = 0;
+        acquiredAt  = 0;
+        releasedAt  = 0;
+    }
+    Time_t      requestedAt;
+    Time_t      acquiredAt;
+    Time_t      releasedAt;
+};
+
+struct AtomicRegionStats {
+    AtomicRegionStats() { clear(); }
+    AtomicRegionStats(VAddr pc) {
+        clear();
+        startPC = pc;
+    }
+
+    void clear();
+    typedef std::vector<TMAttemptStats>   TMAttempts;
+
+    VAddr               startPC;
+    Time_t              startAt;
+    Time_t              endAt;
+    TMAttemptStats      currentTM;
+    TMAttempts          committed;
+    TMAttempts          aborted;
+    bool                usedCS;
+    CSRegionStats       currentCS;
+};
+
+struct TimeTrackerStats {
+    TimeTrackerStats(): totalLengths(0), totalCommitted(0), totalAborted(0),
+        totalMutexWait(0), totalMutex(0)
+    {}
+    void print();
+    uint64_t totalLengths;
+    uint64_t totalCommitted;
+    uint64_t totalAborted;
+    uint64_t totalMutexWait;
+    uint64_t totalMutex;
+};
+
+class TimeTracker {
+public:
+    void markRetire(DInst* dinst);
+    void calculate(TimeTrackerStats* p_stats);
+private:
+    AtomicRegionStats               currentRegion;
+    std::vector<AtomicRegionStats>  allRegions;
+};
+
 // Use this define to debug the simulated application
 // It enables call stack tracking
 //#define DEBUG_BENCH
@@ -59,7 +121,9 @@ public:
     static bool simDone;
 	static int64_t finalSkip;
     static Time_t resetTS;
+    static TimeTrackerStats timeTrackerStats;
     std::vector<FuncBoundaryData> funcData;
+    TimeTracker timeTracker;
 private:
     void initialize(bool child);
 	void cleanup();
@@ -125,6 +189,7 @@ private:
     std::vector<std::pair<VAddr, retHandler_t> > retHandlersSaved;
 
 public:
+    void markRetire(DInst* dinst);
     void saveCallRetStack() {
         retHandlersSaved = retHandlers;
     }
