@@ -482,6 +482,9 @@ public:
     ssize_t readMemString(VAddr stringVAddr, size_t maxSize, char *dstStr);
     template<class T>
     inline void readMemTM(VAddr addr, T oval, T* p_val) {
+        if(tmContext == NULL) {
+            fail("tmContext is NULL");
+        }
         tmContext->cacheAccess<T>(addr, oval, p_val);
     }
     template<class T>
@@ -498,10 +501,16 @@ public:
 //        fail("Uninitialized read found\n");
 
 
+        if(addressSpace->canRead(addr) == false) {
+            fail("%d reading from non-readable page\n", pid);
+        }
         return addressSpace->read<T>(addr);
     }
     template<class T>
     inline void writeMemTM(VAddr addr, const T &val) {
+        if(tmContext == NULL) {
+            fail("tmContext is NULL");
+        }
         tmContext->cacheWrite<T>(addr, val);
     }
     template<class T>
@@ -526,6 +535,9 @@ public:
 //    for(size_t i=0;i<(sizeof(T)+MemState::Granularity-1)/MemState::Granularity;i++)
 //      getState(addr+i*MemState::Granularity).st=1;
 
+        if(addressSpace->canWrite(addr) == false) {
+            fail("%d writing to non-writeable page\n", pid);
+        }
         addressSpace->write<T>(addr,val);
     }
 #if (defined DEBUG_BENCH)

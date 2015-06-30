@@ -507,6 +507,12 @@ public:
         I(canExec(addr,sizeof(T)));
         return pageTable[getPageNum(addr)].fetch<T>(addr);
     }
+    bool canRead(VAddr addr) {
+        return pageTable[getPageNum(addr)].canRead();
+    }
+    bool canWrite(VAddr addr) {
+        return pageTable[getPageNum(addr)].canWrite();
+    }
 //  template<class T>
 //  inline T readMemRaw(VAddr addr){
 //    size_t pageNum=getPageNum(addr);

@@ -569,12 +569,14 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     uint32_t rv = 0;
 
     if(context->isTMAborting()) {
+        // This is a TM recovering from abort
         context->completeAbort(inst);
         rv = context->getAbortRV(TMBC_IGNORE);
 
         // And "return" from TM Begin
         context->updIAddr(inst->aupdate,1);
     } else {
+        // This is a regular TM begin instruction
         TMBCStatus status = context->userBeginTM(inst, arg);
 
         // Move instruction pointer to next instruction
