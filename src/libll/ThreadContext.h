@@ -48,66 +48,85 @@ struct FuncBoundaryData {
     uint32_t arg1;
 };
 
-struct TMAttemptStats {
-    TMAttemptStats() { clear(); }
-    void clear() {
-        startAt = 0;
-        endAt   = 0;
-    }
-    Time_t      startAt;
-    Time_t      endAt;
-};
-struct CSRegionStats {
-    CSRegionStats() { clear(); }
-    void clear() {
-        requestedAt = 0;
-        acquiredAt  = 0;
-        releasedAt  = 0;
-    }
-    Time_t      requestedAt;
-    Time_t      acquiredAt;
-    Time_t      releasedAt;
-};
-
-struct AtomicRegionStats {
-    AtomicRegionStats() { clear(); }
-    AtomicRegionStats(VAddr pc) {
-        clear();
-        startPC = pc;
-    }
-
-    void clear();
-    typedef std::vector<TMAttemptStats>   TMAttempts;
-
-    VAddr               startPC;
-    Time_t              startAt;
-    Time_t              endAt;
-    TMAttemptStats      currentTM;
-    TMAttempts          committed;
-    TMAttempts          aborted;
-    bool                usedCS;
-    CSRegionStats       currentCS;
-};
-
 struct TimeTrackerStats {
     TimeTrackerStats(): totalLengths(0), totalCommitted(0), totalAborted(0),
-        totalMutexWait(0), totalMutex(0)
+        totalWait(0), totalMutexWait(0), totalMutex(0)
     {}
-    void print();
+    void print() const;
+    void sum(const TimeTrackerStats& other);
     uint64_t totalLengths;
     uint64_t totalCommitted;
     uint64_t totalAborted;
+    uint64_t totalWait;
     uint64_t totalMutexWait;
     uint64_t totalMutex;
 };
 
-class TimeTracker {
+// Represents a subregion within an AtomicRegion
+class AtomicSubregion {
 public:
-    void markRetire(DInst* dinst);
+    enum SubregionType {
+        SR_INVALID,
+        SR_WAIT,
+        SR_TRANSACTION,
+        SR_CRITICAL_SECTION
+    };
+    AtomicSubregion(enum SubregionType t, Time_t s):
+            type(t), startAt(s), endAt(0) {}
+    virtual ~AtomicSubregion() {}
+
+    void markEnd(Time_t e) {
+        endAt = e;
+    }
+    enum SubregionType type;
+    Time_t      startAt;
+    Time_t      endAt;
+};
+
+class TMSubregion: public AtomicSubregion {
+public:
+    TMSubregion(Time_t s):
+            AtomicSubregion(SR_TRANSACTION, s), aborted(false) {}
+    void markAborted(Time_t at) {
+        aborted = true;
+        markEnd(at);
+    }
+    bool        aborted;
+};
+
+class CSSubregion: public AtomicSubregion {
+public:
+    CSSubregion(Time_t s):
+            AtomicSubregion(SR_CRITICAL_SECTION, s), acquiredAt(0) {}
+    void markAcquired(Time_t at) {
+        acquiredAt = at;
+    }
+    Time_t      acquiredAt;
+};
+
+// Used to track timing statistics of atomic regions (between tm_begin and tm_end).
+// All timing is done at retire-time of DInsts.
+struct AtomicRegionStats {
+    AtomicRegionStats() { clear(); }
+    void init(VAddr pc, Time_t at) {
+        clear();
+        startPC = pc;
+        startAt = at;
+    }
+    void markEnd(Time_t at) {
+        endAt = at;
+    }
+    void clear();
+    void markRetireFuncBoundary(DInst* dinst, FuncBoundaryData& funcData);
+    void markRetireTM(DInst* dinst);
     void calculate(TimeTrackerStats* p_stats);
-private:
-    AtomicRegionStats               currentRegion;
-    std::vector<AtomicRegionStats>  allRegions;
+    typedef std::vector<AtomicSubregion*> Subregions;
+
+    VAddr               startPC;
+    Time_t              startAt;
+    Time_t              endAt;
+    AtomicSubregion*    p_current;
+    Subregions          subregions;
 };
 
 // Use this define to debug the simulated application
@@ -121,9 +140,11 @@ public:
     static bool simDone;
 	static int64_t finalSkip;
     static Time_t resetTS;
-    static TimeTrackerStats timeTrackerStats;
     std::vector<FuncBoundaryData> funcData;
-    TimeTracker timeTracker;
+
+    AtomicRegionStats       currentRegion;
+    static TimeTrackerStats timeTrackerStats;
+    TimeTrackerStats        myTimeStats;
 private:
     void initialize(bool child);
 	void cleanup();

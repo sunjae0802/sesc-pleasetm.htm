@@ -35,100 +35,6 @@ int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
 size_t ThreadContext::numThreads = 0;
 
-
-void TimeTracker::calculate(TimeTrackerStats* p_stats) {
-    for(auto& region: allRegions) {
-        if(region.startPC == 0) {
-            fail("Unclosed region");
-        }
-        p_stats->totalLengths += region.endAt - region.startAt;
-        for(auto& attempt: region.committed) {
-            p_stats->totalCommitted  += attempt.endAt - attempt.startAt;
-        }
-        for(auto& attempt: region.aborted) {
-            p_stats->totalAborted    += attempt.endAt - attempt.startAt;
-        }
-        if(region.usedCS) {
-            if(region.currentCS.acquiredAt == 0 || region.currentCS.releasedAt == 0) {
-                fail("Unclosed CS[%lld]", region.startAt);
-            }
-            p_stats->totalMutexWait  += region.currentCS.acquiredAt - region.currentCS.requestedAt;
-            p_stats->totalMutex  += region.currentCS.releasedAt - region.currentCS.acquiredAt;
-        }
-    }
-}
-void AtomicRegionStats::clear() {
-    startPC = startAt = endAt = 0;
-    usedCS = false;
-    currentTM.clear();
-    committed.clear();
-    aborted.clear();
-    currentCS.clear();
-}
-void TimeTrackerStats::print() {
-    uint64_t totalOther = totalLengths -
-        (totalCommitted + totalAborted + totalMutexWait + totalMutex);
-    std::cout << "Committed: " << totalCommitted << "\n";
-    std::cout << "Aborted: " << totalAborted << "\n";
-    std::cout << "WaitForMutex: " << totalMutexWait << "\n";
-    std::cout << "InMutex: " << totalMutex << "\n";
-    std::cout << "Other: " << totalOther << "\n";
-}
-void TimeTracker::markRetire(DInst* dinst) {
-    const Instruction* inst = dinst->getInst();
-
-    if(inst->isTM()) {
-        if(dinst->tmAbortCompleteOp()) {
-            TMAttemptStats& attempt = currentRegion.currentTM;
-
-            attempt.endAt = globalClock;
-            currentRegion.aborted.push_back(attempt);
-            attempt.startAt = 0;
-            attempt.endAt = 0;
-        } else if(dinst->tmBeginOp()) {
-            currentRegion.currentTM.startAt = globalClock;
-        } else if(dinst->tmCommitOp()) {
-            TMAttemptStats& attempt = currentRegion.currentTM;
-
-            attempt.endAt = globalClock;
-            currentRegion.committed.push_back(attempt);
-            attempt.startAt = 0;
-            attempt.endAt = 0;
-        }
-    } // end tmDInst
-
-    for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
-            i_funcData != dinst->funcData.end(); ++i_funcData) {
-        switch(i_funcData->funcName) {
-            case FUNC_TM_BEGIN:
-                currentRegion = AtomicRegionStats(dinst->getInst()->getAddr());
-                currentRegion.startAt = globalClock;
-                break;
-            case FUNC_TM_END:
-                currentRegion.endAt = globalClock;
-                allRegions.push_back(currentRegion);
-                currentRegion.clear();
-                break;
-            case FUNC_TM_BEGIN_FALLBACK:
-                if(i_funcData->isCall) {
-                    currentRegion.usedCS = true;
-                    currentRegion.currentCS.requestedAt = globalClock;
-                } else {
-                    currentRegion.currentCS.acquiredAt = globalClock;
-                }
-                break;
-            case FUNC_TM_END_FALLBACK:
-                if(i_funcData->isCall) {
-                    currentRegion.currentCS.releasedAt = globalClock;
-                }
-                break;
-            default:
-                // Do nothing
-                break;
-        } // end switch(funcName)
-    } // end foreach funcBoundaryData
-}
-
 void ThreadContext::initialize(bool child) {
     initTrace();
 
@@ -162,14 +68,12 @@ void ThreadContext::initialize(bool child) {
 
 void ThreadContext::cleanup() {
 	getMainThreadContext()->decParallel(pid);
-    timeTracker.calculate(&(ThreadContext::timeTrackerStats));
+    ThreadContext::timeTrackerStats.sum(myTimeStats);
+
 	if(getPid()==getMainThreadContext()->getPid()) {
         ThreadContext::timeTrackerStats.print();
     }
     closeTrace();
-}
-void ThreadContext::markRetire(DInst* dinst) {
-    timeTracker.markRetire(dinst);
 }
 
 #if defined(TM)
@@ -849,4 +753,154 @@ void ThreadContext::dumpCallStack(void) {
 void ThreadContext::clearCallStack(void) {
     printf("Clearing call stack for %d\n",pid);
     callStack.clear();
+}
+
+/// Keep track of statistics for each retired DInst.
+void ThreadContext::markRetire(DInst* dinst) {
+    const Instruction* inst = dinst->getInst();
+
+    if(inst->isTM()) {
+        currentRegion.markRetireTM(dinst);
+    }
+
+    // Track function boundaries, by for example initializing and ending atomic regions.
+    for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
+            i_funcData != dinst->funcData.end(); ++i_funcData) {
+        switch(i_funcData->funcName) {
+            case FUNC_TM_BEGIN:
+                currentRegion.init(dinst->getInst()->getAddr(), globalClock);
+                break;
+            case FUNC_TM_END:
+                currentRegion.markEnd(globalClock);
+                currentRegion.calculate(&myTimeStats);
+                currentRegion.clear();
+                break;
+            default:
+                currentRegion.markRetireFuncBoundary(dinst, *i_funcData);
+                break;
+        } // end switch(funcName)
+    } // end foreach funcBoundaryData
+}
+
+void TimeTrackerStats::print() const {
+    uint64_t totalOther = totalLengths -
+        (totalCommitted + totalAborted + totalWait
+            + totalMutexWait + totalMutex);
+    std::cout << "Committed: " << totalCommitted << "\n";
+    std::cout << "Aborted: " << totalAborted << "\n";
+    std::cout << "WaitForMutex: " << totalMutexWait << "\n";
+    std::cout << "InMutex: " << totalMutex << "\n";
+    std::cout << "Wait: " << totalWait << "\n";
+    std::cout << "Other: " << totalOther << "\n";
+}
+
+/// Add other to this statistics structure
+void TimeTrackerStats::sum(const TimeTrackerStats& other) {
+    totalLengths    += other.totalLengths;
+    totalCommitted  += other.totalCommitted;
+    totalAborted    += other.totalAborted;
+    totalWait       += other.totalWait;
+    totalMutexWait  += other.totalMutexWait;
+    totalMutex      += other.totalMutex;
+}
+
+/// If the DInst is at a function boundary, update statistics
+void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, FuncBoundaryData& funcData) {
+    switch(funcData.funcName) {
+        case FUNC_TM_BEGIN_FALLBACK:
+            if(funcData.isCall) {
+                p_current = new CSSubregion(globalClock);
+            } else {
+                CSSubregion* p_cs = dynamic_cast<CSSubregion*>(p_current);
+                p_cs->markAcquired(globalClock);
+            }
+            break;
+        case FUNC_TM_END_FALLBACK:
+            if(funcData.isCall) {
+                p_current->markEnd(globalClock);
+                subregions.push_back(p_current);
+                p_current = NULL;
+            }
+            break;
+        case FUNC_TM_WAIT:
+            if(funcData.isCall) {
+                p_current = new AtomicSubregion(AtomicSubregion::SR_WAIT, globalClock);
+            } else {
+                p_current->markEnd(globalClock);
+                subregions.push_back(p_current);
+                p_current = NULL;
+            }
+            break;
+        default:
+            // Do nothing
+            break;
+    } // end switch(funcName)
+}
+
+/// If the DInst is a TM instruction, update statistics
+void AtomicRegionStats::markRetireTM(DInst* dinst) {
+    if(dinst->tmAbortCompleteOp()) {
+        TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_current);
+        p_tm->markAborted(globalClock);
+        subregions.push_back(p_current);
+        p_current = NULL;
+    } else if(dinst->tmBeginOp()) {
+        p_current = new TMSubregion(globalClock);
+    } else if(dinst->tmCommitOp()) {
+        p_current->markEnd(globalClock);
+        subregions.push_back(p_current);
+        p_current = NULL;
+    }
+}
+
+/// Add this region's statistics to p_stats.
+void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
+    // Make sure the stats are valid
+    if(startPC == 0) {
+        fail("Un-initialized region");
+    }
+    if(startAt == 0 || endAt == 0) {
+        fail("Unclosed region");
+    }
+
+    // Compute total length
+    p_stats->totalLengths += endAt - startAt;
+
+    // Compute subregions
+    Subregions::iterator i_subregion;
+    for(i_subregion = subregions.begin(); i_subregion != subregions.end(); ++i_subregion) {
+        AtomicSubregion* p_subregion = *i_subregion;
+        switch(p_subregion->type) {
+            case AtomicSubregion::SR_TRANSACTION: {
+                TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_subregion);
+                if(p_tm->aborted) {
+                    p_stats->totalAborted   += p_tm->endAt - p_tm->startAt;
+                } else {
+                    p_stats->totalCommitted += p_tm->endAt - p_tm->startAt;
+                }
+                break;
+            }
+            case AtomicSubregion::SR_WAIT: {
+                p_stats->totalWait +=  p_subregion->endAt - p_subregion->startAt;
+                break;
+            }
+            case AtomicSubregion::SR_CRITICAL_SECTION: {
+                CSSubregion* p_cs = dynamic_cast<CSSubregion*>(p_subregion);
+                p_stats->totalMutexWait += p_cs->acquiredAt - p_cs->startAt;
+                p_stats->totalMutex     += p_cs->endAt - p_cs->acquiredAt;
+                break;
+            }
+            default:
+                fail("Unhandled Subregion type\n");
+        }
+    } // end foreach subregion
+}
+void AtomicRegionStats::clear() {
+    startPC = startAt = endAt = 0;
+    p_current = NULL;
+    while(subregions.size() > 0) {
+        AtomicSubregion* p_subregion = subregions.back();
+        subregions.pop_back();
+        delete p_subregion;
+    }
 }
