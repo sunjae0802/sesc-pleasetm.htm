@@ -126,6 +126,7 @@ public:
     VAddr       tmCallsite;
     VAddr       tmAbortIAddr;
     TransState  tmState;
+    uint32_t    tmArg;
     uint32_t    tmAbortArg;
     size_t      tmLat;
 private:

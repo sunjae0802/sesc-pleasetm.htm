@@ -272,6 +272,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);
     i->tmCallsite   = 0;
+    i->tmArg        = 0;
     i->tmAbortIAddr = 0;
     i->tmAbortArg   = 0;
     i->tmState      = TransState(INVALID_PID);
@@ -280,6 +281,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
         i->tmCallsite   = context->getTMCallsite();
+        i->tmArg        = context->getTMArg();
         i->tmBeginSubtype   = context->getTMBeginSubtype();
         context->clearTMBeginSubtype();
         if(i->tmAbortCompleteOp()) {
