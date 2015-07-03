@@ -10,8 +10,9 @@ enum TMAbortType_e {
     TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
     TM_ATYPE_SYSCALL            = 2,    // Aborts due to syscall (external abort)
     TM_ATYPE_SETCONFLICT        = 3,    // Aborts due to a set conflict (capacity)
-    TM_ATYPE_FALLBACK           = 254,
-    TM_ATYPE_NONTM              = 255
+    TM_ATYPE_NONTM              = 4,    // Aborts due to conflict by a non-transaction
+    TM_ATYPE_FALLBACK           = 254,  // Aborts due to an active fallback
+    TM_ATYPE_INVALID            = 0xDEAD
 };
 
 static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
@@ -19,12 +20,12 @@ static const uint64_t INVALID_UTID = -1;
 
 struct TMAbortState {
     TMAbortState(): aborterPid(-1), aborterUtid(INVALID_UTID),
-                abortByAddr(0), abortType(TM_ATYPE_DEFAULT) {}
+                abortByAddr(0), abortType(TM_ATYPE_INVALID) {}
     void clear() {
         aborterPid  = -1;
         aborterUtid = INVALID_UTID;
         abortByAddr = 0;
-        abortType   = TM_ATYPE_DEFAULT;
+        abortType   = TM_ATYPE_INVALID;
     }
     void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e type) {
         aborterPid  = byPid;

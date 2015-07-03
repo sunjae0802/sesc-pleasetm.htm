@@ -277,6 +277,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->tmAbortArg   = 0;
     i->tmState      = TransState(INVALID_PID);
     i->tmLat        = 0;
+    i->tmBeginSubtype= TM_BEGIN_INVALID;
 
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
