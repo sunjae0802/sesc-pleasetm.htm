@@ -1511,12 +1511,6 @@ public:
         template<RegName DTyp,RegName S1Typ,RegName S2Typ,NextTyp NTyp>
         static InstDesc *emul(InstDesc *inst, ThreadContext *context) {
             preExec(inst,context);
-#if (defined TM)
-            if(markedForAbort(inst, context)) {
-                context->abortTransaction(inst);
-                return inst;
-            }
-#endif
             Taddr_t addr=AFunc::eval(getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal1,typename AFunc::TArg1>(inst,context),
                                      getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal2,typename AFunc::TArg2>(inst,context));
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
@@ -1583,10 +1577,10 @@ public:
 #endif
             }
 #if (defined TM)
-//            if(markedForAbort(inst, context)) {
-//                context->abortTransaction(inst);
-//                return inst;
-            if(tmRWStatus == TMRW_NACKED) {
+            if(tmRWStatus == TMRW_ABORT) {
+                context->abortTransaction(inst);
+                return inst;
+            } else if(tmRWStatus == TMRW_NACKED) {
                 context->startRetryTimer();
                 return inst;
             }
@@ -1601,12 +1595,6 @@ public:
         template<RegName DTyp,RegName S1Typ,RegName S2Typ,NextTyp NTyp>
         static InstDesc *emul(InstDesc *inst, ThreadContext *context) {
             preExec(inst,context);
-#if (defined TM)
-            if(markedForAbort(inst, context)) {
-                context->abortTransaction(inst);
-                return inst;
-            }
-#endif
             Taddr_t addr=AFunc::eval(getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal1,typename AFunc::TArg1>(inst,context),
                                      getSrc<DTyp,S1Typ,S2Typ,AFunc::SVal2,typename AFunc::TArg2>(inst,context));
 // 	if((addr<0x7fffdbe4+4)&&(addr+sizeof(MemT)>0x7fffdbe4))
@@ -1667,10 +1655,10 @@ public:
                     setReg<Tregv_t,DTyp>(context,inst->regDst,1);
             }
 #if (defined TM)
-//            if(markedForAbort(inst, context)) {
-//                context->abortTransaction(inst);
-//                return inst;
-            if(tmRWStatus == TMRW_NACKED) {
+            if(tmRWStatus == TMRW_ABORT) {
+                context->abortTransaction(inst);
+                return inst;
+            } else if(tmRWStatus == TMRW_NACKED) {
                 context->startRetryTimer();
                 return inst;
             }
