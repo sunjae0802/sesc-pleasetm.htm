@@ -109,7 +109,7 @@ void Processor::advanceClock()
 {
 #if (defined CHECK_STALL)
     if((globalClock-lastFin)>100000000 && !ThreadContext::ff) {
-        printf("Cache access stalled at %lld (last %lld)\n", globalClock, lastFin);
+        printf("[%d] Cache access stalled at %lld (last %lld)\n", IFID.getPid(), globalClock, lastFin);
         fflush(stdout);
         lastFin = globalClock;
     }   
