@@ -253,21 +253,19 @@ void FUMemory::traceTM(DInst* dinst)
             out<<pid<<" T"
                         <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
                         <<" "<<dinst->tmState.getUtid()
-                        <<" "<< (context->getNRetiredInsts() + 1)
-                        <<" "<< globalClock << std::endl;
-        } else if(dinst->getTMBeginSubtype() == TM_BEGIN_NACKED) {
-            out<<pid<<" N"
-                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                        <<" 0"
+                        <<" "<<dinst->tmArg
                         <<" "<< (context->getNRetiredInsts() + 1)
                         <<" "<< globalClock << std::endl;
         }
     } else if(dinst->tmCommitOp()) {
-        out<<pid<<" C"
-                    <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                    <<" "<<(100-dinst->tmLat)
-                    <<" "<< (context->getNRetiredInsts() + 1)
-                    <<" "<< globalClock << std::endl;
+        if(dinst->getTMCommitSubtype() == TM_COMMIT_REGULAR) {
+            out<<pid<<" C"
+                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
+                        <<" "<<(100-dinst->tmLat)
+                        <<" "<<dinst->tmArg
+                        <<" "<< (context->getNRetiredInsts() + 1)
+                        <<" "<< globalClock << std::endl;
+        }
     }
 }
 

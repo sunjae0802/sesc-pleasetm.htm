@@ -278,6 +278,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->tmState      = TransState(INVALID_PID);
     i->tmLat        = 0;
     i->tmBeginSubtype= TM_BEGIN_INVALID;
+    i->tmCommitSubtype=TM_COMMIT_INVALID;
 
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
@@ -285,6 +286,8 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
         i->tmArg        = context->getTMArg();
         i->tmBeginSubtype   = context->getTMBeginSubtype();
         context->clearTMBeginSubtype();
+        i->tmCommitSubtype  = context->getTMCommitSubtype();
+        context->clearTMCommitSubtype();
         if(i->tmAbortCompleteOp()) {
             i->tmAbortIAddr = context->getTMAbortIAddr();
             i->tmAbortArg   = context->getTMAbortArg();

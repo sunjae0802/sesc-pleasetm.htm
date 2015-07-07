@@ -23,6 +23,11 @@ enum TMBeginSubtype {
     TM_BEGIN_NACKED,
     TM_COMPLETE_ABORT
 };
+enum TMCommitSubtype {
+    TM_COMMIT_INVALID,
+    TM_COMMIT_REGULAR,
+    TM_COMMIT_ABORTED,
+};
 
 // Contains information for instructions that are at function boundaries about
 // the function itself. Entry point instructions (calls) contain arguments and
@@ -176,6 +181,7 @@ private:
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
     TMBeginSubtype tmBeginSubtype;
+    TMCommitSubtype tmCommitSubtype;
 #endif
 
     // Memory Mapping
@@ -252,6 +258,8 @@ public:
 
     TMBeginSubtype getTMBeginSubtype() const { return tmBeginSubtype; }
     void clearTMBeginSubtype() { tmBeginSubtype = TM_BEGIN_INVALID; }
+    TMCommitSubtype getTMCommitSubtype() const { return tmCommitSubtype; }
+    void clearTMCommitSubtype() { tmCommitSubtype = TM_COMMIT_INVALID; }
 
     // TM getters
     uint32_t getTMArg()       const { return tmArg; }

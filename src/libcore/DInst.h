@@ -120,6 +120,7 @@ private:
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
     TMBeginSubtype tmBeginSubtype;
+    TMCommitSubtype tmCommitSubtype;
     bool tmAborted;
 public:
     std::vector<FuncBoundaryData> funcData;
@@ -436,6 +437,10 @@ public:
 
     bool tmCommitOp() const {
         return inst->getSubCode() == TMCommit && tmState.getState() == TM_INVALID;
+    }
+
+    TMCommitSubtype getTMCommitSubtype() const {
+        return tmCommitSubtype;
     }
 
     VAddr getVaddr() const {

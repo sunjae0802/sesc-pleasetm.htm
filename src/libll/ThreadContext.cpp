@@ -61,6 +61,7 @@ void ThreadContext::initialize(bool child) {
     tmCallsite  = 0;
     tmlibUserTid= -1;
     tmBeginSubtype=TM_BEGIN_INVALID;
+    tmCommitSubtype=TM_COMMIT_INVALID;
 #endif
     retireContext.nRetiredInsts =0;
     retireContext.nackStallStart= 0;
@@ -85,6 +86,7 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
             tmAbortIAddr= 0;
             tmAbortArg  = 0;
             tmBeginSubtype=TM_BEGIN_REGULAR;
+            tmCommitSubtype=TM_COMMIT_INVALID;
 
             uint64_t utid = transState.getUtid();
             tmContext   = new TMContext(this, inst, utid);
@@ -128,6 +130,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
         }
         case TMBC_ABORT: {
             // In the case of a Lazy model where we are forced to Abort
+            tmCommitSubtype=TM_COMMIT_ABORTED;
             abortTransaction(inst);
             break;
         }
@@ -138,6 +141,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
             tmAbortIAddr= 0;
             tmAbortArg  = 0;
             tmLat       = numWrites;
+            tmCommitSubtype=TM_COMMIT_REGULAR;
 
             TMContext* oldTMContext = tmContext;
             if(isInTM()) {
@@ -839,6 +843,8 @@ void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, FuncBoundaryData& f
 
 /// If the DInst is a TM instruction, update statistics
 void AtomicRegionStats::markRetireTM(DInst* dinst) {
+    Pid_t pid = dinst->context->getPid();
+
     if(dinst->tmAbortCompleteOp()) {
         TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_current);
         p_tm->markAborted(globalClock);
@@ -847,6 +853,9 @@ void AtomicRegionStats::markRetireTM(DInst* dinst) {
     } else if(dinst->tmBeginOp()) {
         p_current = new TMSubregion(globalClock);
     } else if(dinst->tmCommitOp()) {
+        if(p_current == NULL) {
+            fail("%d current is NULL when committing\n", pid);
+        }
         p_current->markEnd(globalClock);
         subregions.push_back(p_current);
         p_current = NULL;
