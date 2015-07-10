@@ -2235,25 +2235,19 @@ void handleLockCall(InstDesc *inst, ThreadContext *context) {
     if(context->isInTM()) { fail("calling lock in TM"); }
     if(ThreadContext::inMain) {
         funcDataInitCall(context, FUNC_PTHREAD_MUTEX_LOCK, &handleLockRet);
-        context->s_lockRA  = ra;
-        context->s_lockArg = arg;
     }
 }
 
 void handleLockRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         funcDataInitRet(context, FUNC_PTHREAD_MUTEX_LOCK);
-        context->s_lockRA  = 0;
-        context->s_lockArg = 0;
     }
-    context->incLockDepth();
 }
 
 void handleUnlockCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         funcDataInitCall(context, FUNC_PTHREAD_MUTEX_UNLOCK);
     }
-    context->decLockDepth();
 }
 
 // pthread_spin call/return
@@ -2264,8 +2258,6 @@ void handleSpinLockCall(InstDesc *inst, ThreadContext *context) {
     if(context->isInTM()) { fail("calling lock in TM"); }
     if(ThreadContext::inMain && !context->spinning) {
         funcDataInitCall(context, FUNC_PTHREAD_SPIN_LOCK, &handleSpinLockRet);
-        context->s_lockRA  = ra;
-        context->s_lockArg = arg;
     }
     context->spinning = true;
 }
@@ -2273,10 +2265,7 @@ void handleSpinLockCall(InstDesc *inst, ThreadContext *context) {
 void handleSpinLockRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         funcDataInitRet(context, FUNC_PTHREAD_SPIN_LOCK);
-        context->s_lockRA  = 0;
-        context->s_lockArg = 0;
     }
-    context->incLockDepth();
 }
 
 void handleSpinUnlockCall(InstDesc *inst, ThreadContext *context) {
@@ -2284,26 +2273,17 @@ void handleSpinUnlockCall(InstDesc *inst, ThreadContext *context) {
         funcDataInitCall(context, FUNC_PTHREAD_SPIN_UNLOCK);
     }
     context->spinning = false;
-    context->decLockDepth();
 }
 // pthread_barrier call/return
 void handleBarrierCall(InstDesc *inst, ThreadContext *context) {
-    uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-    uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-
     if(ThreadContext::inMain) {
         funcDataInitCall(context, FUNC_PTHREAD_BARRIER, &handleBarrierRet);
-
-        context->s_barrierRA  = ra;
-        context->s_barrierArg = arg;
     }
 }
 
 void handleBarrierRet(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         funcDataInitRet(context, FUNC_PTHREAD_BARRIER);
-        context->s_barrierRA  = 0;
-        context->s_barrierArg = 0;
     }
 }
 // main call/return

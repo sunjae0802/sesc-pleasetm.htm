@@ -154,8 +154,6 @@ public:
 private:
     void initialize(bool child);
 	void cleanup();
-    void initTrace();
-    void closeTrace();
     typedef std::vector<pointer> ContextVector;
     // Static variables
     static ContextVector pid2context;
@@ -716,46 +714,17 @@ public:
     void clearCallStack(void);
 
 public:
-    int32_t lockDepth;
+    // Event tracing
     bool spinning;
-    uint32_t s_lockRA;
-    uint32_t s_lockArg;
-    uint32_t s_barrierRA;
-    uint32_t s_barrierArg;
     static bool inMain;
-
     static size_t numThreads;
 
-    std::ofstream datafile;
-    std::ofstream& getDatafile() {
-        return getMainThreadContext()->datafile;
+    std::ofstream tracefile;
+    std::ofstream& getTracefile() {
+        return getMainThreadContext()->tracefile;
     }
     void traceFunction(DInst *dinst, FuncBoundaryData& funcData);
     void traceTM(DInst* dinst);
-
-    void incParallel(Pid_t wpid) {
-        std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Create"<<std::endl<<std::flush;
-        getDatafile()<<ThreadContext::numThreads<<" 0 "<<nRetiredInsts<<' '<<globalClock<<std::endl;
-        ThreadContext::numThreads++;
-    }
-
-    void decParallel(Pid_t wpid) {
-        ThreadContext::numThreads--;
-        std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Exit"<<std::endl<<std::flush;
-        getDatafile()<<ThreadContext::numThreads<<" 1 "<<nRetiredInsts<<' '<<globalClock<<std::endl;
-    }
-
-    bool parallel;
-
-    void incLockDepth() {
-        lockDepth++;
-    }
-    void decLockDepth() {
-        lockDepth--;
-    }
-    int32_t getLockDepth() const {
-        return lockDepth;
-    }
 };
 
 #endif // THREADCONTEXT_H

@@ -36,21 +36,17 @@ bool ThreadContext::inMain = false;
 size_t ThreadContext::numThreads = 0;
 
 void ThreadContext::initialize(bool child) {
-    initTrace();
-
-    getMainThreadContext()->incParallel(pid);
-
-    parallel = child;
-    if(child) {
-        getMainThreadContext()->parallel = true;
+    if(pid == getMainThreadContext()->getPid()) {
+        char filename[256];
+        sprintf(filename, "datafile.out");
+        tracefile.open(filename);
     }
 
+    getTracefile() << ThreadContext::numThreads << " 0 "
+            << nRetiredInsts << ' ' << globalClock << std::endl;
+    ThreadContext::numThreads++;
+
     nRetiredInsts = 0;
-    lockDepth = 0;
-    s_lockRA = 0;
-    s_lockArg = 0;
-    s_barrierRA = 0;
-    s_barrierArg = 0;
     spinning    = false;
 
 #if (defined TM)
@@ -67,13 +63,18 @@ void ThreadContext::initialize(bool child) {
 }
 
 void ThreadContext::cleanup() {
-	getMainThreadContext()->decParallel(pid);
+    ThreadContext::numThreads--;
+    getTracefile() << ThreadContext::numThreads << " 1 "
+                << nRetiredInsts << ' ' << globalClock << std::endl;
+
     ThreadContext::timeTrackerStats.sum(myTimeStats);
 
-	if(getPid()==getMainThreadContext()->getPid()) {
+	if(pid == getMainThreadContext()->getPid()) {
         ThreadContext::timeTrackerStats.print();
+        if(tracefile.is_open()) {
+            tracefile.close();
+        }
     }
-    closeTrace();
 }
 
 #if defined(TM)
@@ -259,20 +260,6 @@ void ThreadContext::completeFallback() {
 
 #endif
 
-void ThreadContext::initTrace() {
-    if(getPid()==getMainThreadContext()->getPid()) {
-        char filename[256];
-        sprintf(filename, "datafile.out");
-        datafile.open(filename);
-    }
-}
-void ThreadContext::closeTrace() {
-	if(getPid()==getMainThreadContext()->getPid()) {
-        if(datafile.is_open()) {
-            datafile.close();
-        }
-    }
-}
 ThreadContext *ThreadContext::getContext(Pid_t pid)
 {
     I(pid>=0);
@@ -790,6 +777,7 @@ void ThreadContext::markRetire(DInst* dinst) {
     } // end foreach funcBoundaryData
 }
 
+/// Trace function boundaries (call and return)
 void ThreadContext::traceFunction(DInst *dinst, FuncBoundaryData& funcData) {
     char eventType = '?';
     switch(funcData.funcName) {
@@ -834,7 +822,7 @@ void ThreadContext::traceFunction(DInst *dinst, FuncBoundaryData& funcData) {
             break;
     }
     if(eventType != '?') {
-        std::ofstream& out = getDatafile();
+        std::ofstream& out = getTracefile();
         out << pid << ' ' << eventType;
         if(funcData.isCall) {
             out << " 0x" << hex << funcData.ra
@@ -847,9 +835,9 @@ void ThreadContext::traceFunction(DInst *dinst, FuncBoundaryData& funcData) {
     }
 }
 
+/// Trace TM related instructions
 void ThreadContext::traceTM(DInst* dinst) {
     const Instruction *inst = dinst->getInst();
-    std::ofstream& out = getDatafile();
 
     if(dinst->tmAbortCompleteOp()) {
         // Get abort state
@@ -862,7 +850,7 @@ void ThreadContext::traceTM(DInst* dinst) {
             if(abortByAddr == 0) {
                 fail("Why abort addr NULL?\n");
             }
-            out<<pid<<" A"
+            getTracefile()<<pid<<" A"
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
@@ -873,7 +861,7 @@ void ThreadContext::traceTM(DInst* dinst) {
             if(abortByAddr == 0) {
                 fail("Why abort addr NULL?\n");
             }
-            out<<pid<<" a"
+            getTracefile()<<pid<<" a"
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
@@ -886,7 +874,7 @@ void ThreadContext::traceTM(DInst* dinst) {
             } else {
                 abortArg = dinst->tmState.getAbortBy();
             }
-            out<<pid<<" Z"
+            getTracefile()<<pid<<" Z"
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
                             <<" "<<abortType
                             <<" 0x"<<std::hex<<abortArg<<std::dec
@@ -895,7 +883,7 @@ void ThreadContext::traceTM(DInst* dinst) {
         }
     } else if(dinst->tmBeginOp()) {
         if(dinst->getTMBeginSubtype() == TM_BEGIN_REGULAR) {
-            out<<pid<<" T"
+            getTracefile()<<pid<<" T"
                         <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
                         <<" "<<dinst->tmState.getUtid()
                         <<" "<<dinst->tmArg
@@ -904,7 +892,7 @@ void ThreadContext::traceTM(DInst* dinst) {
         }
     } else if(dinst->tmCommitOp()) {
         if(dinst->getTMCommitSubtype() == TM_COMMIT_REGULAR) {
-            out<<pid<<" C"
+            getTracefile()<<pid<<" C"
                         <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
                         <<" "<<(100-dinst->tmLat)
                         <<" "<<dinst->tmArg
@@ -913,8 +901,6 @@ void ThreadContext::traceTM(DInst* dinst) {
         }
     }
 }
-
-
 
 void TimeTrackerStats::print() const {
     uint64_t totalOther = totalLengths -
