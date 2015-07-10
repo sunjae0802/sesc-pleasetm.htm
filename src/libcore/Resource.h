@@ -101,8 +101,6 @@ public:
     virtual void simTime(DInst *dinst) = 0;
     virtual void executed(DInst *dinst);
     virtual RetOutcome retire(DInst *dinst);
-
-    void traceEvent(DInst *dinst);
 };
 
 class GMemorySystem;

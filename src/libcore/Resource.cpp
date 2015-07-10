@@ -67,7 +67,7 @@ void Resource::executed(DInst *dinst)
 
 RetOutcome Resource::retire(DInst *dinst)
 {
-    traceEvent(dinst);
+    dinst->context->markRetire(dinst);
     cluster->retire(dinst);
     dinst->destroy();
     return Retired;
@@ -162,7 +162,7 @@ RetOutcome FUMemory::retire(DInst *dinst)
         }
         traceTM(dinst);
 
-        traceEvent(dinst);
+        dinst->context->markRetire(dinst);
         dinst->destroy();
     } else if(inst->isFence()) {
         if( inst->getSubCode() == iFetchOp ) {
@@ -177,19 +177,19 @@ RetOutcome FUMemory::retire(DInst *dinst)
                 return WaitForFence;
             else
                 r->storeSent();
-            traceEvent(dinst);
+            dinst->context->markRetire(dinst);
             DMemRequest::create(dinst, memorySystem, MemWrite);
         } else if( inst->getSubCode() == iMemFence ) {
             ((FUStore*)(getCluster()->getResource(iStore)))->doFence();
-            traceEvent(dinst);
+            dinst->context->markRetire(dinst);
             dinst->destroy();
         } else if( inst->getSubCode() == iAcquire ) {
-            traceEvent(dinst);
+            dinst->context->markRetire(dinst);
             // TODO: Consistency in LDST
             dinst->destroy();
         } else {
             I( inst->getSubCode() == iRelease );
-            traceEvent(dinst);
+            dinst->context->markRetire(dinst);
             // TODO: Consistency in LDST
             dinst->destroy();
         }
@@ -385,7 +385,7 @@ RetOutcome FULoad::retire(DInst *dinst)
     if (!dinst->isFake() && !dinst->isEarlyRecycled())
         freeLoads++;
 
-    traceEvent(dinst);
+    dinst->context->markRetire(dinst);
     dinst->destroy();
 
     // ldqRdWrEnergy->inc(); // Loads do not update fields at retire, just update pointers
@@ -517,7 +517,7 @@ RetOutcome FUStore::retire(DInst *dinst)
     else
         storeSent();
 
-    traceEvent(dinst);
+    dinst->context->markRetire(dinst);
     DMemRequest::create(dinst, memorySystem, MemWrite);
 
     doRetire(dinst);
@@ -638,7 +638,7 @@ RetOutcome FUBranch::retire(DInst *dinst)
 #endif
     }
 
-    traceEvent(dinst);
+    dinst->context->markRetire(dinst);
     cluster->retire(dinst);
     dinst->destroy();
 
@@ -675,79 +675,5 @@ void FUEvent::simTime(DInst *dinst)
     cb->call();
 
     cluster->executed(dinst);
-}
-
-#include <iostream>
-
-void Resource::traceEvent(DInst *dinst) {
-    if(ThreadContext::inMain == false) {
-        return;
-    }
-    const Instruction *inst = dinst->getInst();
-    ThreadContext *context = dinst->context;
-    GProcessor *gproc = getCluster()->getGProcessor();
-    std::ofstream& out = context->getDatafile();
-
-    // XXX
-    context->incNRetiredInsts();
-
-    context->markRetire(dinst);
-
-    for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
-            i_funcData != dinst->funcData.end(); ++i_funcData) {
-        char eventType = '?';
-        switch(i_funcData->funcName) {
-            case FUNC_PTHREAD_BARRIER:
-                if(i_funcData->isCall) {
-                    eventType = 'B';
-                } else {
-                    eventType = 'b';
-                }
-                break;
-            case FUNC_TM_BEGIN:
-                if(i_funcData->isCall) {
-                    eventType = 'S';
-                }
-                break;
-            case FUNC_TM_BEGIN_FALLBACK:
-                if(i_funcData->isCall) {
-                    eventType = 'F';
-                } else {
-                    eventType = 'E';
-                }
-                break;
-            case FUNC_TM_END_FALLBACK:
-                if(i_funcData->isCall == false) {
-                    eventType = 'f';
-                }
-                break;
-            case FUNC_TM_WAIT:
-                if(i_funcData->isCall) {
-                    eventType = 'V';
-                } else {
-                    eventType = 'v';
-                }
-                break;
-            case FUNC_TM_END:
-                if(i_funcData->isCall == false) {
-                    eventType = 's';
-                }
-                break;
-            default:
-                // Do nothing
-                break;
-        }
-        if(eventType != '?') {
-            out << context->getPid() << ' ' << eventType;
-            if(i_funcData->isCall) {
-                out << " 0x" << hex << i_funcData->ra
-                    << " 0x" << i_funcData->arg0
-                    << " 0x" << i_funcData->arg1 << dec;
-            } else {
-                out << " 0x" << hex << i_funcData->rv << dec;
-            }
-            out << ' ' << context->getNRetiredInsts() << ' ' << globalClock << '\n';
-        }
-    }
 }
 
