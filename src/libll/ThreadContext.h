@@ -754,6 +754,7 @@ public:
         return getMainThreadContext()->datafile;
     }
     void traceFunction(DInst *dinst, FuncBoundaryData& funcData);
+    void traceTM(DInst* dinst);
 
     void incParallel(Pid_t wpid) {
         std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Create"<<std::endl<<std::flush;

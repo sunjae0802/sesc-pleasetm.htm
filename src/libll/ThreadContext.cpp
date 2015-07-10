@@ -766,6 +766,7 @@ void ThreadContext::markRetire(DInst* dinst) {
     const Instruction* inst = dinst->getInst();
 
     if(inst->isTM()) {
+        traceTM(dinst);
         currentRegion.markRetireTM(dinst);
     }
 
@@ -846,6 +847,75 @@ void ThreadContext::traceFunction(DInst *dinst, FuncBoundaryData& funcData) {
         out << ' ' << getNRetiredInsts() << ' ' << globalClock << '\n';
     }
 }
+
+void ThreadContext::traceTM(DInst* dinst) {
+    const Instruction *inst = dinst->getInst();
+    std::ofstream& out = getDatafile();
+
+    if(dinst->tmAbortCompleteOp()) {
+        // Get abort state
+        Pid_t aborter = dinst->tmState.getAborterPid();
+        TMAbortType_e abortType = dinst->tmState.getAbortType();
+
+        // Trace this instruction
+        if(abortType == TM_ATYPE_DEFAULT) {
+            VAddr abortByAddr = dinst->tmState.getAbortBy();
+            if(abortByAddr == 0) {
+                fail("Why abort addr NULL?\n");
+            }
+            out<<pid<<" A"
+                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
+                            <<" "<<aborter
+                            <<" "<< (getNRetiredInsts() + 1)
+                            <<" "<< globalClock << std::endl;
+        } else if(abortType == TM_ATYPE_NONTM) {
+            VAddr abortByAddr = dinst->tmState.getAbortBy();
+            if(abortByAddr == 0) {
+                fail("Why abort addr NULL?\n");
+            }
+            out<<pid<<" a"
+                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
+                            <<" "<<aborter
+                            <<" "<< (getNRetiredInsts() + 1)
+                            <<" "<< globalClock << std::endl;
+        } else {
+            uint32_t abortArg = 0;
+            if(abortType == TM_ATYPE_USER) {
+                abortArg = dinst->tmAbortArg;
+            } else {
+                abortArg = dinst->tmState.getAbortBy();
+            }
+            out<<pid<<" Z"
+                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" "<<abortType
+                            <<" 0x"<<std::hex<<abortArg<<std::dec
+                            <<" "<< (getNRetiredInsts() + 1)
+                            <<" "<< globalClock << std::endl;
+        }
+    } else if(dinst->tmBeginOp()) {
+        if(dinst->getTMBeginSubtype() == TM_BEGIN_REGULAR) {
+            out<<pid<<" T"
+                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
+                        <<" "<<dinst->tmState.getUtid()
+                        <<" "<<dinst->tmArg
+                        <<" "<< (getNRetiredInsts() + 1)
+                        <<" "<< globalClock << std::endl;
+        }
+    } else if(dinst->tmCommitOp()) {
+        if(dinst->getTMCommitSubtype() == TM_COMMIT_REGULAR) {
+            out<<pid<<" C"
+                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
+                        <<" "<<(100-dinst->tmLat)
+                        <<" "<<dinst->tmArg
+                        <<" "<< (getNRetiredInsts() + 1)
+                        <<" "<< globalClock << std::endl;
+        }
+    }
+}
+
+
 
 void TimeTrackerStats::print() const {
     uint64_t totalOther = totalLengths -

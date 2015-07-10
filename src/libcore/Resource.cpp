@@ -160,7 +160,6 @@ RetOutcome FUMemory::retire(DInst *dinst)
             dinst->tmLat--;
             return WaitForFence;
         }
-        traceTM(dinst);
 
         dinst->context->markRetire(dinst);
         dinst->destroy();
@@ -197,78 +196,6 @@ RetOutcome FUMemory::retire(DInst *dinst)
 
     return Retired;
 }
-
-
-void FUMemory::traceTM(DInst* dinst)
-{
-    const Instruction *inst = dinst->getInst();
-    ThreadContext *context = dinst->context;
-    std::ofstream& out = context->getDatafile();
-    Pid_t pid = context->getPid();
-
-    if(dinst->tmAbortCompleteOp()) {
-        // Get abort state
-        Pid_t aborter = dinst->tmState.getAborterPid();
-        TMAbortType_e abortType = dinst->tmState.getAbortType();
-
-        // Trace this instruction
-        if(abortType == TM_ATYPE_DEFAULT) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
-            if(abortByAddr == 0) {
-                fail("Why abort addr NULL?\n");
-            }
-            out<<pid<<" A"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
-                            <<" "<<aborter
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
-        } else if(abortType == TM_ATYPE_NONTM) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
-            if(abortByAddr == 0) {
-                fail("Why abort addr NULL?\n");
-            }
-            out<<pid<<" a"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
-                            <<" "<<aborter
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
-        } else {
-            uint32_t abortArg = 0;
-            if(abortType == TM_ATYPE_USER) {
-                abortArg = dinst->tmAbortArg;
-            } else {
-                abortArg = dinst->tmState.getAbortBy();
-            }
-            out<<pid<<" Z"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
-                            <<" "<<abortType
-                            <<" 0x"<<std::hex<<abortArg<<std::dec
-                            <<" "<< (context->getNRetiredInsts() + 1)
-                            <<" "<< globalClock << std::endl;
-        }
-    } else if(dinst->tmBeginOp()) {
-        if(dinst->getTMBeginSubtype() == TM_BEGIN_REGULAR) {
-            out<<pid<<" T"
-                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                        <<" "<<dinst->tmState.getUtid()
-                        <<" "<<dinst->tmArg
-                        <<" "<< (context->getNRetiredInsts() + 1)
-                        <<" "<< globalClock << std::endl;
-        }
-    } else if(dinst->tmCommitOp()) {
-        if(dinst->getTMCommitSubtype() == TM_COMMIT_REGULAR) {
-            out<<pid<<" C"
-                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                        <<" "<<(100-dinst->tmLat)
-                        <<" "<<dinst->tmArg
-                        <<" "<< (context->getNRetiredInsts() + 1)
-                        <<" "<< globalClock << std::endl;
-        }
-    }
-}
-
 
 /***********************************************/
 

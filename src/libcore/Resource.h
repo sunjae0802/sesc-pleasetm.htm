@@ -132,8 +132,6 @@ public:
     StallCause canIssue(DInst *dinst);
     void simTime(DInst *dinst);
     RetOutcome retire(DInst *dinst);
-    void traceTM(DInst *dinst);
-
 };
 
 class FULoad : public MemResource {
