@@ -147,6 +147,7 @@ public:
     static Time_t resetTS;
     std::vector<FuncBoundaryData> funcData;
 
+    uint64_t nRetiredInsts;
     AtomicRegionStats       currentRegion;
     static TimeTrackerStats timeTrackerStats;
     TimeTrackerStats        myTimeStats;
@@ -305,30 +306,6 @@ public:
         return tmStallUntil != 0 && tmStallUntil >= globalClock;
     }
 #endif
-
-    struct {
-        uint64_t nRetiredInsts;
-        Time_t nackStallStart;
-    } retireContext;
-
-    void retireNackedDInst() {
-        retireContext.nackStallStart = globalClock;
-    }
-    Time_t getNackStallStart() const {
-        return retireContext.nackStallStart;
-    }
-    void clearRetireNack() {
-        retireContext.nackStallStart = 0;
-    }
-
-    void incNRetiredInsts() {
-        retireContext.nRetiredInsts++;
-    }
-
-    uint64_t getNRetiredInsts() const {
-        return retireContext.nRetiredInsts;
-    }
-
     static inline int32_t getPidUb(void) {
         return pid2context.size();
     }
@@ -758,14 +735,14 @@ public:
 
     void incParallel(Pid_t wpid) {
         std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Create"<<std::endl<<std::flush;
-        getDatafile()<<ThreadContext::numThreads<<" 0 "<<getNRetiredInsts()<<' '<<globalClock<<std::endl;
+        getDatafile()<<ThreadContext::numThreads<<" 0 "<<nRetiredInsts<<' '<<globalClock<<std::endl;
         ThreadContext::numThreads++;
     }
 
     void decParallel(Pid_t wpid) {
         ThreadContext::numThreads--;
         std::cout<<"["<<globalClock<<"]   Thread "<<numThreads<<" ("<<wpid<<") Exit"<<std::endl<<std::flush;
-        getDatafile()<<ThreadContext::numThreads<<" 1 "<<getNRetiredInsts()<<' '<<globalClock<<std::endl;
+        getDatafile()<<ThreadContext::numThreads<<" 1 "<<nRetiredInsts<<' '<<globalClock<<std::endl;
     }
 
     bool parallel;

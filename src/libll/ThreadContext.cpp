@@ -45,6 +45,7 @@ void ThreadContext::initialize(bool child) {
         getMainThreadContext()->parallel = true;
     }
 
+    nRetiredInsts = 0;
     lockDepth = 0;
     s_lockRA = 0;
     s_lockArg = 0;
@@ -63,8 +64,6 @@ void ThreadContext::initialize(bool child) {
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;
 #endif
-    retireContext.nRetiredInsts =0;
-    retireContext.nackStallStart= 0;
 }
 
 void ThreadContext::cleanup() {
@@ -761,7 +760,7 @@ void ThreadContext::clearCallStack(void) {
 
 /// Keep track of statistics for each retired DInst.
 void ThreadContext::markRetire(DInst* dinst) {
-    incNRetiredInsts();
+    nRetiredInsts++;
 
     const Instruction* inst = dinst->getInst();
 
@@ -844,7 +843,7 @@ void ThreadContext::traceFunction(DInst *dinst, FuncBoundaryData& funcData) {
         } else {
             out << " 0x" << hex << funcData.rv << dec;
         }
-        out << ' ' << getNRetiredInsts() << ' ' << globalClock << '\n';
+        out << ' ' << nRetiredInsts << ' ' << globalClock << '\n';
     }
 }
 
@@ -867,7 +866,7 @@ void ThreadContext::traceTM(DInst* dinst) {
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
-                            <<" "<< (getNRetiredInsts() + 1)
+                            <<" "<< nRetiredInsts
                             <<" "<< globalClock << std::endl;
         } else if(abortType == TM_ATYPE_NONTM) {
             VAddr abortByAddr = dinst->tmState.getAbortBy();
@@ -878,7 +877,7 @@ void ThreadContext::traceTM(DInst* dinst) {
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
-                            <<" "<< (getNRetiredInsts() + 1)
+                            <<" "<< nRetiredInsts
                             <<" "<< globalClock << std::endl;
         } else {
             uint32_t abortArg = 0;
@@ -891,7 +890,7 @@ void ThreadContext::traceTM(DInst* dinst) {
                             <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
                             <<" "<<abortType
                             <<" 0x"<<std::hex<<abortArg<<std::dec
-                            <<" "<< (getNRetiredInsts() + 1)
+                            <<" "<< nRetiredInsts
                             <<" "<< globalClock << std::endl;
         }
     } else if(dinst->tmBeginOp()) {
@@ -900,7 +899,7 @@ void ThreadContext::traceTM(DInst* dinst) {
                         <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
                         <<" "<<dinst->tmState.getUtid()
                         <<" "<<dinst->tmArg
-                        <<" "<< (getNRetiredInsts() + 1)
+                        <<" "<< nRetiredInsts
                         <<" "<< globalClock << std::endl;
         }
     } else if(dinst->tmCommitOp()) {
@@ -909,7 +908,7 @@ void ThreadContext::traceTM(DInst* dinst) {
                         <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
                         <<" "<<(100-dinst->tmLat)
                         <<" "<<dinst->tmArg
-                        <<" "<< (getNRetiredInsts() + 1)
+                        <<" "<< nRetiredInsts
                         <<" "<< globalClock << std::endl;
         }
     }
