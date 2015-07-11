@@ -171,8 +171,6 @@ private:
     VAddr tmCallsite;
     // User-passed HTM command arg
     uint32_t tmArg;
-    // User-passed abort arg
-    uint32_t tmAbortArg;
     // The IAddr when we found out TM has aborted
     VAddr  tmAbortIAddr;
     // Number of transactional writes done on tm.commit
@@ -245,9 +243,7 @@ public:
     // Transactional Helper Methods
     int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
     bool isInTM()           const { return getTMdepth() > 0; }
-    bool isTMAborting()     const { return tmCohManager->getState(pid) == TM_ABORTING; }
-    bool markedForAbort()   const { return tmCohManager->getState(pid) == TM_MARKABORT; }
-    bool tmSuspended()      const { return tmCohManager->getState(pid) == TM_SUSPENDED; }
+    TMState_e getTMState()  const { return tmCohManager ? tmCohManager->getState(pid) : TM_INVALID; }
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
@@ -263,7 +259,6 @@ public:
     // TM getters
     uint32_t getTMArg()       const { return tmArg; }
     uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
-    uint32_t getTMAbortArg()  const { return tmAbortArg; }
     uint32_t getTMLat()       const { return tmLat; }
 
     // Transactional Methods
@@ -284,7 +279,6 @@ public:
     }
     void userAbortTM(InstDesc* inst, uint32_t arg) {
         tmArg       = arg;
-        tmAbortArg  = tmArg;
         abortTransaction(inst, TM_ATYPE_USER);
     }
     void completeAbort(InstDesc* inst);

@@ -121,14 +121,12 @@ private:
     bool localStackData;
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
-    bool tmAborted;
 public:
     std::vector<FuncBoundaryData> funcData;
     VAddr       tmCallsite;
     VAddr       tmAbortIAddr;
     TransState  tmState;
     uint32_t    tmArg;
-    uint32_t    tmAbortArg;
     size_t      tmLat;
 private:
 
@@ -418,10 +416,6 @@ public:
 	InstType getOpcode() const {
 		return inst->getOpcode();
 	}
-
-    bool wasTMAborted() const {
-        return tmAborted;
-    }
 
     TMBeginSubtype getTMBeginSubtype() const {
         return tmBeginSubtype;

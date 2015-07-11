@@ -52,7 +52,6 @@ void ThreadContext::initialize(bool child) {
 #if (defined TM)
     tmStallUntil= 0;
     tmArg       = 0;
-    tmAbortArg  = 0;
     tmAbortIAddr= 0;
     tmContext   = NULL;
     tmCallsite  = 0;
@@ -84,7 +83,6 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
             tmAbortIAddr= 0;
-            tmAbortArg  = 0;
             tmBeginSubtype=TM_BEGIN_REGULAR;
             tmCommitSubtype=TM_COMMIT_INVALID;
 
@@ -139,7 +137,6 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
             tmContext->flushMemory();
 
             tmAbortIAddr= 0;
-            tmAbortArg  = 0;
             tmLat       = numWrites;
             tmCommitSubtype=TM_COMMIT_REGULAR;
 
@@ -217,7 +214,7 @@ uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
     uint32_t abortRV = 1;
 
     // bottom 8 bits are reserved
-    abortRV |= tmAbortArg << 8;
+    abortRV |= tmArg << 8;
     // Set aborter Pid in upper bits
     abortRV |= (transState.getAborterPid()) << 12;
 
@@ -251,7 +248,6 @@ void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
     tmCohManager->beginFallback(pid, pFallbackMutex);
 
     tmAbortIAddr= 0;
-    tmAbortArg  = 0;
 }
 
 void ThreadContext::completeFallback() {
@@ -870,7 +866,7 @@ void ThreadContext::traceTM(DInst* dinst) {
         } else {
             uint32_t abortArg = 0;
             if(abortType == TM_ATYPE_USER) {
-                abortArg = dinst->tmAbortArg;
+                abortArg = dinst->tmArg;
             } else {
                 abortArg = dinst->tmState.getAbortBy();
             }
