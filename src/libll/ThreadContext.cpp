@@ -52,6 +52,7 @@ void ThreadContext::initialize(bool child) {
 #if (defined TM)
     tmStallUntil= 0;
     tmArg       = 0;
+    tmLat       = 0;
     tmAbortIAddr= 0;
     tmContext   = NULL;
     tmCallsite  = 0;
@@ -115,6 +116,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     // Save UTID before committing
     uint64_t utid = tmCohManager->getUtid(pid);
     size_t numWrites = tmCohManager->getNumWrites(pid);
+    tmLat       = 4;
 
     TMBCStatus status = tmCohManager->commit(inst, this);
     switch(status) {
@@ -137,7 +139,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
             tmContext->flushMemory();
 
             tmAbortIAddr= 0;
-            tmLat       = numWrites;
+            tmLat       += numWrites;
             tmCommitSubtype=TM_COMMIT_REGULAR;
 
             TMContext* oldTMContext = tmContext;
