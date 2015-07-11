@@ -22,6 +22,14 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 
     if(method == "LE") {
         newCohManager = new TMLECoherence("Lazy/Eager", nProcs, lineSize);
+    } else if(method == "IdealLE") {
+        newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nProcs, lineSize);
+    } else if(method == "RequesterLoses") {
+        newCohManager = new TMRequesterLoses("Requester Loses", nProcs, lineSize);
+    } else if(method == "EE") {
+        newCohManager = new TMEECoherence("Eager/Eager", nProcs, lineSize);
+    } else if(method == "EENumReads") {
+        newCohManager = new TMEENumReadsCoherence("Eager/Eager More Reads", nProcs, lineSize);
     } else {
         MSG("unknown TM method, using LE");
         newCohManager = new TMLECoherence("Lazy/Eager", nProcs, lineSize);
@@ -648,5 +656,653 @@ void TMLECoherence::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
     cache->clearTransactional();
     overflow[pid].clear();
+    removeTrans(pid);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Eager-eager coherence. Tries to mimic LogTM as closely as possible
+/////////////////////////////////////////////////////////////////////////////////////////
+TMEECoherence::TMEECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
+        TMCoherence(tmStyle, nProcs, line) {
+
+    int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
+    int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+
+    for(Pid_t pid = 0; pid < nProcs; pid++) {
+        caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
+    }
+}
+
+///
+// Destructor for PrivateCache. Delete all allocated members
+TMEECoherence::~TMEECoherence() {
+    while(caches.size() > 0) {
+        Cache* cache = caches.back();
+        caches.pop_back();
+        delete cache;
+    }
+}
+
+size_t TMEECoherence::numWriters(VAddr caddr) const {
+    auto i_line = writer.find(caddr);
+    if(i_line == writer.end()) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+size_t TMEECoherence::numReaders(VAddr caddr) const {
+    auto i_line = readers.find(caddr);
+    if(i_line == readers.end()) {
+        return 0;
+    } else {
+        return i_line->second.size();
+    }
+}
+
+///
+// Return true if pid is higher or equal priority than conflictPid
+bool TMEECoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid) {
+    Time_t otherTimestamp = getStartTime(conflictPid);
+    Time_t myTimestamp = getStartTime(pid);
+
+    return myTimestamp <= otherTimestamp;
+}
+
+///
+// We have a conflict, so either NACK pid (the requester), or if there is a circular NACK, abort
+TMRWStatus TMEECoherence::handleConflict(Pid_t pid, Pid_t conflictPid, VAddr caddr) {
+    if(isHigherOrEqualPriority(conflictPid, pid) && cycleFlags[pid]) {
+        // I am a lower priority transaction and has NACKed a higher priority one, possibly that one
+        markTransAborted(pid, conflictPid, caddr, TM_ATYPE_DEFAULT);
+        return TMRW_ABORT;
+    } else {
+        // NACK the requester
+        if(isHigherOrEqualPriority(pid, conflictPid)) {
+            // I am being NACKed by a lower priority transaction, so set that guy's cycleFlag
+            cycleFlags[conflictPid] = true;
+        }
+        nackCount[pid]++;
+        if(nackCount[pid] % 20480 == 0) {
+            MSG("%d nacked by %d[%lu]\n", pid, conflictPid, nackCount[pid]);
+        }
+        return TMRW_NACKED;
+    }
+}
+
+TMEECoherence::Line* TMEECoherence::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
+    Cache* cache = getCache(pid);
+	VAddr  caddr = addrToCacheLine(raddr);
+    VAddr  myTag = cache->calcTag(raddr);
+
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+        line  = cache->findLine2Replace(raddr);
+
+        // Invalidate old line
+        if(line->isValid()) {
+            line->invalidate();
+        }
+
+        // Replace the line
+        line->validate(myTag, caddr);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+    return line;
+}
+
+///
+// Do a transactional read.
+TMRWStatus TMEECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    if(hadWrote(pid, caddr) == false && numWriters(caddr) != 0) {
+        Pid_t writerPid = writer.at(caddr);
+        if(writerPid == pid) {
+            fail("writer hadWrote mismatch");
+        }
+
+        return handleConflict(pid, writerPid, caddr);
+    }
+
+    // Do the read
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->markTransactional();
+    if(hadRead(pid, caddr) == false) {
+        readers[caddr].push_back(pid);
+    }
+    readTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a transactional write.
+TMRWStatus TMEECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    if(numReaders(caddr) > 1 || ((numReaders(caddr) == 1) && hadRead(pid, caddr) == false)) {
+        // If there is more than one reader, or there is a single reader who happens not to be us
+        // Grab the first reader than isn't us
+        list<Pid_t>::iterator i_reader = readers[caddr].begin();
+        if(*i_reader == pid) {
+            ++i_reader;
+            if(i_reader == readers[caddr].end()) {
+                fail("Miscounting num Readers");
+            }
+        }
+        Pid_t firstReader = *i_reader;
+        if(firstReader == pid) {
+            fail("Duplicate in Readers list");
+        }
+        return handleConflict(pid, firstReader, caddr);
+    } else if(hadWrote(pid, caddr) == false && numWriters(caddr) != 0) {
+        Pid_t writerPid = writer.at(caddr);
+        if(writerPid == pid) {
+            fail("writer hadWrote mismatch");
+        }
+        return handleConflict(pid, writerPid, caddr);
+    }
+
+    // Do the write
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->markTransactional();
+    line->makeTransactionalDirty(pid);
+
+    if(hadWrote(pid, caddr) == false) {
+        writer[caddr] = pid;
+    }
+    writeTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a non-transactional read, i.e. when a thread not inside a transaction.
+void TMEECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache= getCache(pid);
+
+    if(numWriters(caddr) != 0) {
+        markTransAborted(writer.at(caddr), pid, caddr, TM_ATYPE_NONTM);
+    }
+
+    // Update line
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+}
+
+///
+// Do a non-transactional write, i.e. when a thread not inside a transaction.
+void TMEECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writer.at(caddr));
+    }
+    if(numReaders(caddr) != 0) {
+        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+    }
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    // Update line
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->makeDirty();
+}
+
+///
+// TM begin that also initializes firstStartTime
+TMBCStatus TMEECoherence::myBegin(Pid_t pid, InstDesc* inst) {
+    if(firstStartTime.find(pid) == firstStartTime.end()) {
+        firstStartTime[pid] = globalClock;
+    }
+    beginTrans(pid, inst);
+    return TMBC_SUCCESS;
+}
+///
+// TM commit also clears firstStartTime
+TMBCStatus TMEECoherence::myCommit(Pid_t pid) {
+    firstStartTime.erase(pid);
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+///
+// Clear firstStartTime when completing fallback, too
+void TMEECoherence::completeFallback(Pid_t pid) {
+    firstStartTime.erase(pid);
+    transStates[pid].completeFallback();
+}
+
+void TMEECoherence::removeTransaction(Pid_t pid) {
+    Cache* cache = getCache(pid);
+    cache->clearTransactional();
+
+    for(VAddr caddr:  linesWritten[pid]) {
+        if(writer.at(caddr) != pid) {
+            fail("writer and linesWritten mismatch");
+        }
+        writer.erase(caddr);
+    }
+    std::map<VAddr, std::list<Pid_t> >::iterator i_readers;
+    for(VAddr caddr:  linesRead[pid]) {
+        i_readers = readers.find(caddr);
+        if(i_readers == readers.end()) {
+            fail("readers and linesRead mismatch");
+        }
+        list<Pid_t>& myReaders = i_readers->second;
+        if(find(myReaders.begin(), myReaders.end(), pid) == myReaders.end()) {
+            fail("readers does not contain pid");
+        }
+        myReaders.remove(pid);
+        if(myReaders.empty()) {
+            readers.erase(i_readers);
+        }
+    }
+
+	cycleFlags[pid] = false;
+    nackCount[pid] = 0;
+    removeTrans(pid);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Versino of EE Coherence that sets priority based on number of transactional reads
+/////////////////////////////////////////////////////////////////////////////////////////
+bool TMEENumReadsCoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid) {
+    size_t otherNumReads = getNumReads(conflictPid);
+    size_t myNumReads = getNumReads(pid);
+
+    return myNumReads >= otherNumReads;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// TSX-style coherence with stall on request
+/////////////////////////////////////////////////////////////////////////////////////////
+TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
+        TMCoherence(tmStyle, nProcs, line) {
+
+    int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
+    int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+
+    for(Pid_t pid = 0; pid < nProcs; pid++) {
+        caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
+    }
+}
+
+///
+// Destructor for PrivateCache. Delete all allocated members
+TMIdealLECoherence::~TMIdealLECoherence() {
+    while(caches.size() > 0) {
+        Cache* cache = caches.back();
+        caches.pop_back();
+        delete cache;
+    }
+}
+
+size_t TMIdealLECoherence::numWriters(VAddr caddr) const {
+    auto i_line = writers.find(caddr);
+    if(i_line == writers.end()) {
+        return 0;
+    } else {
+        return i_line->second.size();
+    }
+}
+size_t TMIdealLECoherence::numReaders(VAddr caddr) const {
+    auto i_line = readers.find(caddr);
+    if(i_line == readers.end()) {
+        return 0;
+    } else {
+        return i_line->second.size();
+    }
+}
+
+TMIdealLECoherence::Line* TMIdealLECoherence::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
+    Cache* cache = getCache(pid);
+	VAddr  caddr = addrToCacheLine(raddr);
+    VAddr  myTag = cache->calcTag(raddr);
+
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+        line  = cache->findLine2Replace(raddr);
+
+        // Invalidate old line
+        if(line->isValid()) {
+            line->invalidate();
+        }
+
+        // Replace the line
+        line->validate(myTag, caddr);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+    return line;
+}
+
+///
+// Do a transactional read.
+TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    aborted.erase(pid);
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    // Do the read
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->markTransactional();
+    readers[caddr].insert(pid);
+
+    readTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a transactional write.
+TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    if(numReaders(caddr) != 0) {
+        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+    }
+    aborted.erase(pid);
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    // Do the write
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->markTransactional();
+    line->makeTransactionalDirty(pid);
+
+    writers[caddr].insert(pid);
+    writeTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a non-transactional read, i.e. when a thread not inside a transaction.
+void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache= getCache(pid);
+
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    // Update line
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+}
+
+///
+// Do a non-transactional write, i.e. when a thread not inside a transaction.
+void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    if(numReaders(caddr) != 0) {
+        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+    }
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    // Update line
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->makeDirty();
+}
+
+void TMIdealLECoherence::removeTransaction(Pid_t pid) {
+    Cache* cache = getCache(pid);
+    cache->clearTransactional();
+
+    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
+    for(VAddr caddr:  linesWritten[pid]) {
+        i_line = writers.find(caddr);
+        if(i_line == writers.end()) {
+            fail("writers and linesWritten mismatch");
+        }
+        set<Pid_t>& myWriters = i_line->second;
+        if(myWriters.find(pid) == myWriters.end()) {
+            fail("writers does not contain pid");
+        }
+        myWriters.erase(pid);
+        if(myWriters.empty()) {
+            writers.erase(i_line);
+        }
+    }
+    for(VAddr caddr:  linesRead[pid]) {
+        i_line = readers.find(caddr);
+        if(i_line == readers.end()) {
+            fail("readers and linesRead mismatch");
+        }
+        set<Pid_t>& myReaders = i_line->second;
+        if(myReaders.find(pid) == myReaders.end()) {
+            fail("readers does not contain pid");
+        }
+        myReaders.erase(pid);
+        if(myReaders.empty()) {
+            readers.erase(i_line);
+        }
+    }
+
+    removeTrans(pid);
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+// TSX-style coherence with stall on request
+/////////////////////////////////////////////////////////////////////////////////////////
+TMRequesterLoses::TMRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t line):
+        TMCoherence(tmStyle, nProcs, line) {
+
+    int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
+    int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+
+    for(Pid_t pid = 0; pid < nProcs; pid++) {
+        caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
+    }
+}
+
+///
+// Destructor for PrivateCache. Delete all allocated members
+TMRequesterLoses::~TMRequesterLoses() {
+    while(caches.size() > 0) {
+        Cache* cache = caches.back();
+        caches.pop_back();
+        delete cache;
+    }
+}
+
+size_t TMRequesterLoses::numWriters(VAddr caddr) const {
+    auto i_line = writers.find(caddr);
+    if(i_line == writers.end()) {
+        return 0;
+    } else {
+        return i_line->second.size();
+    }
+}
+size_t TMRequesterLoses::numReaders(VAddr caddr) const {
+    auto i_line = readers.find(caddr);
+    if(i_line == readers.end()) {
+        return 0;
+    } else {
+        return i_line->second.size();
+    }
+}
+
+TMRequesterLoses::Line* TMRequesterLoses::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
+    Cache* cache = getCache(pid);
+	VAddr  caddr = addrToCacheLine(raddr);
+    VAddr  myTag = cache->calcTag(raddr);
+
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+        line  = cache->findLine2Replace(raddr);
+
+        // Invalidate old line
+        if(line->isValid()) {
+            line->invalidate();
+        }
+
+        // Replace the line
+        line->validate(myTag, caddr);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+    return line;
+}
+
+///
+// Do a transactional read.
+TMRWStatus TMRequesterLoses::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    if(numWriters(caddr) != 0 && hadWrote(pid, caddr) == false) {
+        set<Pid_t>::iterator i_writer = writers[caddr].begin();
+        if(*i_writer == pid) {
+            fail("Miscounting num writers");
+        }
+        markTransAborted(pid, *i_writer, caddr, TM_ATYPE_DEFAULT);
+        return TMRW_ABORT;
+    }
+
+    // Do the read
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->markTransactional();
+    readers[caddr].insert(pid);
+
+    readTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a transactional write.
+TMRWStatus TMRequesterLoses::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    if(numWriters(caddr) != 0 && hadWrote(pid, caddr) == false) {
+        set<Pid_t>::iterator i_writer = writers[caddr].begin();
+        if(*i_writer == pid) {
+            fail("Miscounting num writers");
+        }
+        markTransAborted(pid, *i_writer, caddr, TM_ATYPE_DEFAULT);
+        return TMRW_ABORT;
+    }
+    if(numReaders(caddr) > 1 || ((numReaders(caddr) == 1) && hadRead(pid, caddr) == false)) {
+        set<Pid_t>::iterator i_reader = readers[caddr].begin();
+        if(*i_reader == pid) {
+            ++i_reader;
+            if(i_reader == readers[caddr].end()) {
+                fail("Miscounting num Readers");
+            }
+        }
+        markTransAborted(pid, *i_reader, caddr, TM_ATYPE_DEFAULT);
+        return TMRW_ABORT;
+    }
+
+    // Do the write
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->markTransactional();
+    line->makeTransactionalDirty(pid);
+
+    writers[caddr].insert(pid);
+    writeTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a non-transactional read, i.e. when a thread not inside a transaction.
+void TMRequesterLoses::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache= getCache(pid);
+
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    // Update line
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+}
+
+///
+// Do a non-transactional write, i.e. when a thread not inside a transaction.
+void TMRequesterLoses::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    if(numReaders(caddr) != 0) {
+        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+    }
+    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    // Update line
+    Line*   line  = lookupLine(pid, raddr, p_opStatus);
+    line->makeDirty();
+}
+
+void TMRequesterLoses::removeTransaction(Pid_t pid) {
+    Cache* cache = getCache(pid);
+    cache->clearTransactional();
+
+    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
+    for(VAddr caddr:  linesWritten[pid]) {
+        i_line = writers.find(caddr);
+        if(i_line == writers.end()) {
+            fail("writers and linesWritten mismatch");
+        }
+        set<Pid_t>& myWriters = i_line->second;
+        if(myWriters.find(pid) == myWriters.end()) {
+            fail("writers does not contain pid");
+        }
+        myWriters.erase(pid);
+        if(myWriters.empty()) {
+            writers.erase(i_line);
+        }
+    }
+    for(VAddr caddr:  linesRead[pid]) {
+        i_line = readers.find(caddr);
+        if(i_line == readers.end()) {
+            fail("readers and linesRead mismatch");
+        }
+        set<Pid_t>& myReaders = i_line->second;
+        if(myReaders.find(pid) == myReaders.end()) {
+            fail("readers does not contain pid");
+        }
+        myReaders.erase(pid);
+        if(myReaders.empty()) {
+            readers.erase(i_line);
+        }
+    }
+
     removeTrans(pid);
 }

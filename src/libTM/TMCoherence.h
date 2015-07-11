@@ -50,6 +50,14 @@ public:
     size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
     size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
 
+    bool hadWrote(Pid_t pid, VAddr caddr) const {
+        return linesWritten.at(pid).find(caddr) != linesWritten.at(pid).end();
+    }
+
+    bool hadRead(Pid_t pid, VAddr caddr) const {
+        return linesRead.at(pid).find(caddr) != linesRead.at(pid).end();
+    }
+
 protected:
     TMCoherence(const char* tmStyle, int procs, int line);
     VAddr addrToCacheLine(VAddr raddr) {
@@ -146,6 +154,112 @@ protected:
     // State member variables
     std::vector<Cache*>         caches;
     std::map<Pid_t, std::set<VAddr> >   overflow;
+};
+
+class TMIdealLECoherence: public TMCoherence {
+public:
+    TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMIdealLECoherence();
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       removeTransaction(Pid_t pid);
+
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
+    size_t numWriters(VAddr caddr) const;
+    size_t numReaders(VAddr caddr) const;
+
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+
+    // State member variables
+    std::vector<Cache*>         caches;
+    std::map<VAddr, std::set<Pid_t> >   writers;
+    std::map<VAddr, std::set<Pid_t> >   readers;
+};
+
+class TMRequesterLoses: public TMCoherence {
+public:
+    TMRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMRequesterLoses();
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       removeTransaction(Pid_t pid);
+
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
+    size_t numWriters(VAddr caddr) const;
+    size_t numReaders(VAddr caddr) const;
+
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+
+    // State member variables
+    std::vector<Cache*>         caches;
+    std::map<VAddr, std::set<Pid_t> >   writers;
+    std::map<VAddr, std::set<Pid_t> >   readers;
+};
+
+class TMEECoherence: public TMCoherence {
+public:
+    TMEECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMEECoherence();
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       removeTransaction(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual void completeFallback(Pid_t pid);
+
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    TMRWStatus handleConflict(Pid_t pid, Pid_t conflictPid, VAddr caddr);
+    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
+    Time_t getStartTime(Pid_t pid)   const { return firstStartTime.at(pid); }
+    size_t numWriters(VAddr caddr) const;
+    size_t numReaders(VAddr caddr) const;
+
+    Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
+
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+
+    // State member variables
+    std::vector<Cache*>         caches;
+    std::map<VAddr, Pid_t>              writer;
+    std::map<VAddr, std::list<Pid_t> >  readers;
+
+    std::map<Pid_t, bool>               cycleFlags;
+    std::map<Pid_t, Time_t>             firstStartTime;
+    std::map<Pid_t, size_t>             nackCount;
+};
+class TMEENumReadsCoherence: public TMEECoherence {
+public:
+    TMEENumReadsCoherence(const char tmStyle[], int32_t nProcs, int32_t line):
+        TMEECoherence(tmStyle, nProcs, line) {}
+    virtual ~TMEENumReadsCoherence() {}
+protected:
+    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
 };
 
 extern TMCoherence *tmCohManager;
