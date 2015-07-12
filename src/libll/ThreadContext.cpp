@@ -46,6 +46,7 @@ void ThreadContext::initialize(bool child) {
             << nRetiredInsts << ' ' << globalClock << std::endl;
     ThreadContext::numThreads++;
 
+    prevDInstRetired = 0;
     nRetiredInsts = 0;
     spinning    = false;
 
@@ -59,6 +60,7 @@ void ThreadContext::initialize(bool child) {
     tmlibUserTid= -1;
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;
+    tmMemopHadStalled = false;
 #endif
 }
 
@@ -754,6 +756,10 @@ void ThreadContext::markRetire(DInst* dinst) {
         currentRegion.markRetireTM(dinst);
     }
 
+    if(dinst->getTMMemopHadStalled()) {
+        currentRegion.addNackStall(dinst, prevDInstRetired);
+    }
+
     // Track function boundaries, by for example initializing and ending atomic regions.
     for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
             i_funcData != dinst->funcData.end(); ++i_funcData) {
@@ -773,6 +779,8 @@ void ThreadContext::markRetire(DInst* dinst) {
                 break;
         } // end switch(funcName)
     } // end foreach funcBoundaryData
+
+    prevDInstRetired = globalClock;
 }
 
 /// Trace function boundaries (call and return)
@@ -903,12 +911,13 @@ void ThreadContext::traceTM(DInst* dinst) {
 void TimeTrackerStats::print() const {
     uint64_t totalOther = totalLengths -
         (totalCommitted + totalAborted + totalWait
-            + totalMutexWait + totalMutex);
+            + totalMutexWait + totalMutex + totalNackStalled);
     std::cout << "Committed: " << totalCommitted << "\n";
     std::cout << "Aborted: " << totalAborted << "\n";
     std::cout << "WaitForMutex: " << totalMutexWait << "\n";
     std::cout << "InMutex: " << totalMutex << "\n";
     std::cout << "Wait: " << totalWait << "\n";
+    std::cout << "NACKStall: " << totalNackStalled << "\n";
     std::cout << "Other: " << totalOther << "\n";
 }
 
@@ -920,6 +929,7 @@ void TimeTrackerStats::sum(const TimeTrackerStats& other) {
     totalWait       += other.totalWait;
     totalMutexWait  += other.totalMutexWait;
     totalMutex      += other.totalMutex;
+    totalNackStalled+= other.totalNackStalled;
 }
 
 /// If the DInst is at a function boundary, update statistics
@@ -976,6 +986,14 @@ void AtomicRegionStats::markRetireTM(DInst* dinst) {
     }
 }
 
+void AtomicRegionStats::addNackStall(DInst* dinst, Time_t prevRetired) {
+    Pid_t pid = dinst->context->getPid();
+    if(p_current == NULL) {
+        fail("[%d] Nacked MemOP outside of a atomic subregion?\n", pid);
+    }
+    p_current->totalNackStalled += globalClock - prevRetired;
+}
+
 /// Add this region's statistics to p_stats.
 void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
     // Make sure the stats are valid
@@ -997,20 +1015,28 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
             case AtomicSubregion::SR_TRANSACTION: {
                 TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_subregion);
                 if(p_tm->aborted) {
-                    p_stats->totalAborted   += p_tm->endAt - p_tm->startAt;
+                    p_stats->totalAborted   += p_tm->endAt - p_tm->startAt - p_tm->totalNackStalled;
+                    p_stats->totalNackStalled += p_tm->totalNackStalled;
                 } else {
-                    p_stats->totalCommitted += p_tm->endAt - p_tm->startAt;
+                    p_stats->totalCommitted += p_tm->endAt - p_tm->startAt - p_tm->totalNackStalled;
+                    p_stats->totalNackStalled += p_tm->totalNackStalled;
                 }
                 break;
             }
             case AtomicSubregion::SR_WAIT: {
                 p_stats->totalWait +=  p_subregion->endAt - p_subregion->startAt;
+                if(p_subregion->totalNackStalled > 0) {
+                    fail("Wait region has NACK stall\n");
+                }
                 break;
             }
             case AtomicSubregion::SR_CRITICAL_SECTION: {
                 CSSubregion* p_cs = dynamic_cast<CSSubregion*>(p_subregion);
                 p_stats->totalMutexWait += p_cs->acquiredAt - p_cs->startAt;
                 p_stats->totalMutex     += p_cs->endAt - p_cs->acquiredAt;
+                if(p_subregion->totalNackStalled > 0) {
+                    fail("CS has NACK stall\n");
+                }
                 break;
             }
             default:

@@ -121,6 +121,7 @@ private:
     bool localStackData;
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
+    bool tmMemopHadStalled;
 public:
     std::vector<FuncBoundaryData> funcData;
     VAddr       tmCallsite;
@@ -435,6 +436,10 @@ public:
 
     TMCommitSubtype getTMCommitSubtype() const {
         return tmCommitSubtype;
+    }
+
+    bool getTMMemopHadStalled() const {
+        return tmMemopHadStalled;
     }
 
     VAddr getVaddr() const {

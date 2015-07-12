@@ -279,6 +279,9 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->tmBeginSubtype= TM_BEGIN_INVALID;
     i->tmCommitSubtype=TM_COMMIT_INVALID;
 
+    i->tmMemopHadStalled=context->getTMMemopHadStalled();
+    context->clearTMMemopHadStalled();
+
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
         i->tmCallsite   = context->getTMCallsite();

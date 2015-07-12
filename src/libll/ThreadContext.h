@@ -55,7 +55,7 @@ struct FuncBoundaryData {
 
 struct TimeTrackerStats {
     TimeTrackerStats(): totalLengths(0), totalCommitted(0), totalAborted(0),
-        totalWait(0), totalMutexWait(0), totalMutex(0)
+        totalWait(0), totalMutexWait(0), totalMutex(0), totalNackStalled(0)
     {}
     void print() const;
     void sum(const TimeTrackerStats& other);
@@ -65,6 +65,7 @@ struct TimeTrackerStats {
     uint64_t totalWait;
     uint64_t totalMutexWait;
     uint64_t totalMutex;
+    uint64_t totalNackStalled;
 };
 
 // Represents a subregion within an AtomicRegion
@@ -77,7 +78,7 @@ public:
         SR_CRITICAL_SECTION
     };
     AtomicSubregion(enum SubregionType t, Time_t s):
-            type(t), startAt(s), endAt(0) {}
+            type(t), startAt(s), endAt(0), totalNackStalled(0) {}
     virtual ~AtomicSubregion() {}
 
     void markEnd(Time_t e) {
@@ -86,6 +87,7 @@ public:
     enum SubregionType type;
     Time_t      startAt;
     Time_t      endAt;
+    uint64_t    totalNackStalled;
 };
 
 class TMSubregion: public AtomicSubregion {
@@ -124,6 +126,7 @@ struct AtomicRegionStats {
     void clear();
     void markRetireFuncBoundary(DInst* dinst, FuncBoundaryData& funcData);
     void markRetireTM(DInst* dinst);
+    void addNackStall(DInst* dinst, Time_t prevRetired);
     void calculate(TimeTrackerStats* p_stats);
     typedef std::vector<AtomicSubregion*> Subregions;
 
@@ -148,6 +151,7 @@ public:
     std::vector<FuncBoundaryData> funcData;
 
     uint64_t nRetiredInsts;
+    Time_t prevDInstRetired;
     AtomicRegionStats       currentRegion;
     static TimeTrackerStats timeTrackerStats;
     TimeTrackerStats        myTimeStats;
@@ -179,6 +183,7 @@ private:
     uint32_t    tmLat;
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
+    bool    tmMemopHadStalled;
 #endif
 
     // Memory Mapping
@@ -255,6 +260,8 @@ public:
     void clearTMBeginSubtype() { tmBeginSubtype = TM_BEGIN_INVALID; }
     TMCommitSubtype getTMCommitSubtype() const { return tmCommitSubtype; }
     void clearTMCommitSubtype() { tmCommitSubtype = TM_COMMIT_INVALID; }
+    bool getTMMemopHadStalled() const { return tmMemopHadStalled; }
+    void clearTMMemopHadStalled() { tmMemopHadStalled = false; }
 
     // TM getters
     uint32_t getTMArg()       const { return tmArg; }
@@ -289,6 +296,7 @@ public:
 
     // memop NACK handling methods
     void startRetryTimer() {
+        tmMemopHadStalled = true;
         startStalling(tmCohManager->getNackRetryStallCycles());
     }
     void startStalling(TimeDelta_t amount) {
