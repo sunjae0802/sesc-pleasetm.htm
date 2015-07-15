@@ -64,9 +64,6 @@ protected:
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
     void completeAbortTrans(Pid_t pid);
-    void suspendTrans(Pid_t victimPid, Pid_t byPid);
-    void removeSuspendedTrans(Pid_t victimPid);
-    void resumeAllSuspendedTrans(Pid_t pid);
     void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void removeTrans(Pid_t pid);
@@ -111,8 +108,6 @@ protected:
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
     std::set<uint32_t>                  fallbackMutexCAddrs;
-    std::map<Pid_t, std::set<Pid_t> >   stalling;
-    std::map<Pid_t, Pid_t>              stalledBy;
 };
 
 class TMLECoherence: public TMCoherence {

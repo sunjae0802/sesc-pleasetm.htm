@@ -296,9 +296,6 @@ public:
         stallUntil = globalClock + amount;
     }
     bool checkStall() const {
-#if (defined TM)
-        if(getTMState() == TM_SUSPENDED) { return true; }
-#endif
         return stallUntil != 0 && stallUntil >= globalClock;
     }
 

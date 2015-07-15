@@ -4,7 +4,7 @@
 #include "Snippets.h"
 #include "libemul/Addressing.h"
 
-enum TMState_e { TM_INVALID, TM_RUNNING, TM_SUSPENDED, TM_ABORTING, TM_MARKABORT };
+enum TMState_e { TM_INVALID, TM_RUNNING, TM_ABORTING, TM_MARKABORT };
 enum TMAbortType_e {
     TM_ATYPE_DEFAULT            = 0,    // Aborts due to data conflict
     TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
@@ -64,8 +64,6 @@ public:
 
     void begin(uint64_t newUtid);
     void startAborting();
-    void suspend();
-    void resume();
     void completeAbort();
     void completeFallback();
     void markAbort();

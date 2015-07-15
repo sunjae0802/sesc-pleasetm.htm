@@ -21,13 +21,6 @@ void TransState::begin(uint64_t newUtid) {
 void TransState::startAborting() {
     state       = TM_ABORTING;
 }
-void TransState::suspend() {
-    state       = TM_SUSPENDED;
-}
-void TransState::resume() {
-    I(state == TM_SUSPENDED);
-    state       = TM_RUNNING;
-}
 void TransState::completeAbort() {
     I(state == TM_ABORTING);
     utid        = INVALID_UTID;
@@ -49,7 +42,6 @@ void TransState::print() const {
     switch(state) {
         case TM_INVALID:    cout << "INVALID";  break;
         case TM_RUNNING:    cout << "RUNNING";  break;
-        case TM_SUSPENDED:  cout << "SUSPENDED";   break;
         case TM_ABORTING:   cout << "ABORING";  break;
         case TM_MARKABORT:  cout << "MARK_ABORT"; break;
         default:            cout << "??????";   break;
