@@ -293,7 +293,9 @@ private:
     Time_t  stallUntil;
 public:
     void startStalling(TimeDelta_t amount) {
-        stallUntil = globalClock + amount;
+        if(amount > 0) {
+            stallUntil = globalClock + amount;
+        }
     }
     bool checkStall() const {
         return stallUntil != 0 && stallUntil >= globalClock;

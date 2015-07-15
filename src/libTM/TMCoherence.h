@@ -44,9 +44,7 @@ public:
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
 
-    uint32_t getNackRetryStallCycles()   const {
-        return nackStallBaseCycles;
-    }
+    virtual uint32_t getNackRetryStallCycles() const { return 0; }
     size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
     size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
 
@@ -84,8 +82,6 @@ protected:
     // Common member variables
     int             nProcs;
     int             lineSize;
-    uint32_t        nackStallBaseCycles;
-    uint32_t        nackStallCap;
 
     std::vector<struct TransState>  transStates;
     std::vector<TMAbortState>       abortStates;

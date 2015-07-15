@@ -36,8 +36,6 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
         nProcs(procs),
         lineSize(line),
-        nackStallBaseCycles(1),
-        nackStallCap(1),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
         abortTypes("tm:abortTypes"),
