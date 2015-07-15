@@ -82,7 +82,6 @@ protected:
     virtual void       removeTransaction(Pid_t pid);
 
     // Common member variables
-    static uint64_t nextUtid;
     int             nProcs;
     int             lineSize;
     uint32_t        nackStallBaseCycles;
