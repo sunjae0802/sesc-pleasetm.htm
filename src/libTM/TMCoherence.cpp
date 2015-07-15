@@ -55,6 +55,7 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
 
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
+        abortStates.push_back(TMAbortState(pid));
         // Initialize maps to enable at() use
         linesRead[pid].clear();
         linesWritten[pid].clear();
@@ -71,6 +72,7 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 
     // Do the begin
 	transStates[pid].begin(TMCoherence::nextUtid++);
+    abortStates.at(pid).clear();
 }
 
 void TMCoherence::commitTrans(Pid_t pid) {
@@ -88,7 +90,7 @@ void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
 }
 void TMCoherence::completeAbortTrans(Pid_t pid) {
-    const TMAbortState& abortState = transStates[pid].getAbortState();
+    const TMAbortState& abortState = abortStates.at(pid);
     // Update Statistics
     numAborts.inc();
     numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
@@ -107,7 +109,8 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr cadd
         removeSuspendedTrans(victimPid);
     }
     if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
-        transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
+        transStates.at(victimPid).markAbort();
+        abortStates.at(victimPid).markAbort(aborterPid, aborterUtid, caddr, abortType);
         if(victimPid != aborterPid && getState(aborterPid) == TM_RUNNING) {
             numAbortsCaused[aborterPid]++;
         }
@@ -200,7 +203,7 @@ TMBCStatus TMCoherence::commit(InstDesc* inst, ThreadContext* context) {
 
 TMBCStatus TMCoherence::abort(InstDesc* inst, ThreadContext* context) {
     Pid_t pid   = context->getPid();
-    transStates[pid].setAbortIAddr(context->getIAddr());
+    abortStates.at(pid).setAbortIAddr(context->getIAddr());
     return myAbort(pid);
 }
 
@@ -213,7 +216,8 @@ void TMCoherence::markAbort(InstDesc* inst, ThreadContext* context, TMAbortType_
         fail("AbortType %d cannot be set manually\n", abortType);
     }
 
-    transStates[pid].markAbort(pid, getUtid(pid), 0, abortType);
+    transStates.at(pid).markAbort();
+    abortStates.at(pid).markAbort(pid, getUtid(pid), 0, abortType);
 }
 
 ///

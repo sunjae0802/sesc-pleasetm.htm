@@ -40,6 +40,7 @@ public:
 
     // Query functions
     const TransState& getTransState(Pid_t pid) const { return transStates.at(pid); }
+    const TMAbortState& getAbortState(Pid_t pid) const { return abortStates.at(pid); }
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
 
@@ -91,6 +92,7 @@ protected:
     uint32_t        nackStallCap;
 
     std::vector<struct TransState>  transStates;
+    std::vector<TMAbortState>       abortStates;
 
     // Statistics
     GStatsCntr      numCommits;

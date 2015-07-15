@@ -20,7 +20,7 @@ static const uint64_t INVALID_UTID = -1;
 
 class TMAbortState {
 public:
-    TMAbortState() {
+    TMAbortState(Pid_t pid): myPid(pid) {
         clear();
     }
     void clear() {
@@ -45,6 +45,8 @@ public:
     VAddr   getAbortByAddr() const  { return abortByAddr; }
     VAddr   getAbortIAddr() const   { return abortIAddr; }
 private:
+    // The PID of the owner
+    Pid_t           myPid;
     // The PID of the aborter
     Pid_t           aborterPid;
     // The UTID of the aborter
@@ -67,10 +69,7 @@ public:
     void resume();
     void completeAbort();
     void completeFallback();
-    void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e abortType);
-    void setAbortIAddr(VAddr iAddr) {
-        abortState.setAbortIAddr(iAddr);
-    }
+    void markAbort();
     void commit();
     void print() const;
 
@@ -78,7 +77,6 @@ public:
     uint64_t    getUtid()       const { return utid; }
     Time_t      getTimestamp()  const { return timestamp; }
     bool        getRestartPending() const { return restartPending; }
-    const TMAbortState& getAbortState() const { return abortState; }
 
 private:
     Pid_t           myPid;
@@ -86,7 +84,6 @@ private:
     Time_t          timestamp;
     uint64_t        utid;
     bool            restartPending;
-    TMAbortState    abortState;
 };
 
 #endif

@@ -209,7 +209,7 @@ void ThreadContext::completeAbort(InstDesc* inst) {
 uint32_t ThreadContext::getAbortRV() {
     // Get abort state
     const TransState &transState = tmCohManager->getTransState(pid);
-    const TMAbortState& abortState = transState.getAbortState();
+    const TMAbortState& abortState = tmCohManager->getAbortState(pid);
 
     // LSB is 1 to show that this is an abort
     uint32_t abortRV = 1;
@@ -836,7 +836,7 @@ void ThreadContext::traceTM(DInst* dinst) {
 
     if(dinst->tmAbortCompleteOp()) {
         // Get abort state
-        const TMAbortState& abortState = dinst->tmState.getAbortState();
+        const TMAbortState& abortState = tmCohManager->getAbortState(pid);
         Pid_t aborter           = abortState.getAborterPid();
         TMAbortType_e abortType = abortState.getAbortType();
         VAddr abortByAddr       = abortState.getAbortByAddr();

@@ -17,8 +17,6 @@ void TransState::begin(uint64_t newUtid) {
     timestamp   = globalClock;
     utid        = newUtid;
     state       = TM_RUNNING;
-
-    abortState.clear();
     restartPending = false;
 }
 void TransState::startAborting() {
@@ -40,17 +38,14 @@ void TransState::completeAbort() {
 }
 void TransState::completeFallback() {
     restartPending = false;
-    abortState.clear();
 }
-void TransState::markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e abortType) {
+void TransState::markAbort() {
     state       = TM_MARKABORT;
-    abortState.markAbort(byPid, byUtid, byCaddr, abortType);
 }
 void TransState::commit() {
     timestamp   = INVALID_TIMESTAMP;
     utid        = INVALID_UTID;
     state       = TM_INVALID;
-    abortState.clear();
 }
 void TransState::print() const {
     std::cout << myPid << " ";
