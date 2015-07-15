@@ -18,25 +18,43 @@ enum TMAbortType_e {
 static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
 static const uint64_t INVALID_UTID = -1;
 
-struct TMAbortState {
-    TMAbortState(): aborterPid(-1), aborterUtid(INVALID_UTID),
-                abortByAddr(0), abortType(TM_ATYPE_INVALID) {}
+class TMAbortState {
+public:
+    TMAbortState() {
+        clear();
+    }
     void clear() {
-        aborterPid  = -1;
+        aborterPid  = INVALID_PID;
         aborterUtid = INVALID_UTID;
-        abortByAddr = 0;
         abortType   = TM_ATYPE_INVALID;
+        abortByAddr = 0;
+        abortIAddr  = 0;
     }
     void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e type) {
         aborterPid  = byPid;
         aborterUtid = byUtid;
-        abortByAddr = byCaddr;
         abortType   = type;
+        abortByAddr = byCaddr;
     }
+    void setAbortIAddr(VAddr iAddr) {
+        abortIAddr = iAddr;
+    }
+    Pid_t   getAborterPid() const   { return aborterPid; }
+    uint64_t getAborterUtid() const { return aborterUtid; }
+    TMAbortType_e getAbortType() const { return abortType; }
+    VAddr   getAbortByAddr() const  { return abortByAddr; }
+    VAddr   getAbortIAddr() const   { return abortIAddr; }
+private:
+    // The PID of the aborter
     Pid_t           aborterPid;
+    // The UTID of the aborter
     uint64_t        aborterUtid;
-    VAddr           abortByAddr;
+    // Type of abort
     TMAbortType_e   abortType;
+    // The abort-causing memory address (in case of data conflict abort)
+    VAddr           abortByAddr;
+    // The IAddr when we found out TM has aborted
+    VAddr           abortIAddr;
 };
 class TransState {
 public:
@@ -52,6 +70,9 @@ public:
     void completeAbort();
     void completeFallback();
     void markAbort(Pid_t byPid, uint64_t byUtid, VAddr byCaddr, TMAbortType_e abortType);
+    void setAbortIAddr(VAddr iAddr) {
+        abortState.setAbortIAddr(iAddr);
+    }
     void commit();
     void print() const;
 
@@ -61,10 +82,6 @@ public:
     size_t      getDepth()      const { return depth; }
     bool        getRestartPending() const { return restartPending; }
     const TMAbortState& getAbortState() const { return abortState; }
-    TMAbortType_e getAbortType() const { return abortState.abortType; }
-    Pid_t       getAborterPid() const { return abortState.aborterPid; }
-    uint64_t    getAborterUtid() const { return abortState.aborterUtid; }
-    VAddr       getAbortBy()    const { return abortState.abortByAddr; }
 
 private:
     Pid_t           myPid;

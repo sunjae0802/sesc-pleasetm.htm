@@ -171,10 +171,6 @@ private:
     VAddr tmCallsite;
     // User-passed HTM command arg
     uint32_t tmArg;
-    // The IAddr when we found out TM has aborted
-    VAddr  tmAbortIAddr;
-    // Number of transactional writes done on tm.commit
-    size_t      tmNumWrites;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
     TMBeginSubtype tmBeginSubtype;
@@ -258,7 +254,6 @@ public:
 
     // TM getters
     uint32_t getTMArg()       const { return tmArg; }
-    uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
     uint32_t getTMLat()       const { return tmLat; }
 
     // Transactional Methods

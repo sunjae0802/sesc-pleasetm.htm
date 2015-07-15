@@ -124,7 +124,6 @@ private:
 public:
     std::vector<FuncBoundaryData> funcData;
     VAddr       tmCallsite;
-    VAddr       tmAbortIAddr;
     TransState  tmState;
     uint32_t    tmArg;
     size_t      tmLat;

@@ -53,7 +53,6 @@ void ThreadContext::initialize(bool child) {
     tmStallUntil= 0;
     tmArg       = 0;
     tmLat       = 0;
-    tmAbortIAddr= 0;
     tmContext   = NULL;
     tmCallsite  = 0;
     tmlibUserTid= -1;
@@ -83,7 +82,6 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
-            tmAbortIAddr= 0;
             tmBeginSubtype=TM_BEGIN_REGULAR;
             tmCommitSubtype=TM_COMMIT_INVALID;
 
@@ -138,7 +136,6 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
             // If we have already delayed, go ahead and finalize commit in memory
             tmContext->flushMemory();
 
-            tmAbortIAddr= 0;
             tmLat       += numWrites;
             tmCommitSubtype=TM_COMMIT_REGULAR;
 
@@ -184,7 +181,6 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
             }
             rootTMContext->restoreContext();
 
-            tmAbortIAddr= iAddr;
             VAddr beginIAddr = rootTMContext->getBeginIAddr();
 
             tmContext = NULL;
@@ -211,6 +207,7 @@ void ThreadContext::completeAbort(InstDesc* inst) {
 uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
     // Get abort state
     const TransState &transState = tmCohManager->getTransState(pid);
+    const TMAbortState& abortState = transState.getAbortState();
 
     // LSB is 1 to show that this is an abort
     uint32_t abortRV = 1;
@@ -218,9 +215,9 @@ uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
     // bottom 8 bits are reserved
     abortRV |= tmArg << 8;
     // Set aborter Pid in upper bits
-    abortRV |= (transState.getAborterPid()) << 12;
+    abortRV |= (abortState.getAborterPid()) << 12;
 
-    TMAbortType_e abortType = transState.getAbortType();
+    TMAbortType_e abortType = abortState.getAbortType();
     switch(abortType) {
         case TM_ATYPE_SYSCALL:
             abortRV |= 2;
@@ -248,8 +245,6 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
 }
 void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
     tmCohManager->beginFallback(pid, pFallbackMutex);
-
-    tmAbortIAddr= 0;
 }
 
 void ThreadContext::completeFallback() {
@@ -839,28 +834,29 @@ void ThreadContext::traceTM(DInst* dinst) {
 
     if(dinst->tmAbortCompleteOp()) {
         // Get abort state
-        Pid_t aborter = dinst->tmState.getAborterPid();
-        TMAbortType_e abortType = dinst->tmState.getAbortType();
+        const TMAbortState& abortState = dinst->tmState.getAbortState();
+        Pid_t aborter           = abortState.getAborterPid();
+        TMAbortType_e abortType = abortState.getAbortType();
+        VAddr abortByAddr       = abortState.getAbortByAddr();
+        VAddr abortIAddr        = abortState.getAbortIAddr();
 
         // Trace this instruction
         if(abortType == TM_ATYPE_DEFAULT) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
             if(abortByAddr == 0) {
                 fail("Why abort addr NULL?\n");
             }
             getTracefile()<<pid<<" A"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
                             <<" "<< nRetiredInsts
                             <<" "<< globalClock << std::endl;
         } else if(abortType == TM_ATYPE_NONTM) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
             if(abortByAddr == 0) {
                 fail("Why abort addr NULL?\n");
             }
             getTracefile()<<pid<<" a"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
                             <<" "<< nRetiredInsts
@@ -870,10 +866,10 @@ void ThreadContext::traceTM(DInst* dinst) {
             if(abortType == TM_ATYPE_USER) {
                 abortArg = dinst->tmArg;
             } else {
-                abortArg = dinst->tmState.getAbortBy();
+                abortArg = abortByAddr;
             }
             getTracefile()<<pid<<" Z"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
                             <<" "<<abortType
                             <<" 0x"<<std::hex<<abortArg<<std::dec
                             <<" "<< nRetiredInsts

@@ -88,10 +88,11 @@ void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
 }
 void TMCoherence::completeAbortTrans(Pid_t pid) {
+    const TMAbortState& abortState = transStates[pid].getAbortState();
     // Update Statistics
     numAborts.inc();
     numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
-    abortTypes.sample(transStates[pid].getAbortType());
+    abortTypes.sample(abortState.getAbortType());
     linesReadHist.sample(getNumReads(pid));
     linesWrittenHist.sample(getNumWrites(pid));
 
@@ -208,6 +209,7 @@ TMBCStatus TMCoherence::commit(InstDesc* inst, ThreadContext* context) {
 
 TMBCStatus TMCoherence::abort(InstDesc* inst, ThreadContext* context) {
     Pid_t pid   = context->getPid();
+    transStates[pid].setAbortIAddr(context->getIAddr());
     return myAbort(pid);
 }
 
