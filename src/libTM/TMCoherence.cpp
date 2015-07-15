@@ -184,13 +184,7 @@ void TMCoherence::resumeAllSuspendedTrans(Pid_t pid) {
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus TMCoherence::begin(InstDesc* inst, ThreadContext* context) {
     Pid_t pid   = context->getPid();
-    if(getDepth(pid) > 0) {
-        fail("%d nested transactions not tested: %d\n", pid, getState(pid));
-		transStates[pid].beginNested();
-		return TMBC_IGNORE;
-	} else {
-		return myBegin(pid, inst);
-	}
+    return myBegin(pid, inst);
 }
 
 ///
@@ -199,9 +193,6 @@ TMBCStatus TMCoherence::commit(InstDesc* inst, ThreadContext* context) {
     Pid_t pid   = context->getPid();
 	if(getState(pid) == TM_MARKABORT) {
 		return TMBC_ABORT;
-	} else if(getDepth(pid) > 1) {
-		transStates[pid].commitNested();
-		return TMBC_IGNORE;
 	} else {
 		return myCommit(pid);
 	}

@@ -54,6 +54,7 @@ void ThreadContext::initialize(bool child) {
     tmArg       = 0;
     tmLat       = 0;
     tmContext   = NULL;
+    tmDepth     = 0;
     tmCallsite  = 0;
     tmlibUserTid= -1;
     tmBeginSubtype=TM_BEGIN_INVALID;
@@ -78,6 +79,9 @@ void ThreadContext::cleanup() {
 
 #if defined(TM)
 TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
+    if(tmDepth > 0) {
+        fail("Transaction nesting not complete\n");
+    }
     TMBCStatus status = tmCohManager->begin(inst, this);
     switch(status) {
         case TMBC_SUCCESS: {
@@ -89,12 +93,8 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
             tmContext   = new TMContext(this, inst, utid);
             tmContext->saveContext();
             saveCallRetStack();
+            tmDepth++;
 
-            break;
-        }
-        case TMBC_IGNORE: {
-            fail("Nesting not tested yet");
-            tmBeginSubtype=TM_BEGIN_IGNORE;
             break;
         }
         case TMBC_NACK: {
@@ -107,6 +107,9 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     return status;
 }
 TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
+    if(tmDepth == 0) {
+        fail("Commit fail: tmDepth is 0\n");
+    }
     if(tmContext == NULL) {
         fail("Commit fail: tmContext is NULL\n");
     }
@@ -118,10 +121,6 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
 
     TMBCStatus status = tmCohManager->commit(inst, this);
     switch(status) {
-        case TMBC_IGNORE: {
-            fail("Nesting not tested yet");
-            break;
-        }
         case TMBC_NACK: {
             // In the case of a Lazy model that can not commit yet
             break;
@@ -146,6 +145,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
                 tmContext = NULL;
             }
             delete oldTMContext;
+            tmDepth--;
 
             break;
         }
@@ -186,6 +186,8 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
             tmContext = NULL;
             delete rootTMContext;
 
+            tmDepth = 0;
+
             restoreCallRetStack();
 
             // Move instruction pointer to BEGIN
@@ -204,7 +206,7 @@ void ThreadContext::completeAbort(InstDesc* inst) {
     tmBeginSubtype=TM_COMPLETE_ABORT;
 }
 
-uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
+uint32_t ThreadContext::getAbortRV() {
     // Get abort state
     const TransState &transState = tmCohManager->getTransState(pid);
     const TMAbortState& abortState = transState.getAbortState();

@@ -18,7 +18,7 @@
 typedef unsigned long long ID; 
 typedef unsigned long long INSTCOUNT;
 
-enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT, TMBC_IGNORE };
+enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT };
 enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
 class TMCoherence {
@@ -42,7 +42,6 @@ public:
     const TransState& getTransState(Pid_t pid) const { return transStates.at(pid); }
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
-    size_t  getDepth(Pid_t pid)     const { return transStates.at(pid).getDepth(); }
 
     uint32_t getNackRetryStallCycles()   const {
         return nackStallBaseCycles;

@@ -10,29 +10,19 @@ using namespace std;
 
 TransState::TransState(Pid_t pid):
         myPid(pid), state(TM_INVALID), timestamp(INVALID_TIMESTAMP),
-        utid(INVALID_UTID), depth(0), restartPending(false) {
+        utid(INVALID_UTID), restartPending(false) {
 }
 
 void TransState::begin(uint64_t newUtid) {
     timestamp   = globalClock;
     utid        = newUtid;
     state       = TM_RUNNING;
-    I(depth == 0);
-    depth       = 1;
 
     abortState.clear();
     restartPending = false;
 }
-void TransState::beginNested() {
-    depth++;
-}
-void TransState::commitNested() {
-    depth--;
-}
 void TransState::startAborting() {
     state       = TM_ABORTING;
-    // We can't just decrement because we should be going back to the original begin
-    //depth       = 0;
 }
 void TransState::suspend() {
     state       = TM_SUSPENDED;
@@ -46,8 +36,6 @@ void TransState::completeAbort() {
     timestamp   = INVALID_TIMESTAMP;
     utid        = INVALID_UTID;
     state       = TM_INVALID;
-    // We can't just decrement because we should be going back to the original begin
-    depth       = 0;
     restartPending = true;
 }
 void TransState::completeFallback() {
@@ -62,8 +50,6 @@ void TransState::commit() {
     timestamp   = INVALID_TIMESTAMP;
     utid        = INVALID_UTID;
     state       = TM_INVALID;
-    I(depth == 1);
-    depth       = 0;
     abortState.clear();
 }
 void TransState::print() const {

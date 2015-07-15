@@ -62,8 +62,6 @@ public:
     TransState(Pid_t pid);
 
     void begin(uint64_t newUtid);
-    void beginNested();
-    void commitNested();
     void startAborting();
     void suspend();
     void resume();
@@ -79,7 +77,6 @@ public:
     TMState_e   getState()      const { return state; }
     uint64_t    getUtid()       const { return utid; }
     Time_t      getTimestamp()  const { return timestamp; }
-    size_t      getDepth()      const { return depth; }
     bool        getRestartPending() const { return restartPending; }
     const TMAbortState& getAbortState() const { return abortState; }
 
@@ -88,7 +85,6 @@ private:
     TMState_e       state;
     Time_t          timestamp;
     uint64_t        utid;
-    size_t          depth;
     bool            restartPending;
     TMAbortState    abortState;
 };

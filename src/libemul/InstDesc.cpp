@@ -565,7 +565,7 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     if(context->getTMState() == TM_ABORTING) {
         // This is a TM recovering from abort
         context->completeAbort(inst);
-        rv = context->getAbortRV(TMBC_IGNORE);
+        rv = context->getAbortRV();
 
         // And "return" from TM Begin
         context->updIAddr(inst->aupdate,1);

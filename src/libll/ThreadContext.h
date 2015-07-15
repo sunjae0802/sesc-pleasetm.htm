@@ -167,6 +167,8 @@ private:
     Time_t  tmStallUntil;
     // Saved thread context
     TMContext *tmContext;
+    // Depth of nested transactions
+    size_t      tmDepth;
     // Where user had called HTM "instructions"
     VAddr tmCallsite;
     // User-passed HTM command arg
@@ -237,7 +239,7 @@ public:
     int32_t tmlibUserTid;
 
     // Transactional Helper Methods
-    int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
+    size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
     TMState_e getTMState()  const { return tmCohManager ? tmCohManager->getState(pid) : TM_INVALID; }
 
@@ -278,7 +280,7 @@ public:
     }
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
-    uint32_t getAbortRV(TMBCStatus status);
+    uint32_t getAbortRV();
     void beginFallback(uint32_t pFallbackMutex);
     void completeFallback();
 
