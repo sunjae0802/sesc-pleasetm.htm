@@ -50,13 +50,12 @@ void ThreadContext::initialize(bool child) {
     spinning    = false;
 
 #if (defined TM)
-    tmStallUntil= 0;
     tmArg       = 0;
     tmLat       = 0;
     tmContext   = NULL;
     tmDepth     = 0;
     tmCallsite  = 0;
-    tmlibUserTid= -1;
+    tmlibUserTid= INVALID_USER_TID;
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;
 #endif
@@ -78,6 +77,13 @@ void ThreadContext::cleanup() {
 }
 
 #if defined(TM)
+void ThreadContext::setTMlibUserTid(uint32_t arg) {
+    if(tmlibUserTid == INVALID_USER_TID) {
+        tmlibUserTid = arg;
+    } else if(tmlibUserTid != arg) {
+        fail("TMlib user TID changed?\n");
+    }
+}
 TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     if(tmDepth > 0) {
         fail("Transaction nesting not complete\n");
@@ -279,6 +285,7 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
     dAddr(0),
     l1Hit(false),
     nDInsts(0),
+    stallUntil(0),
     fileSys(fileSys),
     openFiles(new FileSys::OpenFiles()),
     sigTable(new SignalTable()),
@@ -323,6 +330,7 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     dAddr(0),
     l1Hit(false),
     nDInsts(0),
+    stallUntil(0),
     fileSys(cloneFileSys?((FileSys::FileSys *)(parent.fileSys)):(new FileSys::FileSys(*(parent.fileSys),newNameSpace))),
     openFiles(cloneFiles?((FileSys::OpenFiles *)(parent.openFiles)):(new FileSys::OpenFiles(*(parent.openFiles)))),
     sigTable(cloneSighand?((SignalTable *)(parent.sigTable)):(new SignalTable(*(parent.sigTable)))),

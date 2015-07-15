@@ -161,10 +161,11 @@ private:
 
 	// TM
 #if (defined TM)
+    // Debug flag for making sure we have consistent view of SW tid and HW tid
+    uint32_t tmlibUserTid;
+#define INVALID_USER_TID (0xDEADDEAD)
     // Unique transaction identifier
     uint64_t tmUtid;
-    // Stall thread if we get a NACK
-    Time_t  tmStallUntil;
     // Saved thread context
     TMContext *tmContext;
     // Depth of nested transactions
@@ -235,9 +236,6 @@ public:
     bool retsEmpty() const { return retHandlers.empty(); }
 
 #if (defined TM)
-    // Debug flag for making sure we have consistent view of SW tid and HW tid
-    int32_t tmlibUserTid;
-
     // Transactional Helper Methods
     size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
@@ -259,6 +257,7 @@ public:
     uint32_t getTMLat()       const { return tmLat; }
 
     // Transactional Methods
+    void setTMlibUserTid(uint32_t arg);
     TMBCStatus beginTransaction(InstDesc* inst);
     TMBCStatus commitTransaction(InstDesc* inst);
     TMBCStatus abortTransaction(InstDesc* inst, TMAbortType_e abortType);
@@ -288,13 +287,21 @@ public:
     void startRetryTimer() {
         startStalling(tmCohManager->getNackRetryStallCycles());
     }
+#endif
+    // Thread stalling methods
+private:
+    Time_t  stallUntil;
+public:
     void startStalling(TimeDelta_t amount) {
-        tmStallUntil = globalClock + amount;
+        stallUntil = globalClock + amount;
     }
     bool checkStall() const {
-        return tmStallUntil != 0 && tmStallUntil >= globalClock;
-    }
+#if (defined TM)
+        if(getTMState() == TM_SUSPENDED) { return true; }
 #endif
+        return stallUntil != 0 && stallUntil >= globalClock;
+    }
+
     static inline int32_t getPidUb(void) {
         return pid2context.size();
     }
