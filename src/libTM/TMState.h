@@ -15,7 +15,6 @@ enum TMAbortType_e {
     TM_ATYPE_INVALID            = 0xDEAD
 };
 
-static const Time_t INVALID_TIMESTAMP = ((~0ULL) - 1024);
 static const uint64_t INVALID_UTID = -1;
 
 class TMAbortState {
@@ -75,13 +74,11 @@ public:
 
     TMState_e   getState()      const { return state; }
     uint64_t    getUtid()       const { return utid; }
-    Time_t      getTimestamp()  const { return timestamp; }
     bool        getRestartPending() const { return restartPending; }
 
 private:
     Pid_t           myPid;
     TMState_e       state;
-    Time_t          timestamp;
     uint64_t        utid;
     bool            restartPending;
 };

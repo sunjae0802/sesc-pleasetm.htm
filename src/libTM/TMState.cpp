@@ -9,12 +9,11 @@
 using namespace std;
 
 TransState::TransState(Pid_t pid):
-        myPid(pid), state(TM_INVALID), timestamp(INVALID_TIMESTAMP),
+        myPid(pid), state(TM_INVALID),
         utid(INVALID_UTID), restartPending(false) {
 }
 
 void TransState::begin(uint64_t newUtid) {
-    timestamp   = globalClock;
     utid        = newUtid;
     state       = TM_RUNNING;
     restartPending = false;
@@ -31,7 +30,6 @@ void TransState::resume() {
 }
 void TransState::completeAbort() {
     I(state == TM_ABORTING);
-    timestamp   = INVALID_TIMESTAMP;
     utid        = INVALID_UTID;
     state       = TM_INVALID;
     restartPending = true;
@@ -43,7 +41,6 @@ void TransState::markAbort() {
     state       = TM_MARKABORT;
 }
 void TransState::commit() {
-    timestamp   = INVALID_TIMESTAMP;
     utid        = INVALID_UTID;
     state       = TM_INVALID;
 }
