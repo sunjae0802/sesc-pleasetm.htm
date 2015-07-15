@@ -565,7 +565,7 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     if(context->getTMState() == TM_ABORTING) {
         // This is a TM recovering from abort
         context->completeAbort(inst);
-        rv = context->getAbortRV(TMBC_IGNORE);
+        rv = context->getAbortRV();
 
         // And "return" from TM Begin
         context->updIAddr(inst->aupdate,1);
@@ -2286,11 +2286,7 @@ void handleMainRet(InstDesc *inst, ThreadContext *context) {
 void handleTMBeginCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-        if(context->tmlibUserTid == -1) {
-            context->tmlibUserTid = arg;
-        } else if(context->tmlibUserTid != (int32_t)arg) {
-            fail("tm_begin tid arg changed?\n");
-        }
+        context->setTMlibUserTid(arg);
 
         funcDataInitCall(context, FUNC_TM_BEGIN);
     }

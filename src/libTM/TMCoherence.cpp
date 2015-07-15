@@ -63,6 +63,7 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
 
     for(Pid_t pid = 0; pid < nProcs; ++pid) {
         transStates.push_back(TransState(pid));
+        abortStates.push_back(TMAbortState(pid));
         // Initialize maps to enable at() use
         linesRead[pid].clear();
         linesWritten[pid].clear();
@@ -79,6 +80,7 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 
     // Do the begin
 	transStates[pid].begin(TMCoherence::nextUtid++);
+    abortStates.at(pid).clear();
 }
 
 void TMCoherence::commitTrans(Pid_t pid) {
@@ -96,10 +98,11 @@ void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
 }
 void TMCoherence::completeAbortTrans(Pid_t pid) {
+    const TMAbortState& abortState = abortStates.at(pid);
     // Update Statistics
     numAborts.inc();
     numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
-    abortTypes.sample(transStates[pid].getAbortType());
+    abortTypes.sample(abortState.getAbortType());
     linesReadHist.sample(getNumReads(pid));
     linesWrittenHist.sample(getNumWrites(pid));
 
@@ -110,11 +113,9 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 
-    if(getState(victimPid) == TM_SUSPENDED) {
-        removeSuspendedTrans(victimPid);
-    }
     if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
-        transStates[victimPid].markAbort(aborterPid, aborterUtid, caddr, abortType);
+        transStates.at(victimPid).markAbort();
+        abortStates.at(victimPid).markAbort(aborterPid, aborterUtid, caddr, abortType);
         if(victimPid != aborterPid && getState(aborterPid) == TM_RUNNING) {
             numAbortsCaused[aborterPid]++;
         }
@@ -140,64 +141,12 @@ void TMCoherence::removeTrans(Pid_t pid) {
     linesRead[pid].clear();
     linesWritten[pid].clear();
 }
-///
-// Mark a transaction as being suspended/stalled. It also handles any stalling/stalledBy relationships
-void TMCoherence::suspendTrans(Pid_t victimPid, Pid_t byPid) {
-    // Extensive checks
-    if(victimPid == INVALID_PID || byPid == INVALID_PID) {
-        fail("Trying to suspend invalid pid?");
-    }
-    if(victimPid == byPid) {
-        fail("Trying to suspend myself?");
-    }
-    auto iVictimStalledBy = stalledBy.find(victimPid);
-
-    if(iVictimStalledBy != stalledBy.end() && iVictimStalledBy->second == byPid) {
-        fail("Duplicate suspend");
-    }
-    auto iAgressorStalledBy = stalledBy.find(byPid);
-    if(iAgressorStalledBy != stalledBy.end()) {
-        fail("Circular suspend");
-    }
-
-    // Do the suspend/stall
-    stalling[byPid].insert(victimPid);
-    stalledBy[victimPid] = byPid;
-    transStates[victimPid].suspend();
-}
-///
-// Remove a transaction that was being suspended/stalled, i.e. because a stalled transaction has been aborted.
-void TMCoherence::removeSuspendedTrans(Pid_t victimPid) {
-    Pid_t byPid = stalledBy.at(victimPid);
-    stalling.at(byPid).erase(victimPid);
-    stalledBy.erase(victimPid);
-}
-///
-// Resume all transactions that was being nacked by pid
-void TMCoherence::resumeAllSuspendedTrans(Pid_t pid) {
-    for(auto iStalling = stalling[pid].begin(); iStalling != stalling[pid].end(); ++iStalling) {
-        Pid_t victimPid = *iStalling;
-        auto iVictimStalledBy = stalledBy.find(victimPid);
-        if(iVictimStalledBy == stalledBy.end() || iVictimStalledBy->second != pid) {
-            fail("Stalling/stalledBy mismatch");
-        }
-        stalledBy.erase(iVictimStalledBy);
-        transStates[victimPid].resume();
-    }
-    stalling.erase(pid);
-}
 
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus TMCoherence::begin(InstDesc* inst, ThreadContext* context) {
     Pid_t pid   = context->getPid();
-    if(getDepth(pid) > 0) {
-        fail("%d nested transactions not tested: %d\n", pid, getState(pid));
-		transStates[pid].beginNested();
-		return TMBC_IGNORE;
-	} else {
-		return myBegin(pid, inst);
-	}
+    return myBegin(pid, inst);
 }
 
 ///
@@ -206,9 +155,6 @@ TMBCStatus TMCoherence::commit(InstDesc* inst, ThreadContext* context) {
     Pid_t pid   = context->getPid();
 	if(getState(pid) == TM_MARKABORT) {
 		return TMBC_ABORT;
-	} else if(getDepth(pid) > 1) {
-		transStates[pid].commitNested();
-		return TMBC_IGNORE;
 	} else {
 		return myCommit(pid);
 	}
@@ -216,6 +162,7 @@ TMBCStatus TMCoherence::commit(InstDesc* inst, ThreadContext* context) {
 
 TMBCStatus TMCoherence::abort(InstDesc* inst, ThreadContext* context) {
     Pid_t pid   = context->getPid();
+    abortStates.at(pid).setAbortIAddr(context->getIAddr());
     return myAbort(pid);
 }
 
@@ -228,7 +175,8 @@ void TMCoherence::markAbort(InstDesc* inst, ThreadContext* context, TMAbortType_
         fail("AbortType %d cannot be set manually\n", abortType);
     }
 
-    transStates[pid].markAbort(pid, getUtid(pid), 0, abortType);
+    transStates.at(pid).markAbort();
+    abortStates.at(pid).markAbort(pid, getUtid(pid), 0, abortType);
 }
 
 ///
@@ -262,8 +210,6 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
-    } else if(getState(pid) == TM_SUSPENDED) {
-        return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMRead(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
@@ -279,8 +225,6 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
 		return TMRW_ABORT;
-    } else if(getState(pid) == TM_SUSPENDED) {
-        return TMRW_NACKED;
 	} else if(getState(pid) == TM_INVALID) {
         nonTMWrite(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
@@ -368,9 +312,6 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
         if(getState(pid) == TM_MARKABORT) {
             return TMRW_ABORT;
         }
-        if(getState(pid) == TM_SUSPENDED) {
-            return TMRW_NACKED;
-        }
 
         updateOverflow(pid, caddr);
 
@@ -416,9 +357,6 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 
         if(getState(pid) == TM_MARKABORT) {
             return TMRW_ABORT;
-        }
-        if(getState(pid) == TM_SUSPENDED) {
-            return TMRW_NACKED;
         }
 
         updateOverflow(pid, caddr);

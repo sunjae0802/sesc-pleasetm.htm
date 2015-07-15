@@ -165,20 +165,19 @@ private:
 
 	// TM
 #if (defined TM)
+    // Debug flag for making sure we have consistent view of SW tid and HW tid
+    uint32_t tmlibUserTid;
+#define INVALID_USER_TID (0xDEADDEAD)
     // Unique transaction identifier
     uint64_t tmUtid;
-    // Stall thread if we get a NACK
-    Time_t  tmStallUntil;
     // Saved thread context
     TMContext *tmContext;
+    // Depth of nested transactions
+    size_t      tmDepth;
     // Where user had called HTM "instructions"
     VAddr tmCallsite;
     // User-passed HTM command arg
     uint32_t tmArg;
-    // The IAddr when we found out TM has aborted
-    VAddr  tmAbortIAddr;
-    // Number of transactional writes done on tm.commit
-    size_t      tmNumWrites;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
     TMBeginSubtype tmBeginSubtype;
@@ -242,11 +241,8 @@ public:
     bool retsEmpty() const { return retHandlers.empty(); }
 
 #if (defined TM)
-    // Debug flag for making sure we have consistent view of SW tid and HW tid
-    int32_t tmlibUserTid;
-
     // Transactional Helper Methods
-    int getTMdepth()        const { return tmCohManager ? tmCohManager->getDepth(pid) : 0; }
+    size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
     TMState_e getTMState()  const { return tmCohManager ? tmCohManager->getState(pid) : TM_INVALID; }
 
@@ -265,10 +261,10 @@ public:
 
     // TM getters
     uint32_t getTMArg()       const { return tmArg; }
-    uint32_t getTMAbortIAddr() const{ return tmAbortIAddr; }
     uint32_t getTMLat()       const { return tmLat; }
 
     // Transactional Methods
+    void setTMlibUserTid(uint32_t arg);
     TMBCStatus beginTransaction(InstDesc* inst);
     TMBCStatus commitTransaction(InstDesc* inst);
     TMBCStatus abortTransaction(InstDesc* inst, TMAbortType_e abortType);
@@ -290,7 +286,7 @@ public:
     }
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
-    uint32_t getAbortRV(TMBCStatus status);
+    uint32_t getAbortRV();
     void beginFallback(uint32_t pFallbackMutex);
     void completeFallback();
 
@@ -299,13 +295,18 @@ public:
         tmMemopHadStalled = true;
         startStalling(tmCohManager->getNackRetryStallCycles());
     }
+#endif
+    // Thread stalling methods
+private:
+    Time_t  stallUntil;
+public:
     void startStalling(TimeDelta_t amount) {
-        tmStallUntil = globalClock + amount;
+        stallUntil = globalClock + amount;
     }
     bool checkStall() const {
-        return tmStallUntil != 0 && tmStallUntil >= globalClock;
+        return stallUntil != 0 && stallUntil >= globalClock;
     }
-#endif
+
     static inline int32_t getPidUb(void) {
         return pid2context.size();
     }

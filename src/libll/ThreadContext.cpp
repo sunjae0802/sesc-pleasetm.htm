@@ -51,13 +51,12 @@ void ThreadContext::initialize(bool child) {
     spinning    = false;
 
 #if (defined TM)
-    tmStallUntil= 0;
     tmArg       = 0;
     tmLat       = 0;
-    tmAbortIAddr= 0;
     tmContext   = NULL;
+    tmDepth     = 0;
     tmCallsite  = 0;
-    tmlibUserTid= -1;
+    tmlibUserTid= INVALID_USER_TID;
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;
     tmMemopHadStalled = false;
@@ -80,12 +79,21 @@ void ThreadContext::cleanup() {
 }
 
 #if defined(TM)
+void ThreadContext::setTMlibUserTid(uint32_t arg) {
+    if(tmlibUserTid == INVALID_USER_TID) {
+        tmlibUserTid = arg;
+    } else if(tmlibUserTid != arg) {
+        fail("TMlib user TID changed?\n");
+    }
+}
 TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
+    if(tmDepth > 0) {
+        fail("Transaction nesting not complete\n");
+    }
     TMBCStatus status = tmCohManager->begin(inst, this);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
-            tmAbortIAddr= 0;
             tmBeginSubtype=TM_BEGIN_REGULAR;
             tmCommitSubtype=TM_COMMIT_INVALID;
 
@@ -93,12 +101,8 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
             tmContext   = new TMContext(this, inst, utid);
             tmContext->saveContext();
             saveCallRetStack();
+            tmDepth++;
 
-            break;
-        }
-        case TMBC_IGNORE: {
-            fail("Nesting not tested yet");
-            tmBeginSubtype=TM_BEGIN_IGNORE;
             break;
         }
         case TMBC_NACK: {
@@ -111,6 +115,9 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     return status;
 }
 TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
+    if(tmDepth == 0) {
+        fail("Commit fail: tmDepth is 0\n");
+    }
     if(tmContext == NULL) {
         fail("Commit fail: tmContext is NULL\n");
     }
@@ -122,10 +129,6 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
 
     TMBCStatus status = tmCohManager->commit(inst, this);
     switch(status) {
-        case TMBC_IGNORE: {
-            fail("Nesting not tested yet");
-            break;
-        }
         case TMBC_NACK: {
             // In the case of a Lazy model that can not commit yet
             break;
@@ -140,7 +143,6 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
             // If we have already delayed, go ahead and finalize commit in memory
             tmContext->flushMemory();
 
-            tmAbortIAddr= 0;
             tmLat       += numWrites;
             tmCommitSubtype=TM_COMMIT_REGULAR;
 
@@ -151,6 +153,7 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
                 tmContext = NULL;
             }
             delete oldTMContext;
+            tmDepth--;
 
             break;
         }
@@ -186,11 +189,12 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
             }
             rootTMContext->restoreContext();
 
-            tmAbortIAddr= iAddr;
             VAddr beginIAddr = rootTMContext->getBeginIAddr();
 
             tmContext = NULL;
             delete rootTMContext;
+
+            tmDepth = 0;
 
             restoreCallRetStack();
 
@@ -210,9 +214,10 @@ void ThreadContext::completeAbort(InstDesc* inst) {
     tmBeginSubtype=TM_COMPLETE_ABORT;
 }
 
-uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
+uint32_t ThreadContext::getAbortRV() {
     // Get abort state
     const TransState &transState = tmCohManager->getTransState(pid);
+    const TMAbortState& abortState = tmCohManager->getAbortState(pid);
 
     // LSB is 1 to show that this is an abort
     uint32_t abortRV = 1;
@@ -220,9 +225,9 @@ uint32_t ThreadContext::getAbortRV(TMBCStatus status) {
     // bottom 8 bits are reserved
     abortRV |= tmArg << 8;
     // Set aborter Pid in upper bits
-    abortRV |= (transState.getAborterPid()) << 12;
+    abortRV |= (abortState.getAborterPid()) << 12;
 
-    TMAbortType_e abortType = transState.getAbortType();
+    TMAbortType_e abortType = abortState.getAbortType();
     switch(abortType) {
         case TM_ATYPE_SYSCALL:
             abortRV |= 2;
@@ -250,8 +255,6 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
 }
 void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
     tmCohManager->beginFallback(pid, pFallbackMutex);
-
-    tmAbortIAddr= 0;
 }
 
 void ThreadContext::completeFallback() {
@@ -284,6 +287,7 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
     dAddr(0),
     l1Hit(false),
     nDInsts(0),
+    stallUntil(0),
     fileSys(fileSys),
     openFiles(new FileSys::OpenFiles()),
     sigTable(new SignalTable()),
@@ -328,6 +332,7 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     dAddr(0),
     l1Hit(false),
     nDInsts(0),
+    stallUntil(0),
     fileSys(cloneFileSys?((FileSys::FileSys *)(parent.fileSys)):(new FileSys::FileSys(*(parent.fileSys),newNameSpace))),
     openFiles(cloneFiles?((FileSys::OpenFiles *)(parent.openFiles)):(new FileSys::OpenFiles(*(parent.openFiles)))),
     sigTable(cloneSighand?((SignalTable *)(parent.sigTable)):(new SignalTable(*(parent.sigTable)))),
@@ -847,28 +852,29 @@ void ThreadContext::traceTM(DInst* dinst) {
 
     if(dinst->tmAbortCompleteOp()) {
         // Get abort state
-        Pid_t aborter = dinst->tmState.getAborterPid();
-        TMAbortType_e abortType = dinst->tmState.getAbortType();
+        const TMAbortState& abortState = tmCohManager->getAbortState(pid);
+        Pid_t aborter           = abortState.getAborterPid();
+        TMAbortType_e abortType = abortState.getAbortType();
+        VAddr abortByAddr       = abortState.getAbortByAddr();
+        VAddr abortIAddr        = abortState.getAbortIAddr();
 
         // Trace this instruction
         if(abortType == TM_ATYPE_DEFAULT) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
             if(abortByAddr == 0) {
                 fail("Why abort addr NULL?\n");
             }
             getTracefile()<<pid<<" A"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
                             <<" "<< nRetiredInsts
                             <<" "<< globalClock << std::endl;
         } else if(abortType == TM_ATYPE_NONTM) {
-            VAddr abortByAddr = dinst->tmState.getAbortBy();
             if(abortByAddr == 0) {
                 fail("Why abort addr NULL?\n");
             }
             getTracefile()<<pid<<" a"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
                             <<" "<<aborter
                             <<" "<< nRetiredInsts
@@ -878,10 +884,10 @@ void ThreadContext::traceTM(DInst* dinst) {
             if(abortType == TM_ATYPE_USER) {
                 abortArg = dinst->tmArg;
             } else {
-                abortArg = dinst->tmState.getAbortBy();
+                abortArg = abortByAddr;
             }
             getTracefile()<<pid<<" Z"
-                            <<" 0x"<<std::hex<<dinst->tmAbortIAddr<<std::dec
+                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
                             <<" "<<abortType
                             <<" 0x"<<std::hex<<abortArg<<std::dec
                             <<" "<< nRetiredInsts

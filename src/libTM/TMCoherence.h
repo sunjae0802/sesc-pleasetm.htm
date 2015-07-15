@@ -18,7 +18,7 @@
 typedef unsigned long long ID; 
 typedef unsigned long long INSTCOUNT;
 
-enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT, TMBC_IGNORE };
+enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT };
 enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
 class TMCoherence {
@@ -40,9 +40,9 @@ public:
 
     // Query functions
     const TransState& getTransState(Pid_t pid) const { return transStates.at(pid); }
+    const TMAbortState& getAbortState(Pid_t pid) const { return abortStates.at(pid); }
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
-    size_t  getDepth(Pid_t pid)     const { return transStates.at(pid).getDepth(); }
 
     uint32_t getNackRetryStallCycles()   const {
         return nackStallBaseCycles;
@@ -72,9 +72,6 @@ protected:
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
     void completeAbortTrans(Pid_t pid);
-    void suspendTrans(Pid_t victimPid, Pid_t byPid);
-    void removeSuspendedTrans(Pid_t victimPid);
-    void resumeAllSuspendedTrans(Pid_t pid);
     void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
     void removeTrans(Pid_t pid);
@@ -100,6 +97,7 @@ protected:
     uint32_t        nackStallCap;
 
     std::vector<struct TransState>  transStates;
+    std::vector<TMAbortState>       abortStates;
 
     // Statistics
     GStatsCntr      numCommits;
@@ -118,8 +116,6 @@ protected:
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
     std::set<uint32_t>                  fallbackMutexCAddrs;
-    std::map<Pid_t, std::set<Pid_t> >   stalling;
-    std::map<Pid_t, Pid_t>              stalledBy;
 };
 
 class TMLECoherence: public TMCoherence {

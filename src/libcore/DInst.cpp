@@ -273,7 +273,6 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->localStackData= context->isLocalStackData(va);
     i->tmCallsite   = 0;
     i->tmArg        = 0;
-    i->tmAbortIAddr = 0;
     i->tmState      = TransState(INVALID_PID);
     i->tmLat        = 0;
     i->tmBeginSubtype= TM_BEGIN_INVALID;
@@ -290,9 +289,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
         context->clearTMBeginSubtype();
         i->tmCommitSubtype  = context->getTMCommitSubtype();
         context->clearTMCommitSubtype();
-        if(i->tmAbortCompleteOp()) {
-            i->tmAbortIAddr = context->getTMAbortIAddr();
-        } else if(i->tmCommitOp()) {
+        if(i->tmCommitOp()) {
             i->tmLat        = context->getTMLat();
         }
     }
