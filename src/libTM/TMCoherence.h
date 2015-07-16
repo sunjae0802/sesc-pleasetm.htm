@@ -44,7 +44,7 @@ public:
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
 
-    virtual uint32_t getNackRetryStallCycles() const { return 0; }
+    virtual uint32_t getNackRetryStallCycles(ThreadContext* context) { return 0; }
     size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
     size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
 
@@ -209,6 +209,7 @@ class TMEECoherence: public TMCoherence {
 public:
     TMEECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
     virtual ~TMEECoherence();
+    virtual uint32_t getNackRetryStallCycles(ThreadContext* context);
 
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
@@ -234,6 +235,13 @@ protected:
     // Configurable member variables
     int             totalSize;
     int             assoc;
+    uint32_t        nackBase;
+    uint32_t        nackCap;
+
+    // RNG-related data
+    struct random_data randBuf;
+    static const int   RBUF_SIZE = 32;
+    char               rbuf[RBUF_SIZE];
 
     // State member variables
     std::vector<Cache*>         caches;

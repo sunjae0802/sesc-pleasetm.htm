@@ -293,7 +293,7 @@ public:
     // memop NACK handling methods
     void startRetryTimer() {
         tmMemopHadStalled = true;
-        startStalling(tmCohManager->getNackRetryStallCycles());
+        startStalling(tmCohManager->getNackRetryStallCycles(this));
     }
 #endif
     // Thread stalling methods

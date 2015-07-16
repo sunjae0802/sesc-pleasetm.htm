@@ -597,6 +597,16 @@ TMEECoherence::TMEECoherence(const char tmStyle[], int32_t nProcs, int32_t line)
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
 
+    // Setting up nack RNG
+    unsigned int randomSeed = SescConf->getInt("TransactionalMemory", "randomSeed");
+    memset(rbuf, 0, RBUF_SIZE);
+    initstate_r(randomSeed, rbuf, RBUF_SIZE, &randBuf);
+
+    nackBase = SescConf->getInt("TransactionalMemory", "nackBase");
+    nackCap = SescConf->getInt("TransactionalMemory", "nackCap");
+
+    MSG("Using seed %d with %d/%d", randomSeed, nackBase, nackCap);
+
     for(Pid_t pid = 0; pid < nProcs; pid++) {
         caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
     }
@@ -610,6 +620,22 @@ TMEECoherence::~TMEECoherence() {
         caches.pop_back();
         delete cache;
     }
+}
+
+uint32_t TMEECoherence::getNackRetryStallCycles(ThreadContext* context) {
+    Pid_t pid = context->getPid();
+    uint32_t nackMax = nackBase;
+
+    if(nackCount.find(pid) != nackCount.end()) {
+        nackMax = nackBase * nackCount.at(pid) * nackCount.at(pid);
+    }
+
+    if(nackMax > nackCap) {
+        nackMax = nackCap;
+    }
+    int32_t r = 0;
+    random_r(&randBuf, &r);
+    return ((r % nackMax) + 1);
 }
 
 size_t TMEECoherence::numWriters(VAddr caddr) const {
@@ -697,6 +723,9 @@ TMRWStatus TMEECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
         return handleConflict(pid, writerPid, caddr);
     }
 
+    // Clear nackCount if we go through
+    nackCount[pid] = 0;
+
     // Do the read
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
     line->markTransactional();
@@ -736,6 +765,9 @@ TMRWStatus TMEECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
         }
         return handleConflict(pid, writerPid, caddr);
     }
+
+    // Clear nackCount if we go through
+    nackCount[pid] = 0;
 
     // Do the write
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
