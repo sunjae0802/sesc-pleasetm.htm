@@ -59,26 +59,28 @@ private:
 };
 class TransState {
 public:
-
     TransState(Pid_t pid);
 
-    void begin(uint64_t newUtid);
+    void begin();
+    void clear();
     void startAborting();
     void completeAbort();
-    void completeFallback();
     void markAbort();
-    void commit();
     void print() const;
 
+    // Getters
     TMState_e   getState()      const { return state; }
     uint64_t    getUtid()       const { return utid; }
-    bool        getRestartPending() const { return restartPending; }
 
 private:
+    // The PID of the owner
     Pid_t           myPid;
+    // Current state of the transaction
     TMState_e       state;
+    // The unique identifier for each ``begin''
     uint64_t        utid;
-    bool            restartPending;
+    // Mono-increasing UTID
+    static uint64_t nextUtid;
 };
 
 #endif

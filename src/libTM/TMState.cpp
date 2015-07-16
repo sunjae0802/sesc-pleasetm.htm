@@ -8,34 +8,26 @@
 
 using namespace std;
 
-TransState::TransState(Pid_t pid):
-        myPid(pid), state(TM_INVALID),
-        utid(INVALID_UTID), restartPending(false) {
-}
+uint64_t TransState::nextUtid = 0;
 
-void TransState::begin(uint64_t newUtid) {
-    utid        = newUtid;
+TransState::TransState(Pid_t pid): myPid(pid) {
+    clear();
+}
+void TransState::clear() {
+    utid        = INVALID_UTID;
+    state       = TM_INVALID;
+}
+void TransState::begin() {
+    utid        = TransState::nextUtid;
+    TransState::nextUtid += 1;
+
     state       = TM_RUNNING;
-    restartPending = false;
 }
 void TransState::startAborting() {
     state       = TM_ABORTING;
 }
-void TransState::completeAbort() {
-    I(state == TM_ABORTING);
-    utid        = INVALID_UTID;
-    state       = TM_INVALID;
-    restartPending = true;
-}
-void TransState::completeFallback() {
-    restartPending = false;
-}
 void TransState::markAbort() {
     state       = TM_MARKABORT;
-}
-void TransState::commit() {
-    utid        = INVALID_UTID;
-    state       = TM_INVALID;
 }
 void TransState::print() const {
     std::cout << myPid << " ";
@@ -48,5 +40,4 @@ void TransState::print() const {
     };
     std::cout << " \n";
 }
-
 

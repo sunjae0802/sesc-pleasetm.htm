@@ -9,7 +9,6 @@
 using namespace std;
 
 TMCoherence *tmCohManager = 0;
-uint64_t TMCoherence::nextUtid = 0;
 /////////////////////////////////////////////////////////////////////////////////////////
 // Factory function for all TM Coherence objects. Use different concrete classes
 // depending on SescConf
@@ -45,8 +44,6 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
         nProcs(procs),
         lineSize(line),
-        nackStallBaseCycles(1),
-        nackStallCap(1),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
         abortTypes("tm:abortTypes"),
@@ -71,15 +68,11 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
 }
 
 void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
-	if(!transStates[pid].getRestartPending()) {
-        // This is a new transaction instance
-    } // Else a restarted transaction
-
     // Reset Statistics
     numAbortsCaused[pid] = 0;
 
     // Do the begin
-	transStates[pid].begin(TMCoherence::nextUtid++);
+	transStates[pid].begin();
     abortStates.at(pid).clear();
 }
 
@@ -92,7 +85,6 @@ void TMCoherence::commitTrans(Pid_t pid) {
 
     // Do the commit
     removeTransaction(pid);
-    transStates[pid].commit();
 }
 void TMCoherence::abortTrans(Pid_t pid) {
 	transStates[pid].startAborting();
@@ -108,7 +100,6 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
 
     // Do the completeAbort
     removeTransaction(pid);
-    transStates[pid].completeAbort();
 }
 void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
@@ -138,6 +129,7 @@ void TMCoherence::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     linesWritten[pid].insert(caddr);
 }
 void TMCoherence::removeTrans(Pid_t pid) {
+    transStates.at(pid).clear();
     linesRead[pid].clear();
     linesWritten[pid].clear();
 }
@@ -200,7 +192,6 @@ void TMCoherence::beginFallback(Pid_t pid, uint32_t pFallbackMutex) {
 ///
 // Function that tells the TM engine that a fallback path for this transaction has been completed.
 void TMCoherence::completeFallback(Pid_t pid) {
-    transStates[pid].completeFallback();
 }
 
 ///
@@ -814,7 +805,6 @@ TMBCStatus TMEECoherence::myCommit(Pid_t pid) {
 // Clear firstStartTime when completing fallback, too
 void TMEECoherence::completeFallback(Pid_t pid) {
     firstStartTime.erase(pid);
-    transStates[pid].completeFallback();
 }
 
 void TMEECoherence::removeTransaction(Pid_t pid) {
