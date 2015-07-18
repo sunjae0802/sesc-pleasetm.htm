@@ -626,13 +626,14 @@ uint32_t TMEECoherence::getNackRetryStallCycles(ThreadContext* context) {
     Pid_t pid = context->getPid();
     uint32_t nackMax = nackBase;
 
-    if(nackCount.find(pid) != nackCount.end()) {
-        nackMax = nackBase * nackCount.at(pid) * nackCount.at(pid);
+    if(nackCount[pid] > 0) {
+        if(nackCount[pid] > nackCap) {
+            nackMax = nackBase * nackCap * nackCap;
+        } else {
+            nackMax = nackBase * nackCount[pid] * nackCount[pid];
+        }
     }
 
-    if(nackMax > nackCap) {
-        nackMax = nackCap;
-    }
     int32_t r = 0;
     random_r(&randBuf, &r);
     return ((r % nackMax) + 1);
