@@ -25,6 +25,8 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nProcs, lineSize);
     } else if(method == "RequesterLoses") {
         newCohManager = new TMRequesterLoses("Requester Loses", nProcs, lineSize);
+    } else if(method == "MoreReadsWins") {
+        newCohManager = new TMMoreReadsWinsCoherence("More Reads Wins", nProcs, lineSize);
     } else if(method == "EE") {
         newCohManager = new TMEECoherence("Eager/Eager", nProcs, lineSize);
     } else if(method == "EENumReads") {
@@ -1109,6 +1111,25 @@ size_t TMRequesterLoses::numReaders(VAddr caddr) const {
     }
 }
 
+bool TMRequesterLoses::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return false;
+}
+
+void TMRequesterLoses::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
+	VAddr caddr = addrToCacheLine(raddr);
+
+    // Collect transactions that would be aborted and remove from conflicting
+    set<Pid_t>::iterator i_m = conflicting.begin();
+    while(i_m != conflicting.end()) {
+        if(shouldAbort(pid, raddr, *i_m)) {
+            markTransAborted(*i_m, pid, caddr, TM_ATYPE_DEFAULT);
+            conflicting.erase(i_m++);
+        } else {
+            ++i_m;
+        }
+    }
+}
+
 TMRequesterLoses::Line* TMRequesterLoses::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
     Cache* cache = getCache(pid);
 	VAddr  caddr = addrToCacheLine(raddr);
@@ -1138,12 +1159,15 @@ TMRWStatus TMRequesterLoses::TMRead(InstDesc* inst, ThreadContext* context, VAdd
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    if(numWriters(caddr) != 0 && hadWrote(pid, caddr) == false) {
-        set<Pid_t>::iterator i_writer = writers[caddr].begin();
-        if(*i_writer == pid) {
-            fail("Miscounting num writers");
-        }
-        markTransAborted(pid, *i_writer, caddr, TM_ATYPE_DEFAULT);
+    set<Pid_t> conflicting;
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
+    }
+    conflicting.erase(pid);
+    abortOthers(pid, raddr, conflicting);
+
+    if(conflicting.size() > 0) {
+        markTransAborted(pid, (*conflicting.begin()), caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
     }
 
@@ -1163,23 +1187,18 @@ TMRWStatus TMRequesterLoses::TMWrite(InstDesc* inst, ThreadContext* context, VAd
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    if(numWriters(caddr) != 0 && hadWrote(pid, caddr) == false) {
-        set<Pid_t>::iterator i_writer = writers[caddr].begin();
-        if(*i_writer == pid) {
-            fail("Miscounting num writers");
-        }
-        markTransAborted(pid, *i_writer, caddr, TM_ATYPE_DEFAULT);
-        return TMRW_ABORT;
+    set<Pid_t> conflicting;
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
     }
-    if(numReaders(caddr) > 1 || ((numReaders(caddr) == 1) && hadRead(pid, caddr) == false)) {
-        set<Pid_t>::iterator i_reader = readers[caddr].begin();
-        if(*i_reader == pid) {
-            ++i_reader;
-            if(i_reader == readers[caddr].end()) {
-                fail("Miscounting num Readers");
-            }
-        }
-        markTransAborted(pid, *i_reader, caddr, TM_ATYPE_DEFAULT);
+    for(Pid_t reader: readers[caddr]) {
+        conflicting.insert(reader);
+    }
+    conflicting.erase(pid);
+    abortOthers(pid, raddr, conflicting);
+
+    if(conflicting.size() > 0) {
+        markTransAborted(pid, (*conflicting.begin()), caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
     }
 
@@ -1266,4 +1285,15 @@ void TMRequesterLoses::removeTransaction(Pid_t pid) {
     }
 
     removeTrans(pid);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Lazy-eager coherence with more writes wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMMoreReadsWinsCoherence::TMMoreReadsWinsCoherence(const char tmStyle[], int32_t nProcs, int32_t line):
+        TMRequesterLoses(tmStyle, nProcs, line) {
+}
+
+bool TMMoreReadsWinsCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return linesRead[other].size() <= linesRead[pid].size();
 }
