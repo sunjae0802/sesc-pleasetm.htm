@@ -1220,11 +1220,15 @@ void TMRequesterLoses::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr r
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
 
-    set<Pid_t> aborted;
-    if(numWriters(caddr) != 0) {
-        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    set<Pid_t> conflicting;
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
     }
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+    if(fallbackMutexCAddrs.find(caddr) == fallbackMutexCAddrs.end()) {
+        markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
+    } else {
+        markTransAborted(conflicting, pid, caddr, TM_ATYPE_FALLBACK);
+    }
 
     // Update line
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
@@ -1236,14 +1240,18 @@ void TMRequesterLoses::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    set<Pid_t> aborted;
-    if(numWriters(caddr) != 0) {
-        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    set<Pid_t> conflicting;
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
     }
-    if(numReaders(caddr) != 0) {
-        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+    for(Pid_t reader: readers[caddr]) {
+        conflicting.insert(reader);
     }
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+    if(fallbackMutexCAddrs.find(caddr) == fallbackMutexCAddrs.end()) {
+        markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
+    } else {
+        markTransAborted(conflicting, pid, caddr, TM_ATYPE_FALLBACK);
+    }
 
     // Update line
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
