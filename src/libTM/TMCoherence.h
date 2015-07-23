@@ -234,9 +234,9 @@ protected:
     virtual void completeFallback(Pid_t pid);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
-    TMRWStatus handleConflict(Pid_t pid, Pid_t conflictPid, VAddr caddr);
+    TMRWStatus handleConflict(Pid_t pid, std::set<Pid_t>& conflicting, VAddr caddr);
     virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
-    Time_t getStartTime(Pid_t pid)   const { return firstStartTime.at(pid); }
+    Time_t getStartTime(Pid_t pid)   const { return startTime.at(pid); }
     size_t numWriters(VAddr caddr) const;
     size_t numReaders(VAddr caddr) const;
 
@@ -255,11 +255,11 @@ protected:
 
     // State member variables
     std::vector<Cache*>         caches;
-    std::map<VAddr, Pid_t>              writer;
-    std::map<VAddr, std::list<Pid_t> >  readers;
+    std::map<VAddr, Pid_t>              wBits;
+    std::map<VAddr, std::list<Pid_t> >  rBits;
 
     std::map<Pid_t, bool>               cycleFlags;
-    std::map<Pid_t, Time_t>             firstStartTime;
+    std::map<Pid_t, Time_t>             startTime;
     std::map<Pid_t, size_t>             nackCount;
 };
 class TMEENumReadsCoherence: public TMEECoherence {

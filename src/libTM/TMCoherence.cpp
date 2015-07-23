@@ -642,16 +642,16 @@ uint32_t TMEECoherence::getNackRetryStallCycles(ThreadContext* context) {
 }
 
 size_t TMEECoherence::numWriters(VAddr caddr) const {
-    auto i_line = writer.find(caddr);
-    if(i_line == writer.end()) {
+    auto i_line = wBits.find(caddr);
+    if(i_line == wBits.end()) {
         return 0;
     } else {
         return 1;
     }
 }
 size_t TMEECoherence::numReaders(VAddr caddr) const {
-    auto i_line = readers.find(caddr);
-    if(i_line == readers.end()) {
+    auto i_line = rBits.find(caddr);
+    if(i_line == rBits.end()) {
         return 0;
     } else {
         return i_line->second.size();
@@ -669,21 +669,22 @@ bool TMEECoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid) {
 
 ///
 // We have a conflict, so either NACK pid (the requester), or if there is a circular NACK, abort
-TMRWStatus TMEECoherence::handleConflict(Pid_t pid, Pid_t conflictPid, VAddr caddr) {
-    if(isHigherOrEqualPriority(conflictPid, pid) && cycleFlags[pid]) {
-        // I am a lower priority transaction and has NACKed a higher priority one, possibly that one
-        markTransAborted(pid, conflictPid, caddr, TM_ATYPE_DEFAULT);
+TMRWStatus TMEECoherence::handleConflict(Pid_t pid, std::set<Pid_t>& conflicting, VAddr caddr) {
+    Pid_t higherPid = INVALID_PID;
+    for(Pid_t c: conflicting) {
+        if(isHigherOrEqualPriority(pid, c)) {
+            // A lower c is sending an NACK to me
+            cycleFlags[c] = true;
+        }
+        if(isHigherOrEqualPriority(c, pid)) {
+            // I received a NACK from higher c
+            higherPid = c;
+        }
+    }
+    if(higherPid != INVALID_PID && cycleFlags[pid]) {
+        markTransAborted(pid, higherPid, caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
     } else {
-        // NACK the requester
-        if(isHigherOrEqualPriority(pid, conflictPid)) {
-            // I am being NACKed by a lower priority transaction, so set that guy's cycleFlag
-            cycleFlags[conflictPid] = true;
-        }
-        nackCount[pid]++;
-        if(nackCount[pid] % 20480 == 0) {
-            MSG("%d nacked by %d[%lu]\n", pid, conflictPid, nackCount[pid]);
-        }
         return TMRW_NACKED;
     }
 }
@@ -717,13 +718,12 @@ TMRWStatus TMEECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    if(hadWrote(pid, caddr) == false && numWriters(caddr) != 0) {
-        Pid_t writerPid = writer.at(caddr);
-        if(writerPid == pid) {
-            fail("writer hadWrote mismatch");
-        }
-
-        return handleConflict(pid, writerPid, caddr);
+    std::set<Pid_t> conflicting;
+    if(wBits.find(caddr) != wBits.end() && wBits[caddr] != pid) {
+        conflicting.insert(wBits.at(caddr));
+    }
+    if(conflicting.size() > 0) {
+        return handleConflict(pid, conflicting, caddr);
     }
 
     // Clear nackCount if we go through
@@ -732,8 +732,8 @@ TMRWStatus TMEECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     // Do the read
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
     line->markTransactional();
-    if(hadRead(pid, caddr) == false) {
-        readers[caddr].push_back(pid);
+    if(find(rBits[caddr].begin(), rBits[caddr].end(), pid) == rBits[caddr].end()) {
+        rBits[caddr].push_back(pid);
     }
     readTrans(pid, raddr, caddr);
 
@@ -746,27 +746,17 @@ TMRWStatus TMEECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    if(numReaders(caddr) > 1 || ((numReaders(caddr) == 1) && hadRead(pid, caddr) == false)) {
-        // If there is more than one reader, or there is a single reader who happens not to be us
-        // Grab the first reader than isn't us
-        list<Pid_t>::iterator i_reader = readers[caddr].begin();
-        if(*i_reader == pid) {
-            ++i_reader;
-            if(i_reader == readers[caddr].end()) {
-                fail("Miscounting num Readers");
-            }
-        }
-        Pid_t firstReader = *i_reader;
-        if(firstReader == pid) {
-            fail("Duplicate in Readers list");
-        }
-        return handleConflict(pid, firstReader, caddr);
-    } else if(hadWrote(pid, caddr) == false && numWriters(caddr) != 0) {
-        Pid_t writerPid = writer.at(caddr);
-        if(writerPid == pid) {
-            fail("writer hadWrote mismatch");
-        }
-        return handleConflict(pid, writerPid, caddr);
+    std::set<Pid_t> conflicting;
+    if(wBits.find(caddr) != wBits.end() && wBits[caddr] != pid) {
+        conflicting.insert(wBits.at(caddr));
+    }
+    if(rBits.find(caddr) != rBits.end()) {
+        conflicting.insert(rBits.at(caddr).begin(), rBits.at(caddr).end());
+        conflicting.erase(pid);
+    }
+
+    if(conflicting.size() > 0) {
+        return handleConflict(pid, conflicting, caddr);
     }
 
     // Clear nackCount if we go through
@@ -777,8 +767,9 @@ TMRWStatus TMEECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     line->markTransactional();
     line->makeTransactionalDirty(pid);
 
-    if(hadWrote(pid, caddr) == false) {
-        writer[caddr] = pid;
+    wBits[caddr] = pid;
+    if(find(rBits[caddr].begin(), rBits[caddr].end(), pid) == rBits[caddr].end()) {
+        rBits[caddr].push_back(pid);
     }
     writeTrans(pid, raddr, caddr);
 
@@ -793,7 +784,7 @@ void TMEECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
     Cache* cache= getCache(pid);
 
     if(numWriters(caddr) != 0) {
-        markTransAborted(writer.at(caddr), pid, caddr, TM_ATYPE_NONTM);
+        markTransAborted(wBits.at(caddr), pid, caddr, TM_ATYPE_NONTM);
     }
 
     // Update line
@@ -808,10 +799,10 @@ void TMEECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
 
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
-        aborted.insert(writer.at(caddr));
+        aborted.insert(wBits.at(caddr));
     }
     if(numReaders(caddr) != 0) {
-        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+        aborted.insert(rBits.at(caddr).begin(), rBits.at(caddr).end());
     }
     markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
 
@@ -823,8 +814,8 @@ void TMEECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
 ///
 // TM begin that also initializes firstStartTime
 TMBCStatus TMEECoherence::myBegin(Pid_t pid, InstDesc* inst) {
-    if(firstStartTime.find(pid) == firstStartTime.end()) {
-        firstStartTime[pid] = globalClock;
+    if(startTime.find(pid) == startTime.end()) {
+        startTime[pid] = globalClock;
     }
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
@@ -832,39 +823,37 @@ TMBCStatus TMEECoherence::myBegin(Pid_t pid, InstDesc* inst) {
 ///
 // TM commit also clears firstStartTime
 TMBCStatus TMEECoherence::myCommit(Pid_t pid) {
-    firstStartTime.erase(pid);
+    startTime.erase(pid);
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
 ///
 // Clear firstStartTime when completing fallback, too
 void TMEECoherence::completeFallback(Pid_t pid) {
-    firstStartTime.erase(pid);
+    startTime.erase(pid);
 }
 
 void TMEECoherence::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
     cache->clearTransactional();
 
-    for(VAddr caddr:  linesWritten[pid]) {
-        if(writer.at(caddr) != pid) {
-            fail("writer and linesWritten mismatch");
+    std::set<VAddr> accessed;
+    accessed.insert(linesWritten[pid].begin(), linesWritten[pid].end());
+    accessed.insert(linesRead[pid].begin(), linesRead[pid].end());
+
+    for(VAddr caddr:  accessed) {
+        if(wBits.find(caddr) != wBits.end() && wBits[caddr] == pid) {
+            wBits.erase(caddr);
         }
-        writer.erase(caddr);
-    }
-    std::map<VAddr, std::list<Pid_t> >::iterator i_readers;
-    for(VAddr caddr:  linesRead[pid]) {
-        i_readers = readers.find(caddr);
-        if(i_readers == readers.end()) {
-            fail("readers and linesRead mismatch");
+        auto i_readers = rBits.find(caddr);
+        if(i_readers == rBits.end()) {
+            fail("[%d] RBit not set for 0x%x\n", pid, caddr);
         }
+
         list<Pid_t>& myReaders = i_readers->second;
-        if(find(myReaders.begin(), myReaders.end(), pid) == myReaders.end()) {
-            fail("readers does not contain pid");
-        }
         myReaders.remove(pid);
         if(myReaders.empty()) {
-            readers.erase(i_readers);
+            rBits.erase(i_readers);
         }
     }
 
