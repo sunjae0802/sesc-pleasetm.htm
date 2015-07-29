@@ -261,6 +261,7 @@ protected:
     std::map<Pid_t, bool>               cycleFlags;
     std::map<Pid_t, Time_t>             startTime;
     std::map<Pid_t, size_t>             nackCount;
+    std::map<Pid_t, Pid_t>              nackedBy;
 };
 class TMEENumReadsCoherence: public TMEECoherence {
 public:

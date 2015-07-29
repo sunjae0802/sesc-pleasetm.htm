@@ -670,8 +670,15 @@ bool TMEECoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid) {
 ///
 // We have a conflict, so either NACK pid (the requester), or if there is a circular NACK, abort
 TMRWStatus TMEECoherence::handleConflict(Pid_t pid, std::set<Pid_t>& conflicting, VAddr caddr) {
+    Pid_t highestPid = INVALID_PID;
     Pid_t higherPid = INVALID_PID;
     for(Pid_t c: conflicting) {
+        if(highestPid == INVALID_PID) {
+            highestPid = c;
+        } else if(isHigherOrEqualPriority(c, highestPid)) {
+            highestPid = c;
+        }
+
         if(isHigherOrEqualPriority(pid, c)) {
             // A lower c is sending an NACK to me
             cycleFlags[c] = true;
@@ -685,6 +692,8 @@ TMRWStatus TMEECoherence::handleConflict(Pid_t pid, std::set<Pid_t>& conflicting
         markTransAborted(pid, higherPid, caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
     } else {
+        nackCount[pid]++;
+        nackedBy[pid] = highestPid;
         return TMRW_NACKED;
     }
 }
@@ -728,6 +737,7 @@ TMRWStatus TMEECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
 
     // Clear nackCount if we go through
     nackCount[pid] = 0;
+    nackedBy.erase(pid);
 
     // Do the read
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
@@ -761,6 +771,7 @@ TMRWStatus TMEECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 
     // Clear nackCount if we go through
     nackCount[pid] = 0;
+    nackedBy.erase(pid);
 
     // Do the write
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
@@ -859,6 +870,7 @@ void TMEECoherence::removeTransaction(Pid_t pid) {
 
 	cycleFlags[pid] = false;
     nackCount[pid] = 0;
+    nackedBy.erase(pid);
     removeTrans(pid);
 }
 
