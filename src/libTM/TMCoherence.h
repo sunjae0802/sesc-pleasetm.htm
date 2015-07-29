@@ -194,7 +194,7 @@ protected:
     Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
     size_t numWriters(VAddr caddr) const;
     size_t numReaders(VAddr caddr) const;
-    bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
 
     // Configurable member variables
