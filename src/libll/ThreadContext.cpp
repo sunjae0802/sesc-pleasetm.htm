@@ -42,10 +42,6 @@ void ThreadContext::initialize(bool child) {
         tracefile.open(filename);
     }
 
-    getTracefile() << ThreadContext::numThreads << " 0 "
-            << nRetiredInsts << ' ' << globalClock << std::endl;
-    ThreadContext::numThreads++;
-
     prevDInstRetired = 0;
     nRetiredInsts = 0;
     spinning    = false;
@@ -61,6 +57,10 @@ void ThreadContext::initialize(bool child) {
     tmCommitSubtype=TM_COMMIT_INVALID;
     tmMemopHadStalled = false;
 #endif
+
+    getTracefile() << ThreadContext::numThreads << " 0 "
+            << nRetiredInsts << ' ' << globalClock << std::endl;
+    ThreadContext::numThreads++;
 }
 
 void ThreadContext::cleanup() {
