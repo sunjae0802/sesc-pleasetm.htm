@@ -90,8 +90,6 @@ protected:
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
-    GStatsHist      linesReadHist;
-    GStatsHist      linesWrittenHist;
 
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;

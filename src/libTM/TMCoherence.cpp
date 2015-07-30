@@ -38,9 +38,7 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
         lineSize(line),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
-        abortTypes("tm:abortTypes"),
-        linesReadHist("tm:linesReadHist"),
-        linesWrittenHist("tm:linesWrittenHist") {
+        abortTypes("tm:abortTypes") {
 
     MSG("Using %s TM", tmStyle);
 
@@ -62,8 +60,6 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 void TMCoherence::commitTrans(Pid_t pid) {
     // Update Statistics
     numCommits.inc();
-    linesReadHist.sample(getNumReads(pid));
-    linesWrittenHist.sample(getNumWrites(pid));
 
     // Do the commit
     removeTransaction(pid);
@@ -76,8 +72,6 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
     // Update Statistics
     numAborts.inc();
     abortTypes.sample(abortState.getAbortType());
-    linesReadHist.sample(getNumReads(pid));
-    linesWrittenHist.sample(getNumWrites(pid));
 
     // Do the completeAbort
     removeTransaction(pid);
