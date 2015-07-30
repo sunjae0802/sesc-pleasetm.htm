@@ -39,12 +39,6 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
         abortTypes("tm:abortTypes"),
-        tmLoads("tm:loads"),
-        tmStores("tm:stores"),
-        tmLoadMisses("tm:loadMisses"),
-        tmStoreMisses("tm:storeMisses"),
-        numAbortsCausedBeforeAbort("tm:numAbortsCausedBeforeAbort"),
-        numAbortsCausedBeforeCommit("tm:numAbortsCausedBeforeCommit"),
         linesReadHist("tm:linesReadHist"),
         linesWrittenHist("tm:linesWrittenHist") {
 
@@ -60,9 +54,6 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
 }
 
 void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
-    // Reset Statistics
-    numAbortsCaused[pid] = 0;
-
     // Do the begin
 	transStates[pid].begin();
     abortStates.at(pid).clear();
@@ -71,7 +62,6 @@ void TMCoherence::beginTrans(Pid_t pid, InstDesc* inst) {
 void TMCoherence::commitTrans(Pid_t pid) {
     // Update Statistics
     numCommits.inc();
-    numAbortsCausedBeforeCommit.add(numAbortsCaused[pid]);
     linesReadHist.sample(getNumReads(pid));
     linesWrittenHist.sample(getNumWrites(pid));
 
@@ -85,7 +75,6 @@ void TMCoherence::completeAbortTrans(Pid_t pid) {
     const TMAbortState& abortState = abortStates.at(pid);
     // Update Statistics
     numAborts.inc();
-    numAbortsCausedBeforeAbort.add(numAbortsCaused[pid]);
     abortTypes.sample(abortState.getAbortType());
     linesReadHist.sample(getNumReads(pid));
     linesWrittenHist.sample(getNumWrites(pid));
@@ -99,9 +88,6 @@ void TMCoherence::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr cadd
     if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
         transStates.at(victimPid).markAbort();
         abortStates.at(victimPid).markAbort(aborterPid, aborterUtid, caddr, abortType);
-        if(victimPid != aborterPid && getState(aborterPid) == TM_RUNNING) {
-            numAbortsCaused[aborterPid]++;
-        }
     } // Else victim is already aborting, so leave it alone
 }
 
