@@ -98,16 +98,7 @@ protected:
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
-    GStatsCntr      tmLoads;
-    GStatsCntr      tmStores;
-    GStatsCntr      tmLoadMisses;
-    GStatsCntr      tmStoreMisses;
-    GStatsCntr      numAbortsCausedBeforeAbort;
-    GStatsCntr      numAbortsCausedBeforeCommit;
-    GStatsHist      linesReadHist;
-    GStatsHist      linesWrittenHist;
 
-    std::map<VAddr, size_t>             numAbortsCaused;
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
     std::set<uint32_t>                  fallbackMutexCAddrs;
