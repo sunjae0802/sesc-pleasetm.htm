@@ -11,7 +11,6 @@ enum TMAbortType_e {
     TM_ATYPE_SYSCALL            = 2,    // Aborts due to syscall (external abort)
     TM_ATYPE_SETCONFLICT        = 3,    // Aborts due to a set conflict (capacity)
     TM_ATYPE_NONTM              = 4,    // Aborts due to conflict by a non-transaction
-    TM_ATYPE_FALLBACK           = 254,  // Aborts due to an active fallback
     TM_ATYPE_INVALID            = 0xDEAD
 };
 

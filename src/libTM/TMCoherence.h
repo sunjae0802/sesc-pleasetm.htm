@@ -35,10 +35,18 @@ public:
 
     void markAbort(InstDesc* inst, ThreadContext* context, TMAbortType_e abortType);
     TMBCStatus completeAbort(Pid_t pid);
-    void beginFallback(Pid_t pid, uint32_t pFallbackMutex);
-    void completeFallback(Pid_t pid);
+
+    // Functions about the fallback path for statistics that run across multiple retries
+    virtual void beginFallback(Pid_t pid) {}
+    virtual void completeFallback(Pid_t pid) {}
 
     // Query functions
+    VAddr addrToCacheLine(VAddr raddr) {
+        while(raddr % lineSize != 0) {
+            raddr = raddr-1;
+        }
+        return raddr;
+    }
     const TransState& getTransState(Pid_t pid) const { return transStates.at(pid); }
     const TMAbortState& getAbortState(Pid_t pid) const { return abortStates.at(pid); }
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
@@ -58,12 +66,6 @@ public:
 
 protected:
     TMCoherence(const char* tmStyle, int procs, int line);
-    VAddr addrToCacheLine(VAddr raddr) {
-        while(raddr % lineSize != 0) {
-            raddr = raddr-1;
-        }
-        return raddr;
-    }
 
     // Common functionality that all TMCoherence styles would use
     void beginTrans(Pid_t pid, InstDesc* inst);
@@ -101,7 +103,6 @@ protected:
 
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
-    std::set<uint32_t>                  fallbackMutexCAddrs;
 };
 
 class TMIdealLECoherence: public TMCoherence {

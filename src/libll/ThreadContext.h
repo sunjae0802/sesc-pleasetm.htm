@@ -180,6 +180,8 @@ private:
     uint32_t tmArg;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
+    // Common set of fallback mutex addresses to check if the abort is caused by a fallback
+    static std::set<uint32_t> tmFallbackMutexCAddrs;
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
     bool    tmMemopHadStalled;
