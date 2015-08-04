@@ -96,6 +96,35 @@ protected:
     std::set<uint32_t>                  fallbackMutexCAddrs;
 };
 
+class TMIdealLECoherence: public TMCoherence {
+public:
+    TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMIdealLECoherence();
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       removeTransaction(Pid_t pid);
+
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    Line* replaceLine(Pid_t pid, VAddr raddr);
+    size_t numWriters(VAddr caddr) const;
+    size_t numReaders(VAddr caddr) const;
+
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+
+    // State member variables
+    std::vector<Cache*>         caches;
+    std::map<VAddr, std::set<Pid_t> >   writers;
+    std::map<VAddr, std::set<Pid_t> >   readers;
+};
+
 class TMLECoherence: public TMCoherence {
 public:
     TMLECoherence(const char tmStyle[], int32_t nProcs, int32_t line);

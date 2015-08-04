@@ -19,7 +19,9 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
     string method = SescConf->getCharPtr("TransactionalMemory","method");
     int lineSize = SescConf->getInt("TransactionalMemory","lineSize");
 
-    if(method == "LE") {
+    if(method == "IdealLE") {
+        newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nProcs, lineSize);
+    } else if(method == "LE") {
         newCohManager = new TMLECoherence("Lazy/Eager", nProcs, lineSize);
     } else {
         MSG("unknown TM method, using LE");
@@ -228,6 +230,254 @@ void TMCoherence::removeTransaction(Pid_t pid) {
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
+/////////////////////////////////////////////////////////////////////////////////////////
+TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
+        TMCoherence(tmStyle, nProcs, line) {
+
+    int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
+    int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+
+    for(Pid_t pid = 0; pid < nProcs; pid++) {
+        caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
+    }
+}
+
+///
+// Destructor for PrivateCache. Delete all allocated members
+TMIdealLECoherence::~TMIdealLECoherence() {
+    while(caches.size() > 0) {
+        Cache* cache = caches.back();
+        caches.pop_back();
+        delete cache;
+    }
+}
+
+size_t TMIdealLECoherence::numWriters(VAddr caddr) const {
+    auto i_line = writers.find(caddr);
+    if(i_line == writers.end()) {
+        return 0;
+    } else {
+        return i_line->second.size();
+    }
+}
+size_t TMIdealLECoherence::numReaders(VAddr caddr) const {
+    auto i_line = readers.find(caddr);
+    if(i_line == readers.end()) {
+        return 0;
+    } else {
+        return i_line->second.size();
+    }
+}
+
+///
+// Helper function that replaces a line in the Cache
+TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr) {
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+    VAddr myTag = cache->calcTag(raddr);
+
+    Line* line  = cache->findLine2Replace(raddr);
+    if(line->isValid()) {
+        line->invalidate();
+    }
+    line->validate(myTag, caddr);
+
+    return line;
+}
+
+///
+// Do a transactional read.
+TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == NULL) {
+        p_opStatus->wasHit = false;
+
+        // Abort all peers
+        set<Pid_t> aborted;
+        if(numWriters(caddr) != 0) {
+            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+        }
+        aborted.erase(pid);
+        markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
+
+        line  = replaceLine(pid, raddr);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+
+    // Do the read
+    line->markTransactional();
+    readers[caddr].insert(pid);
+
+    readTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a transactional write.
+TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == NULL) {
+        p_opStatus->wasHit = false;
+
+        // Abort all peers
+        set<Pid_t> aborted;
+        if(numWriters(caddr) != 0) {
+            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+        }
+        if(numReaders(caddr) != 0) {
+            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+        }
+        aborted.erase(pid);
+        markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
+
+        line  = replaceLine(pid, raddr);
+    } else if(line->isDirty() == false) {
+        p_opStatus->wasHit = false;
+
+        // Abort all peers
+        set<Pid_t> aborted;
+        if(numWriters(caddr) != 0) {
+            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+        }
+        if(numReaders(caddr) != 0) {
+            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+        }
+        aborted.erase(pid);
+        markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+
+    // Do the write
+    line->markTransactional();
+    line->makeTransactionalDirty(pid);
+
+    writers[caddr].insert(pid);
+    writeTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a non-transactional read, i.e. when a thread not inside a transaction.
+void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == NULL) {
+        p_opStatus->wasHit = false;
+
+        // Abort all peers
+        set<Pid_t> aborted;
+        if(numWriters(caddr) != 0) {
+            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+        }
+        markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+        line  = replaceLine(pid, raddr);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+}
+
+///
+// Do a non-transactional write, i.e. when a thread not inside a transaction.
+void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+
+    // Lookup line
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == NULL) {
+        p_opStatus->wasHit = false;
+
+        // Abort all peers
+        set<Pid_t> aborted;
+        if(numWriters(caddr) != 0) {
+            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+        }
+        if(numReaders(caddr) != 0) {
+            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+        }
+        markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+        line  = replaceLine(pid, raddr);
+    } else if(line->isDirty() == false) {
+        p_opStatus->wasHit = false;
+
+        // Abort all peers
+        set<Pid_t> aborted;
+        if(numWriters(caddr) != 0) {
+            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+        }
+        if(numReaders(caddr) != 0) {
+            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+        }
+        markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+
+    // Update line
+    line->makeDirty();
+}
+
+void TMIdealLECoherence::removeTransaction(Pid_t pid) {
+    Cache* cache = getCache(pid);
+    cache->clearTransactional();
+
+    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
+    for(VAddr caddr:  linesWritten[pid]) {
+        i_line = writers.find(caddr);
+        if(i_line == writers.end()) {
+            fail("writers and linesWritten mismatch");
+        }
+        set<Pid_t>& myWriters = i_line->second;
+        if(myWriters.find(pid) == myWriters.end()) {
+            fail("writers does not contain pid");
+        }
+        myWriters.erase(pid);
+        if(myWriters.empty()) {
+            writers.erase(i_line);
+        }
+    }
+    for(VAddr caddr:  linesRead[pid]) {
+        i_line = readers.find(caddr);
+        if(i_line == readers.end()) {
+            fail("readers and linesRead mismatch");
+        }
+        set<Pid_t>& myReaders = i_line->second;
+        if(myReaders.find(pid) == myReaders.end()) {
+            fail("readers does not contain pid");
+        }
+        myReaders.erase(pid);
+        if(myReaders.empty()) {
+            readers.erase(i_line);
+        }
+    }
+
+    removeTrans(pid);
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// TSX-style coherence using Lazy-eager coherence with cache overflow aborts.
 /////////////////////////////////////////////////////////////////////////////////////////
 TMLECoherence::TMLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
         TMCoherence(tmStyle, nProcs, line) {
