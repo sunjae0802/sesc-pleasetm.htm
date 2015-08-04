@@ -286,6 +286,37 @@ TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr
 }
 
 ///
+// Helper function that aborts all transactional readers
+void TMIdealLECoherence::abortTMReaders(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
+    // Collect readers
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    aborted.erase(pid);
+
+    // Do the abort
+    markTransAborted(aborted, pid, caddr, abortType);
+}
+
+///
+// Helper function that aborts all transactional readers and writers
+void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
+    // Collect sharers
+    set<Pid_t> aborted;
+    if(numWriters(caddr) != 0) {
+        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
+    }
+    if(numReaders(caddr) != 0) {
+        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
+    }
+    aborted.erase(pid);
+
+    // Do the abort
+    markTransAborted(aborted, pid, caddr, abortType);
+}
+
+///
 // Do a transactional read.
 TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
@@ -297,13 +328,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
     if(line == NULL) {
         p_opStatus->wasHit = false;
 
-        // Abort all peers
-        set<Pid_t> aborted;
-        if(numWriters(caddr) != 0) {
-            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-        }
-        aborted.erase(pid);
-        markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
+        abortTMReaders(pid, caddr, TM_ATYPE_DEFAULT);
 
         line  = replaceLine(pid, raddr);
     } else {
@@ -319,6 +344,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
     return TMRW_SUCCESS;
 }
 
+
 ///
 // Do a transactional write.
 TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
@@ -331,31 +357,15 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, V
     if(line == NULL) {
         p_opStatus->wasHit = false;
 
-        // Abort all peers
-        set<Pid_t> aborted;
-        if(numWriters(caddr) != 0) {
-            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-        }
-        if(numReaders(caddr) != 0) {
-            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
-        }
-        aborted.erase(pid);
-        markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
+        abortTMSharers(pid, caddr, TM_ATYPE_DEFAULT);
 
         line  = replaceLine(pid, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
 
-        // Abort all peers
-        set<Pid_t> aborted;
-        if(numWriters(caddr) != 0) {
-            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-        }
-        if(numReaders(caddr) != 0) {
-            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
-        }
-        aborted.erase(pid);
-        markTransAborted(aborted, pid, caddr, TM_ATYPE_DEFAULT);
+        abortTMSharers(pid, caddr, TM_ATYPE_DEFAULT);
+
+        // Do NOT replace line, though. We just need to mark dirty below
     } else {
         p_opStatus->wasHit = true;
     }
@@ -382,12 +392,7 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
     if(line == NULL) {
         p_opStatus->wasHit = false;
 
-        // Abort all peers
-        set<Pid_t> aborted;
-        if(numWriters(caddr) != 0) {
-            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-        }
-        markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+        abortTMReaders(pid, caddr, TM_ATYPE_NONTM);
 
         line  = replaceLine(pid, raddr);
     } else {
@@ -407,29 +412,15 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
     if(line == NULL) {
         p_opStatus->wasHit = false;
 
-        // Abort all peers
-        set<Pid_t> aborted;
-        if(numWriters(caddr) != 0) {
-            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-        }
-        if(numReaders(caddr) != 0) {
-            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
-        }
-        markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+        abortTMSharers(pid, caddr, TM_ATYPE_NONTM);
 
         line  = replaceLine(pid, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
 
-        // Abort all peers
-        set<Pid_t> aborted;
-        if(numWriters(caddr) != 0) {
-            aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-        }
-        if(numReaders(caddr) != 0) {
-            aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
-        }
-        markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+        abortTMSharers(pid, caddr, TM_ATYPE_NONTM);
+
+        // Do NOT replace line, though. We just need to mark dirty below
     } else {
         p_opStatus->wasHit = true;
     }

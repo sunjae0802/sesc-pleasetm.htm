@@ -110,8 +110,11 @@ protected:
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
 
+    // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
+    void abortTMReaders(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
+    void abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
     size_t numWriters(VAddr caddr) const;
     size_t numReaders(VAddr caddr) const;
 
