@@ -1244,11 +1244,7 @@ void TMRequesterLoses::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr r
     for(Pid_t writer: writers[caddr]) {
         conflicting.insert(writer);
     }
-    if(fallbackMutexCAddrs.find(caddr) == fallbackMutexCAddrs.end()) {
-        markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
-    } else {
-        markTransAborted(conflicting, pid, caddr, TM_ATYPE_FALLBACK);
-    }
+    markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
 
     // Update line
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
@@ -1267,11 +1263,7 @@ void TMRequesterLoses::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     for(Pid_t reader: readers[caddr]) {
         conflicting.insert(reader);
     }
-    if(fallbackMutexCAddrs.find(caddr) == fallbackMutexCAddrs.end()) {
-        markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
-    } else {
-        markTransAborted(conflicting, pid, caddr, TM_ATYPE_FALLBACK);
-    }
+    markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
 
     // Update line
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
