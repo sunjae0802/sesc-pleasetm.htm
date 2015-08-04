@@ -156,19 +156,6 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
 }
 
 ///
-// Function that tells the TM engine that a fallback path for this transaction has been used,
-// so reset any statistics. Used for statistics that run across multiple retires.
-void TMCoherence::beginFallback(Pid_t pid, uint32_t pFallbackMutex) {
-	VAddr caddr = addrToCacheLine(pFallbackMutex);
-    fallbackMutexCAddrs.insert(pFallbackMutex);
-}
-
-///
-// Function that tells the TM engine that a fallback path for this transaction has been completed.
-void TMCoherence::completeFallback(Pid_t pid) {
-}
-
-///
 // Entry point for TM read operation. Checks transaction state and then calls the real read.
 TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
@@ -762,10 +749,8 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
 
     if(isTM) {
         markTransAborted(sharers, pid, caddr, TM_ATYPE_DEFAULT);
-    } else if(fallbackMutexCAddrs.find(caddr) == fallbackMutexCAddrs.end()) {
-        markTransAborted(sharers, pid, caddr, TM_ATYPE_NONTM);
     } else {
-        markTransAborted(sharers, pid, caddr, TM_ATYPE_FALLBACK);
+        markTransAborted(sharers, pid, caddr, TM_ATYPE_NONTM);
     }
 }
 
@@ -782,10 +767,8 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
             if(writer != INVALID_PID && writer != pid) {
                 if(isTM) {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_DEFAULT);
-                } else if(fallbackMutexCAddrs.find(caddr) == fallbackMutexCAddrs.end()) {
-                    markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
                 } else {
-                    markTransAborted(writer, pid, caddr, TM_ATYPE_FALLBACK);
+                    markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
                 }
                 // but don't invalidate line
                 line->clearTransactional();

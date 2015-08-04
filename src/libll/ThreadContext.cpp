@@ -30,6 +30,7 @@ ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
 TimeTrackerStats ThreadContext::timeTrackerStats;
+std::set<uint32_t> ThreadContext::tmFallbackMutexCAddrs;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
@@ -252,7 +253,9 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
     }
 }
 void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
-    tmCohManager->beginFallback(pid, pFallbackMutex);
+    VAddr mutexCAddr = tmCohManager->addrToCacheLine(pFallbackMutex);
+    ThreadContext::tmFallbackMutexCAddrs.insert(mutexCAddr);
+    tmCohManager->beginFallback(pid);
 }
 
 void ThreadContext::completeFallback() {
@@ -850,6 +853,9 @@ void ThreadContext::traceTM(DInst* dinst) {
         VAddr abortByAddr       = abortState.getAbortByAddr();
         VAddr abortIAddr        = abortState.getAbortIAddr();
 
+        bool causedByFallback = ThreadContext::tmFallbackMutexCAddrs.find(abortByAddr)
+                                   != ThreadContext::tmFallbackMutexCAddrs.end();
+
         // Trace this instruction
         if(abortType == TM_ATYPE_DEFAULT) {
             if(abortByAddr == 0) {
@@ -858,6 +864,13 @@ void ThreadContext::traceTM(DInst* dinst) {
             getTracefile()<<pid<<" A"
                             <<" 0x"<<std::hex<<abortIAddr<<std::dec
                             <<" 0x"<<std::hex<<abortByAddr<<std::dec
+                            <<" "<<aborter
+                            <<" "<< nRetiredInsts
+                            <<" "<< globalClock << std::endl;
+        } else if(causedByFallback) {
+            getTracefile()<<pid<<" Z"
+                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
+                            <<" 254"
                             <<" "<<aborter
                             <<" "<< nRetiredInsts
                             <<" "<< globalClock << std::endl;
