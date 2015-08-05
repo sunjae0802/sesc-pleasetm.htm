@@ -114,7 +114,7 @@ protected:
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
-    void abortTMReaders(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
+    void abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
     void abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
     size_t numWriters(VAddr caddr) const;
     size_t numReaders(VAddr caddr) const;

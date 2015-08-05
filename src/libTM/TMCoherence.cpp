@@ -274,7 +274,7 @@ TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr
 
 ///
 // Helper function that aborts all transactional readers
-void TMIdealLECoherence::abortTMReaders(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
+void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
     // Collect readers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -315,7 +315,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
     if(line == NULL) {
         p_opStatus->wasHit = false;
 
-        abortTMReaders(pid, caddr, TM_ATYPE_DEFAULT);
+        abortTMWriters(pid, caddr, TM_ATYPE_DEFAULT);
 
         line  = replaceLine(pid, raddr);
     } else {
@@ -379,7 +379,7 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
     if(line == NULL) {
         p_opStatus->wasHit = false;
 
-        abortTMReaders(pid, caddr, TM_ATYPE_NONTM);
+        abortTMWriters(pid, caddr, TM_ATYPE_NONTM);
 
         line  = replaceLine(pid, raddr);
     } else {
