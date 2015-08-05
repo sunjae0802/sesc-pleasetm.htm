@@ -1091,9 +1091,9 @@ bool TMEENumReadsCoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// TSX-style coherence with stall on request
+// PleaseTM with conflict resolution done with plea bits
 /////////////////////////////////////////////////////////////////////////////////////////
-TMRequesterLoses::TMRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t line):
+PleaseTM::PleaseTM(const char tmStyle[], int32_t nProcs, int32_t line):
         TMCoherence(tmStyle, nProcs, line) {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
@@ -1106,7 +1106,7 @@ TMRequesterLoses::TMRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t
 
 ///
 // Destructor for PrivateCache. Delete all allocated members
-TMRequesterLoses::~TMRequesterLoses() {
+PleaseTM::~PleaseTM() {
     while(caches.size() > 0) {
         Cache* cache = caches.back();
         caches.pop_back();
@@ -1114,7 +1114,7 @@ TMRequesterLoses::~TMRequesterLoses() {
     }
 }
 
-size_t TMRequesterLoses::numWriters(VAddr caddr) const {
+size_t PleaseTM::numWriters(VAddr caddr) const {
     auto i_line = writers.find(caddr);
     if(i_line == writers.end()) {
         return 0;
@@ -1122,7 +1122,7 @@ size_t TMRequesterLoses::numWriters(VAddr caddr) const {
         return i_line->second.size();
     }
 }
-size_t TMRequesterLoses::numReaders(VAddr caddr) const {
+size_t PleaseTM::numReaders(VAddr caddr) const {
     auto i_line = readers.find(caddr);
     if(i_line == readers.end()) {
         return 0;
@@ -1131,11 +1131,7 @@ size_t TMRequesterLoses::numReaders(VAddr caddr) const {
     }
 }
 
-bool TMRequesterLoses::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return false;
-}
-
-void TMRequesterLoses::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
+void PleaseTM::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     // Collect transactions that would be aborted and remove from conflicting
@@ -1150,7 +1146,7 @@ void TMRequesterLoses::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicti
     }
 }
 
-TMRequesterLoses::Line* TMRequesterLoses::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
+PleaseTM::Line* PleaseTM::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
     Cache* cache = getCache(pid);
 	VAddr  caddr = addrToCacheLine(raddr);
     VAddr  myTag = cache->calcTag(raddr);
@@ -1175,7 +1171,7 @@ TMRequesterLoses::Line* TMRequesterLoses::lookupLine(Pid_t pid, VAddr raddr, Mem
 
 ///
 // Do a transactional read.
-TMRWStatus TMRequesterLoses::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus PleaseTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -1203,7 +1199,7 @@ TMRWStatus TMRequesterLoses::TMRead(InstDesc* inst, ThreadContext* context, VAdd
 
 ///
 // Do a transactional write.
-TMRWStatus TMRequesterLoses::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus PleaseTM::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -1235,7 +1231,7 @@ TMRWStatus TMRequesterLoses::TMWrite(InstDesc* inst, ThreadContext* context, VAd
 
 ///
 // Do a non-transactional read, i.e. when a thread not inside a transaction.
-void TMRequesterLoses::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void PleaseTM::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -1252,7 +1248,7 @@ void TMRequesterLoses::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr r
 
 ///
 // Do a non-transactional write, i.e. when a thread not inside a transaction.
-void TMRequesterLoses::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void PleaseTM::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -1270,7 +1266,7 @@ void TMRequesterLoses::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     line->makeDirty();
 }
 
-void TMRequesterLoses::removeTransaction(Pid_t pid) {
+void PleaseTM::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
     cache->clearTransactional();
 
@@ -1308,10 +1304,21 @@ void TMRequesterLoses::removeTransaction(Pid_t pid) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// Lazy-eager coherence with more writes wins
+// PleaseTM with requester always losing
+/////////////////////////////////////////////////////////////////////////////////////////
+TMRequesterLoses::TMRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t line):
+        PleaseTM(tmStyle, nProcs, line) {
+}
+
+bool TMRequesterLoses::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return false;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// PleaseTM with more reads wins
 /////////////////////////////////////////////////////////////////////////////////////////
 TMMoreReadsWinsCoherence::TMMoreReadsWinsCoherence(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMRequesterLoses(tmStyle, nProcs, line) {
+        PleaseTM(tmStyle, nProcs, line) {
 }
 
 bool TMMoreReadsWinsCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
