@@ -123,6 +123,12 @@ protected:
     int             totalSize;
     int             assoc;
 
+    // Statistics
+    GStatsCntr      getSMsg;
+    GStatsCntr      getSAckMsg;
+    GStatsCntr      getMMsg;
+    GStatsCntr      getMAckMsg;
+
     // State member variables
     std::vector<Cache*>         caches;
     std::map<VAddr, std::set<Pid_t> >   writers;
