@@ -125,9 +125,13 @@ protected:
 
     // Statistics
     GStatsCntr      getSMsg;
-    GStatsCntr      getSAckMsg;
+    GStatsCntr      getSAck;
+    GStatsCntr      fwdGetSMsg;
+    GStatsCntr      fwdGetSAck;
     GStatsCntr      getMMsg;
-    GStatsCntr      getMAckMsg;
+    GStatsCntr      getMAck;
+    GStatsCntr      invMsg;
+    GStatsCntr      invAck;
 
     // State member variables
     std::vector<Cache*>         caches;

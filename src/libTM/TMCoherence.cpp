@@ -220,7 +220,10 @@ void TMCoherence::removeTransaction(Pid_t pid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
         TMCoherence(tmStyle, nProcs, line),
-        getSMsg("tm:getS"), getSAckMsg("tm:getSAck"), getMMsg("tm:getM"), getMAckMsg("tm:getMAck") {
+        getSMsg("tm:getSMsg"), getSAck("tm:getSAck"),
+        fwdGetSMsg("tm:fwdGetSMsg"), fwdGetSAck("tm:fwdGetSAck"),
+        getMMsg("tm:getMMsg"), getMAck("tm:getMAck"),
+        invMsg("tm:invMsg"), invAck("tm:invAck") {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -276,6 +279,9 @@ TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr
 ///
 // Helper function that aborts all transactional readers
 void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
+    getSMsg.inc();
+    getSAck.inc();
+
     // Collect writers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -286,14 +292,17 @@ void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e ab
     if(aborted.size() > 0) {
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
+        fwdGetSMsg.add(aborted.size());
+        fwdGetSAck.add(aborted.size());
     }
-    getSMsg.add(aborted.size());
-    getSAckMsg.add(aborted.size());
 }
 
 ///
 // Helper function that aborts all transactional readers and writers
 void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
+    getMMsg.inc();
+    getMAck.inc();
+
     // Collect sharers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -307,8 +316,8 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e ab
     if(aborted.size() > 0) {
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
-        getMMsg.add(aborted.size());
-        getMAckMsg.add(aborted.size());
+        invMsg.inc();
+        invAck.inc();
     }
 }
 
@@ -377,7 +386,7 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    abortTMWriters(pid, caddr, TM_ATYPE_DEFAULT);
+    abortTMWriters(pid, caddr, TM_ATYPE_NONTM);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
