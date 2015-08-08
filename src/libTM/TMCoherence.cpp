@@ -219,11 +219,7 @@ void TMCoherence::removeTransaction(Pid_t pid) {
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
 /////////////////////////////////////////////////////////////////////////////////////////
 TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMCoherence(tmStyle, nProcs, line),
-        getSMsg("tm:getSMsg"), getSAck("tm:getSAck"),
-        fwdGetSMsg("tm:fwdGetSMsg"), fwdGetSAck("tm:fwdGetSAck"),
-        getMMsg("tm:getMMsg"), getMAck("tm:getMAck"),
-        invMsg("tm:invMsg"), invAck("tm:invAck") {
+        TMCoherence(tmStyle, nProcs, line) {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -279,9 +275,6 @@ TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr
 ///
 // Helper function that aborts all transactional readers
 void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
-    getSMsg.inc();
-    getSAck.inc();
-
     // Collect writers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -292,17 +285,12 @@ void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e ab
     if(aborted.size() > 0) {
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
-        fwdGetSMsg.add(aborted.size());
-        fwdGetSAck.add(aborted.size());
     }
 }
 
 ///
 // Helper function that aborts all transactional readers and writers
 void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
-    getMMsg.inc();
-    getMAck.inc();
-
     // Collect sharers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -316,8 +304,6 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e ab
     if(aborted.size() > 0) {
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
-        invMsg.inc();
-        invAck.inc();
     }
 }
 
