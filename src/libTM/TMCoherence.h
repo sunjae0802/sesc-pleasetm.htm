@@ -168,6 +168,16 @@ protected:
     int             assoc;
     size_t          maxOverflowSize;
 
+    // Statistics
+    GStatsCntr      getSMsg;
+    GStatsCntr      getSAck;
+    GStatsCntr      fwdGetSMsg;
+    GStatsCntr      fwdGetSAck;
+    GStatsCntr      getMMsg;
+    GStatsCntr      getMAck;
+    GStatsCntr      invMsg;
+    GStatsCntr      invAck;
+
     // State member variables
     std::vector<Cache*>         caches;
     std::map<Pid_t, std::set<VAddr> >   overflow;

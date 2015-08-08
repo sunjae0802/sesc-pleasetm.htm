@@ -462,7 +462,11 @@ void TMIdealLECoherence::removeTransaction(Pid_t pid) {
 // TSX-style coherence using Lazy-eager coherence with cache overflow aborts.
 /////////////////////////////////////////////////////////////////////////////////////////
 TMLECoherence::TMLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMCoherence(tmStyle, nProcs, line) {
+        TMCoherence(tmStyle, nProcs, line),
+        getSMsg("tm:getSMsg"), getSAck("tm:getSAck"),
+        fwdGetSMsg("tm:fwdGetSMsg"), fwdGetSAck("tm:fwdGetSAck"),
+        getMMsg("tm:getMMsg"), getMAck("tm:getMAck"),
+        invMsg("tm:invMsg"), invAck("tm:invAck") {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -505,7 +509,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
         line  = replaceLineTM(pid, raddr);
     } else {
         p_opStatus->wasHit = true;
-        if(!line->isTransactional()) {
+        if(line->isTransactional() == false && line->isDirty()) {
             // If we were the previous writer, make clean and start anew
             line->makeClean();
         }
@@ -719,6 +723,9 @@ void TMLECoherence::updateOverflow(Pid_t pid, VAddr newCaddr) {
 // Helper function that looks at all private caches and invalidates all sharers, while aborting
 // transactions.
 void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
+    getMMsg.inc();
+    getMAck.inc();
+
     set<Pid_t> sharers;
 
     for(size_t cid = 0; cid < caches.size(); cid++) {
@@ -737,6 +744,8 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
             if(getCache(pid) != cache) {
                 // "Other" cache, so invalidate
                 line->invalidate();
+                invMsg.inc();
+                invAck.inc();
             }
         }
     }
@@ -764,7 +773,11 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
 void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
 	VAddr caddr = addrToCacheLine(raddr);
 
-    for(Cache* cache: caches) {
+    getSMsg.inc();
+    getSAck.inc();
+
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
         Line* line = cache->findLine(raddr);
         if(line) {
             Pid_t writer = line->getWriter();
@@ -775,10 +788,15 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
                 }
                 // but don't invalidate line
-                line->clearTransactional();
                 line->makeClean();
+
+                fwdGetSMsg.inc();
+                fwdGetSAck.inc();
             } else if(!line->isTransactional() && line->isDirty()) {
                 line->makeClean();
+
+                fwdGetSMsg.inc();
+                fwdGetSAck.inc();
             }
         }
     } // End foreach(cache)
