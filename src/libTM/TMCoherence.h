@@ -131,12 +131,6 @@ protected:
     int             totalSize;
     int             assoc;
 
-    // Statistics
-    GStatsCntr      getSMsg;
-    GStatsCntr      getSAckMsg;
-    GStatsCntr      getMMsg;
-    GStatsCntr      getMAckMsg;
-
     // State member variables
     std::vector<Cache*>         caches;
     std::map<VAddr, std::set<Pid_t> >   writers;
@@ -171,6 +165,16 @@ protected:
     int             totalSize;
     int             assoc;
     size_t          maxOverflowSize;
+
+    // Statistics
+    GStatsCntr      getSMsg;
+    GStatsCntr      getSAck;
+    GStatsCntr      fwdGetSMsg;
+    GStatsCntr      fwdGetSAck;
+    GStatsCntr      getMMsg;
+    GStatsCntr      getMAck;
+    GStatsCntr      invMsg;
+    GStatsCntr      invAck;
 
     // State member variables
     std::vector<Cache*>         caches;
