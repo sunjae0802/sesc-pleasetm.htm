@@ -731,7 +731,7 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
 
             for(Pid_t s: lineSharers) {
                 if(s != pid) {
-                    line->clearTransactional();
+                    line->clearTransactional(s);
                     sharers.insert(s);
                 }
             }
