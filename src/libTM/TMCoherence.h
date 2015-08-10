@@ -56,6 +56,31 @@ public:
     size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
     size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
 
+    bool hadWrote(Pid_t pid, VAddr caddr) const {
+        return linesWritten.at(pid).find(caddr) != linesWritten.at(pid).end();
+    }
+
+    bool hadRead(Pid_t pid, VAddr caddr) const {
+        return linesRead.at(pid).find(caddr) != linesRead.at(pid).end();
+    }
+
+    size_t numWriters(VAddr caddr) const {
+        auto i_line = writers.find(caddr);
+        if(i_line == writers.end()) {
+            return 0;
+        } else {
+            return i_line->second.size();
+        }
+    }
+    size_t numReaders(VAddr caddr) const {
+        auto i_line = readers.find(caddr);
+        if(i_line == readers.end()) {
+            return 0;
+        } else {
+            return i_line->second.size();
+        }
+    }
+
 protected:
     TMCoherence(const char* tmStyle, int procs, int line);
 
@@ -95,6 +120,8 @@ protected:
 
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
+    std::map<VAddr, std::set<Pid_t> >   writers;
+    std::map<VAddr, std::set<Pid_t> >   readers;
 };
 
 class TMIdealLECoherence: public TMCoherence {
@@ -116,8 +143,6 @@ protected:
     Line* replaceLine(Pid_t pid, VAddr raddr);
     void abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
     void abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
-    size_t numWriters(VAddr caddr) const;
-    size_t numReaders(VAddr caddr) const;
 
     // Configurable member variables
     int             totalSize;
@@ -125,8 +150,6 @@ protected:
 
     // State member variables
     std::vector<Cache*>         caches;
-    std::map<VAddr, std::set<Pid_t> >   writers;
-    std::map<VAddr, std::set<Pid_t> >   readers;
 };
 
 class TMLECoherence: public TMCoherence {
