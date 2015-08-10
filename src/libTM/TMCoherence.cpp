@@ -105,13 +105,51 @@ void TMCoherence::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, V
 	}
 }
 void TMCoherence::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
+    if(getState(pid) != TM_RUNNING) {
+        fail("%d in invalid state to do tm.load: %d", pid, getState(pid));
+    }
+    readers[caddr].insert(pid);
     linesRead[pid].insert(caddr);
 }
 void TMCoherence::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
+    if(getState(pid) != TM_RUNNING) {
+        fail("%d in invalid state to do tm.store: %d", pid, getState(pid));
+    }
+    writers[caddr].insert(pid);
     linesWritten[pid].insert(caddr);
 }
 void TMCoherence::removeTrans(Pid_t pid) {
     transStates.at(pid).clear();
+
+    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
+    for(VAddr caddr:  linesWritten[pid]) {
+        i_line = writers.find(caddr);
+        if(i_line == writers.end()) {
+            fail("writers and linesWritten mismatch");
+        }
+        set<Pid_t>& myWriters = i_line->second;
+        if(myWriters.find(pid) == myWriters.end()) {
+            fail("writers does not contain pid");
+        }
+        myWriters.erase(pid);
+        if(myWriters.empty()) {
+            writers.erase(i_line);
+        }
+    }
+    for(VAddr caddr:  linesRead[pid]) {
+        i_line = readers.find(caddr);
+        if(i_line == readers.end()) {
+            fail("readers and linesRead mismatch");
+        }
+        set<Pid_t>& myReaders = i_line->second;
+        if(myReaders.find(pid) == myReaders.end()) {
+            fail("readers does not contain pid");
+        }
+        myReaders.erase(pid);
+        if(myReaders.empty()) {
+            readers.erase(i_line);
+        }
+    }
     linesRead[pid].clear();
     linesWritten[pid].clear();
 }
@@ -247,23 +285,6 @@ TMIdealLECoherence::~TMIdealLECoherence() {
     }
 }
 
-size_t TMIdealLECoherence::numWriters(VAddr caddr) const {
-    auto i_line = writers.find(caddr);
-    if(i_line == writers.end()) {
-        return 0;
-    } else {
-        return i_line->second.size();
-    }
-}
-size_t TMIdealLECoherence::numReaders(VAddr caddr) const {
-    auto i_line = readers.find(caddr);
-    if(i_line == readers.end()) {
-        return 0;
-    } else {
-        return i_line->second.size();
-    }
-}
-
 ///
 // Helper function that replaces a line in the Cache
 TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr) {
@@ -327,7 +348,6 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
     }
 
     // Do the read
-    readers[caddr].insert(pid);
     readTrans(pid, raddr, caddr);
 
     // Do cache hit/miss stats
@@ -355,7 +375,6 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, V
     }
 
     // Do the write
-    writers[caddr].insert(pid);
     writeTrans(pid, raddr, caddr);
 
     // Do cache hit/miss stats
@@ -417,36 +436,6 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
 void TMIdealLECoherence::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
     cache->clearTransactional();
-
-    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
-    for(VAddr caddr:  linesWritten[pid]) {
-        i_line = writers.find(caddr);
-        if(i_line == writers.end()) {
-            fail("writers and linesWritten mismatch");
-        }
-        set<Pid_t>& myWriters = i_line->second;
-        if(myWriters.find(pid) == myWriters.end()) {
-            fail("writers does not contain pid");
-        }
-        myWriters.erase(pid);
-        if(myWriters.empty()) {
-            writers.erase(i_line);
-        }
-    }
-    for(VAddr caddr:  linesRead[pid]) {
-        i_line = readers.find(caddr);
-        if(i_line == readers.end()) {
-            fail("readers and linesRead mismatch");
-        }
-        set<Pid_t>& myReaders = i_line->second;
-        if(myReaders.find(pid) == myReaders.end()) {
-            fail("readers does not contain pid");
-        }
-        myReaders.erase(pid);
-        if(myReaders.empty()) {
-            readers.erase(i_line);
-        }
-    }
 
     removeTrans(pid);
 }
