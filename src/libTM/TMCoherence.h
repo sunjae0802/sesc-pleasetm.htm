@@ -253,6 +253,49 @@ protected:
     virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
 };
 
+class IdealPleaseTM: public TMCoherence {
+public:
+    IdealPleaseTM(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~IdealPleaseTM();
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       removeTransaction(Pid_t pid);
+
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) = 0;
+    void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
+
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+
+    // State member variables
+    std::vector<Cache*>         caches;
+};
+
+class TMIdealRequesterLoses: public IdealPleaseTM {
+public:
+    TMIdealRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMIdealRequesterLoses() { }
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
+class TMIdealMoreReadsWins: public IdealPleaseTM {
+public:
+    TMIdealMoreReadsWins(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMIdealMoreReadsWins() { }
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
 class PleaseTM: public TMCoherence {
 public:
     PleaseTM(const char tmStyle[], int32_t nProcs, int32_t line);
@@ -266,22 +309,24 @@ protected:
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
+    Line* replaceLine(Pid_t pid, VAddr raddr);
+    Line* replaceLineTM(Pid_t pid, VAddr raddr);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
-    Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
-    size_t numWriters(VAddr caddr) const;
-    size_t numReaders(VAddr caddr) const;
+    void abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbortType_e abortType);
+    void updateOverflow(Pid_t pid, VAddr newCaddr);
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) = 0;
-    void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
+    void sendGetM(Pid_t pid, VAddr raddr, bool isTM);
+    void sendGetS(Pid_t pid, VAddr raddr, bool isTM);
 
     // Configurable member variables
     int             totalSize;
     int             assoc;
+    size_t          maxOverflowSize;
 
     // State member variables
     std::vector<Cache*>         caches;
-    std::map<VAddr, std::set<Pid_t> >   writers;
-    std::map<VAddr, std::set<Pid_t> >   readers;
+    std::map<Pid_t, std::set<VAddr> >   overflow;
 };
 
 class TMRequesterLoses: public PleaseTM {

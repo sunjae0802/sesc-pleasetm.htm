@@ -23,6 +23,10 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nProcs, lineSize);
     } else if(method == "LE") {
         newCohManager = new TMLECoherence("Lazy/Eager", nProcs, lineSize);
+    } else if(method == "IdealRequesterLoses") {
+        newCohManager = new TMIdealRequesterLoses("Ideal Requester Loses", nProcs, lineSize);
+    } else if(method == "IdealMoreReadsWins") {
+        newCohManager = new TMIdealRequesterLoses("Ideal More Reads Wins", nProcs, lineSize);
     } else if(method == "RequesterLoses") {
         newCohManager = new TMRequesterLoses("Requester Loses", nProcs, lineSize);
     } else if(method == "MoreReadsWins") {
@@ -720,7 +724,7 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
 
             for(Pid_t s: lineSharers) {
                 if(s != pid) {
-                    line->clearTransactional(s);
+                    line->clearTransactional();
                     sharers.insert(s);
                 }
             }
@@ -1088,9 +1092,9 @@ bool TMEENumReadsCoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// PleaseTM with conflict resolution done with plea bits
+// PleaseTM with conflict resolution done with plea bits, using ideal cache
 /////////////////////////////////////////////////////////////////////////////////////////
-PleaseTM::PleaseTM(const char tmStyle[], int32_t nProcs, int32_t line):
+IdealPleaseTM::IdealPleaseTM(const char tmStyle[], int32_t nProcs, int32_t line):
         TMCoherence(tmStyle, nProcs, line) {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
@@ -1103,7 +1107,7 @@ PleaseTM::PleaseTM(const char tmStyle[], int32_t nProcs, int32_t line):
 
 ///
 // Destructor for PrivateCache. Delete all allocated members
-PleaseTM::~PleaseTM() {
+IdealPleaseTM::~IdealPleaseTM() {
     while(caches.size() > 0) {
         Cache* cache = caches.back();
         caches.pop_back();
@@ -1111,24 +1115,7 @@ PleaseTM::~PleaseTM() {
     }
 }
 
-size_t PleaseTM::numWriters(VAddr caddr) const {
-    auto i_line = writers.find(caddr);
-    if(i_line == writers.end()) {
-        return 0;
-    } else {
-        return i_line->second.size();
-    }
-}
-size_t PleaseTM::numReaders(VAddr caddr) const {
-    auto i_line = readers.find(caddr);
-    if(i_line == readers.end()) {
-        return 0;
-    } else {
-        return i_line->second.size();
-    }
-}
-
-void PleaseTM::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
+void IdealPleaseTM::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     // Collect transactions that would be aborted and remove from conflicting
@@ -1143,7 +1130,7 @@ void PleaseTM::abortOthers(Pid_t pid, VAddr raddr, set<Pid_t>& conflicting) {
     }
 }
 
-PleaseTM::Line* PleaseTM::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
+IdealPleaseTM::Line* IdealPleaseTM::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus) {
     Cache* cache = getCache(pid);
 	VAddr  caddr = addrToCacheLine(raddr);
     VAddr  myTag = cache->calcTag(raddr);
@@ -1168,7 +1155,7 @@ PleaseTM::Line* PleaseTM::lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opSt
 
 ///
 // Do a transactional read.
-TMRWStatus PleaseTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus IdealPleaseTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -1187,7 +1174,6 @@ TMRWStatus PleaseTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr,
     // Do the read
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
     line->markTransactional();
-    readers[caddr].insert(pid);
 
     readTrans(pid, raddr, caddr);
 
@@ -1196,7 +1182,7 @@ TMRWStatus PleaseTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr,
 
 ///
 // Do a transactional write.
-TMRWStatus PleaseTM::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus IdealPleaseTM::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -1220,7 +1206,6 @@ TMRWStatus PleaseTM::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr
     line->markTransactional();
     line->makeTransactionalDirty(pid);
 
-    writers[caddr].insert(pid);
     writeTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
@@ -1228,7 +1213,7 @@ TMRWStatus PleaseTM::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr
 
 ///
 // Do a non-transactional read, i.e. when a thread not inside a transaction.
-void PleaseTM::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void IdealPleaseTM::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -1245,7 +1230,7 @@ void PleaseTM::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, Me
 
 ///
 // Do a non-transactional write, i.e. when a thread not inside a transaction.
-void PleaseTM::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void IdealPleaseTM::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
@@ -1263,40 +1248,396 @@ void PleaseTM::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, M
     line->makeDirty();
 }
 
-void PleaseTM::removeTransaction(Pid_t pid) {
+void IdealPleaseTM::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
     cache->clearTransactional();
 
-    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
-    for(VAddr caddr:  linesWritten[pid]) {
-        i_line = writers.find(caddr);
-        if(i_line == writers.end()) {
-            fail("writers and linesWritten mismatch");
-        }
-        set<Pid_t>& myWriters = i_line->second;
-        if(myWriters.find(pid) == myWriters.end()) {
-            fail("writers does not contain pid");
-        }
-        myWriters.erase(pid);
-        if(myWriters.empty()) {
-            writers.erase(i_line);
-        }
+    removeTrans(pid);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// IdealPleaseTM with requester always losing
+/////////////////////////////////////////////////////////////////////////////////////////
+TMIdealRequesterLoses::TMIdealRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t line):
+        IdealPleaseTM(tmStyle, nProcs, line) {
+}
+
+bool TMIdealRequesterLoses::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return false;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// IdealPleaseTM with more reads wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMIdealMoreReadsWins::TMIdealMoreReadsWins(const char tmStyle[], int32_t nProcs, int32_t line):
+        IdealPleaseTM(tmStyle, nProcs, line) {
+}
+
+bool TMIdealMoreReadsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return linesRead[other].size() <= linesRead[pid].size();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// PleaseTM with conflict resolution done with plea bits
+/////////////////////////////////////////////////////////////////////////////////////////
+PleaseTM::PleaseTM(const char tmStyle[], int32_t nProcs, int32_t line):
+        TMCoherence(tmStyle, nProcs, line) {
+
+    int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
+    int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+    if(SescConf->checkInt("TransactionalMemory","overflowSize")) {
+        maxOverflowSize = SescConf->getInt("TransactionalMemory","overflowSize");
+    } else {
+        maxOverflowSize = 4;
+        MSG("Using default overflow size of %ld\n", maxOverflowSize);
     }
-    for(VAddr caddr:  linesRead[pid]) {
-        i_line = readers.find(caddr);
-        if(i_line == readers.end()) {
-            fail("readers and linesRead mismatch");
-        }
-        set<Pid_t>& myReaders = i_line->second;
-        if(myReaders.find(pid) == myReaders.end()) {
-            fail("readers does not contain pid");
-        }
-        myReaders.erase(pid);
-        if(myReaders.empty()) {
-            readers.erase(i_line);
+
+
+    for(Pid_t pid = 0; pid < nProcs; pid++) {
+        caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
+    }
+}
+
+///
+// Destructor for PrivateCache. Delete all allocated members
+PleaseTM::~PleaseTM() {
+    while(caches.size() > 0) {
+        Cache* cache = caches.back();
+        caches.pop_back();
+        delete cache;
+    }
+}
+
+PleaseTM::Line* PleaseTM::replaceLine(Pid_t pid, VAddr raddr) {
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+    VAddr myTag = cache->calcTag(raddr);
+    Line* line = nullptr;
+
+    // Find line to replace
+    LineNonTMComparator nonTMCmp;
+    line = cache->findOldestLine2Replace(raddr, nonTMCmp);
+    if(line == nullptr) {
+        LineNonTMOrCleanComparator nonTMCleanCmp;
+        line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+        if(line == nullptr) {
+            line = cache->findOldestLine2Replace(raddr);
         }
     }
 
+    if(line == nullptr) {
+        fail("Replacement policy failed");
+    }
+
+    if(line->isValid() && line->isTransactional()) {
+        abortReplaced(line, pid, caddr, TM_ATYPE_NONTM);
+    }
+
+    // Replace the line
+    line->invalidate();
+    line->validate(myTag, caddr);
+    return line;
+}
+
+PleaseTM::Line* PleaseTM::replaceLineTM(Pid_t pid, VAddr raddr) {
+    Cache* cache= getCache(pid);
+	VAddr caddr = addrToCacheLine(raddr);
+    VAddr myTag = cache->calcTag(raddr);
+    Line* line = nullptr;
+
+    // Find line to replace
+    LineNonTMComparator nonTMCmp;
+    line = cache->findOldestLine2Replace(raddr, nonTMCmp);
+    if(line == nullptr) {
+        LineNonTMOrCleanComparator nonTMCleanCmp;
+        line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
+        if(line == nullptr) {
+            line = cache->findOldestLine2Replace(raddr);
+        }
+    }
+
+    if(line == nullptr) {
+        fail("Replacement policy failed");
+    }
+
+    if(line->isValid() && line->isTransactional()) {
+        LineTMDirtyComparator dirtyCmp;
+        if(cache->countLines(caddr, dirtyCmp) == cache->getAssoc()) {
+            // Too many transactional dirty lines, just give up
+            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
+            return nullptr;
+        }
+        abortReplaced(line, pid, caddr, TM_ATYPE_SETCONFLICT);
+    }
+
+    // Update overflow set
+    updateOverflow(pid, caddr);
+
+    // Replace the line
+    line->invalidate();
+    line->validate(myTag, caddr);
+    return line;
+}
+
+///
+// Abort all transactions that had accessed the line ``replaced.''
+void PleaseTM::abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbortType_e abortType) {
+    Pid_t writer = replaced->getWriter();
+    if(writer != INVALID_PID) {
+        markTransAborted(writer, byPid, byCaddr, abortType);
+        replaced->clearTransactional(writer);
+    }
+    for(Pid_t reader: replaced->getReaders()) {
+        if(overflow[reader].size() < maxOverflowSize) {
+            overflow[reader].insert(replaced->getCaddr());
+        } else {
+            markTransAborted(reader, byPid, byCaddr, abortType);
+        }
+        replaced->clearTransactional(reader);
+    }
+}
+
+///
+// If this line had been sent to the overflow set, bring it back.
+void PleaseTM::updateOverflow(Pid_t pid, VAddr newCaddr) {
+    if(overflow[pid].find(newCaddr) != overflow[pid].end()) {
+        overflow[pid].erase(newCaddr);
+    }
+}
+
+///
+// Helper function that looks at all private caches and invalidates all sharers, while aborting
+// transactions.
+void PleaseTM::sendGetM(Pid_t pid, VAddr raddr, bool isTM) {
+    //getMMsg.inc();
+    //getMAck.inc();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* myCache = getCache(pid);
+
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
+        Line* line = cache->findLine(raddr);
+        if(line) {
+            set<Pid_t> lineSharers;
+            line->getAccessors(lineSharers);
+
+            for(Pid_t s: lineSharers) {
+                if(s != pid) {
+                    if(isTM == false || shouldAbort(pid, raddr, s)) {
+                        line->clearTransactional(s);
+                        if(isTM) {
+                            markTransAborted(s, pid, caddr, TM_ATYPE_DEFAULT);
+                        } else {
+                            markTransAborted(s, pid, caddr, TM_ATYPE_NONTM);
+                        }
+                    } else {
+                        if(isTM) {
+                            markTransAborted(pid, s, caddr, TM_ATYPE_DEFAULT);
+                        } else {
+                            markTransAborted(pid, s, caddr, TM_ATYPE_NONTM);
+                        }
+                    }
+                }
+            }
+            if(myCache != cache) {
+                // "Other" cache, so invalidate
+                line->invalidate();
+                //invMsg.inc();
+                //invAck.inc();
+            }
+        }
+    }
+
+    // Look at everyone's overflow set to see if the line is in there
+    for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
+        if(p != pid) {
+            if(overflow[p].find(caddr) != overflow[p].end()) {
+                if(isTM == false || shouldAbort(pid, raddr, p)) {
+                    if(isTM) {
+                        markTransAborted(p, pid, caddr, TM_ATYPE_DEFAULT);
+                    } else {
+                        markTransAborted(p, pid, caddr, TM_ATYPE_NONTM);
+                    }
+                } else {
+                    if(isTM) {
+                        markTransAborted(pid, p, caddr, TM_ATYPE_DEFAULT);
+                    } else {
+                        markTransAborted(pid, p, caddr, TM_ATYPE_NONTM);
+                    }
+                }
+            }
+        }
+    } // End foreach(pid)
+}
+
+///
+// Helper function that looks at all private caches and makes clean writers, while aborting
+// transactional writers.
+void PleaseTM::sendGetS(Pid_t pid, VAddr raddr, bool isTM) {
+	VAddr caddr = addrToCacheLine(raddr);
+
+    //getSMsg.inc();
+    //getSAck.inc();
+
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
+        Line* line = cache->findLine(raddr);
+        if(line && line->isDirty()) {
+            if(line->isTransactional()) {
+                Pid_t writer = line->getWriter();
+                if(isTM == false || shouldAbort(pid, raddr, writer)) {
+                    if(isTM) {
+                        markTransAborted(writer, pid, caddr, TM_ATYPE_DEFAULT);
+                    } else {
+                        markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
+                    }
+                    // but don't invalidate line
+                    line->makeClean();
+
+                    //fwdGetSMsg.inc();
+                    //fwdGetSAck.inc();
+                } else {
+                    if(isTM) {
+                        markTransAborted(pid, writer, caddr, TM_ATYPE_DEFAULT);
+                    } else {
+                        markTransAborted(pid, writer, caddr, TM_ATYPE_NONTM);
+                    }
+                }
+            } else {
+                line->makeClean();
+
+                //fwdGetSMsg.inc();
+                //fwdGetSAck.inc();
+            }
+        }
+    } // End foreach(cache)
+}
+
+///
+// Do a transactional read.
+TMRWStatus PleaseTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache = getCache(pid);
+
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+
+        sendGetS(pid, raddr, true);
+
+        line  = replaceLineTM(pid, raddr);
+    } else {
+        p_opStatus->wasHit = true;
+        if(line->isTransactional() == false && line->isDirty()) {
+            // If we were the previous writer, make clean and start anew
+            line->makeClean();
+        }
+    }
+
+    // Return abort
+    if(getState(pid) == TM_MARKABORT) {
+        return TMRW_ABORT;
+    }
+
+    // Do the read
+    line->markTransactional();
+    line->addReader(pid);
+
+    readTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a transactional write.
+TMRWStatus PleaseTM::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache = getCache(pid);
+
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+
+        sendGetM(pid, raddr, true);
+
+        if(getState(pid) == TM_MARKABORT) {
+            return TMRW_ABORT;
+        }
+
+        line  = replaceLineTM(pid, raddr);
+    } else if(line->isDirty() == false) {
+        p_opStatus->wasHit = false;
+
+        sendGetM(pid, raddr, true);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+
+    // Return abort
+    if(getState(pid) == TM_MARKABORT) {
+        return TMRW_ABORT;
+    }
+
+    // Do the write
+    line->markTransactional();
+    line->makeTransactionalDirty(pid);
+
+    writeTrans(pid, raddr, caddr);
+
+    return TMRW_SUCCESS;
+}
+
+///
+// Do a non-transactional read, i.e. when a thread not inside a transaction.
+void PleaseTM::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache= getCache(pid);
+
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+
+        sendGetS(pid, raddr, false);
+
+        line  = replaceLine(pid, raddr);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+}
+
+///
+// Do a non-transactional write, i.e. when a thread not inside a transaction.
+void PleaseTM::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+    Cache* cache= getCache(pid);
+
+    Line*   line  = cache->lookupLine(raddr);
+    if(line == nullptr) {
+        p_opStatus->wasHit = false;
+
+        sendGetM(pid, raddr, false);
+
+        line  = replaceLine(pid, raddr);
+    } else if(line->isDirty() == false) {
+        p_opStatus->wasHit = false;
+
+        sendGetM(pid, raddr, false);
+    } else {
+        p_opStatus->wasHit = true;
+    }
+
+    // Update line
+    line->makeDirty();
+}
+
+void PleaseTM::removeTransaction(Pid_t pid) {
+    Cache* cache = getCache(pid);
+    cache->clearTransactional();
+    overflow[pid].clear();
     removeTrans(pid);
 }
 
