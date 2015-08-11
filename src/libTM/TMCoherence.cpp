@@ -1247,7 +1247,7 @@ TMIdealMoreReadsWins::TMIdealMoreReadsWins(const char tmStyle[], int32_t nProcs,
 }
 
 bool TMIdealMoreReadsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return linesRead[other].size() <= linesRead[pid].size();
+    return linesRead[other].size() < linesRead[pid].size();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1601,5 +1601,5 @@ TMMoreReadsWinsCoherence::TMMoreReadsWinsCoherence(const char tmStyle[], int32_t
 }
 
 bool TMMoreReadsWinsCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return linesRead[other].size() <= linesRead[pid].size();
+    return linesRead[other].size() < linesRead[pid].size();
 }
