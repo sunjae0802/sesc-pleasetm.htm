@@ -1287,17 +1287,7 @@ PleaseTM::Line* PleaseTM::replaceLine(Pid_t pid, VAddr raddr) {
     VAddr myTag = cache->calcTag(raddr);
     Line* line = nullptr;
 
-    // Find line to replace
-    LineNonTMComparator nonTMCmp;
-    line = cache->findOldestLine2Replace(raddr, nonTMCmp);
-    if(line == nullptr) {
-        LineNonTMOrCleanComparator nonTMCleanCmp;
-        line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
-        if(line == nullptr) {
-            line = cache->findOldestLine2Replace(raddr);
-        }
-    }
-
+    line = cache->findLine2Replace(raddr);
     if(line == nullptr) {
         fail("Replacement policy failed");
     }
@@ -1318,37 +1308,23 @@ PleaseTM::Line* PleaseTM::replaceLineTM(Pid_t pid, VAddr raddr) {
     VAddr myTag = cache->calcTag(raddr);
     Line* line = nullptr;
 
-    // Find line to replace
-    LineNonTMComparator nonTMCmp;
-    line = cache->findOldestLine2Replace(raddr, nonTMCmp);
-    if(line == nullptr) {
-        LineNonTMOrCleanComparator nonTMCleanCmp;
-        line = cache->findOldestLine2Replace(raddr, nonTMCleanCmp);
-        if(line == nullptr) {
-            line = cache->findOldestLine2Replace(raddr);
-        }
-    }
-
+    line = cache->findLine2Replace(raddr);
     if(line == nullptr) {
         fail("Replacement policy failed");
     }
 
     if(line->isValid() && line->isTransactional()) {
-        LineTMDirtyComparator dirtyCmp;
-        if(cache->countLines(caddr, dirtyCmp) == cache->getAssoc()) {
-            // Too many transactional dirty lines, just give up
-            markTransAborted(pid, pid, caddr, TM_ATYPE_SETCONFLICT);
-            return nullptr;
-        }
         abortReplaced(line, pid, caddr, TM_ATYPE_SETCONFLICT);
     }
-
-    // Update overflow set
-    updateOverflow(pid, caddr);
 
     // Replace the line
     line->invalidate();
     line->validate(myTag, caddr);
+
+    // If this line had been sent to the overflow set, bring it back.
+    if(overflow[pid].find(caddr) != overflow[pid].end()) {
+        overflow[pid].erase(caddr);
+    }
     return line;
 }
 
@@ -1367,14 +1343,6 @@ void PleaseTM::abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbort
             markTransAborted(reader, byPid, byCaddr, abortType);
         }
         replaced->clearTransactional(reader);
-    }
-}
-
-///
-// If this line had been sent to the overflow set, bring it back.
-void PleaseTM::updateOverflow(Pid_t pid, VAddr newCaddr) {
-    if(overflow[pid].find(newCaddr) != overflow[pid].end()) {
-        overflow[pid].erase(newCaddr);
     }
 }
 
