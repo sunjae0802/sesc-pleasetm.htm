@@ -637,12 +637,15 @@ TMLECoherence::Line* TMLECoherence::replaceLineTM(Pid_t pid, VAddr raddr) {
         abortReplaced(line, pid, caddr, TM_ATYPE_SETCONFLICT);
     }
 
-    // Update overflow set
-    updateOverflow(pid, caddr);
-
     // Replace the line
     line->invalidate();
     line->validate(myTag, caddr);
+
+    // If this line had been sent to the overflow set, bring it back.
+    if(overflow[pid].find(caddr) != overflow[pid].end()) {
+        overflow[pid].erase(caddr);
+    }
+
     return line;
 }
 
@@ -661,14 +664,6 @@ void TMLECoherence::abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TM
             markTransAborted(reader, byPid, byCaddr, abortType);
         }
         replaced->clearTransactional(reader);
-    }
-}
-
-///
-// If this line had been sent to the overflow set, bring it back.
-void TMLECoherence::updateOverflow(Pid_t pid, VAddr newCaddr) {
-    if(overflow[pid].find(newCaddr) != overflow[pid].end()) {
-        overflow[pid].erase(newCaddr);
     }
 }
 
