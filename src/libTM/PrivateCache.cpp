@@ -235,7 +235,7 @@ TMLine
     // No matter what is the policy, move lineFree to the *theSet. This
     // increases locality
     if (lineFree == theSet) {
-        return *lineFree; // Hit in the first possition
+        return *lineFree; // Hit in the first position
     } else {
         moveToMRU(theSet, lineFree);
         return *theSet;
@@ -290,8 +290,10 @@ TMLine
 
     // Do various checks to see if replaced line is correctly chosen
     LineTMDirtyComparator tmDirtyComparator;
-    if(replaced->isTransactional() && replaced->isDirty() && countLines(theSet, tmDirtyComparator) < assoc) {
-        fail("Evicted transactional line too early: %d\n", countLines(theSet, tmDirtyComparator));
+    if(replaced->isValid() && replaced->isTransactional() && replaced->isDirty()) {
+        if(countLines(theSet, tmDirtyComparator) < assoc) {
+            fail("Evicted transactional line too early: %d\n", countLines(theSet, tmDirtyComparator));
+        }
     }
 
     VAddr replTag = replaced->getTag();
@@ -305,41 +307,36 @@ TMLine
 TMLine
 *CacheAssocTM::findLine2Replace(TMLine** theSet)
 {
-    TMLine **lineFree=0; // Order of preference, invalid
+    TMLine **line2Replace=0;
     TMLine **setEnd = theSet + assoc;
 
+    // Find oldest invalid line
     LineInvalidComparator invalCmp;
-    lineFree = findOldestLine(theSet, invalCmp);
+    line2Replace = findOldestLine(theSet, invalCmp);
 
-    if (lineFree) {
-        return *lineFree;
+    if (line2Replace == nullptr) {
+        // Or nonTM line
+        LineNonTMComparator nonTMCmp;
+        line2Replace = findOldestLine(theSet, nonTMCmp);
+    }
+    if(line2Replace == nullptr) {
+        // Or TM clean
+        LineNonTMOrCleanComparator nonTMCleanCmp;
+        line2Replace = findOldestLine(theSet, nonTMCleanCmp);
+    }
+    if(line2Replace == nullptr) {
+        // Or give up and return the oldest line
+        line2Replace = setEnd-1;
     }
 
-    LineTMDirtyComparator tmDirtyComparator;
-    if(countLines(theSet, tmDirtyComparator) == assoc) {
-        // If not inside a transaction, or if we ran out of non-transactional or clean lines
-        // Get the oldest line possible
-        lineFree = setEnd-1;
-    } else {
-        LineInvalidOrNonTMOrCleanComparator invalNonTMCleanCmp;
-        lineFree = findOldestLine(theSet, invalNonTMCleanCmp);
-        if(lineFree && tmDirtyComparator(*lineFree)) {
-            fail("Replacing transactional dirty line");
-        }
-    }
-    if(lineFree == 0) {
-        fail("Replacement policy failed\n");
-    }
-
-    if (lineFree == theSet) {
-        return *lineFree; // Hit in the first possition
-    }
-
-    // No matter what is the policy, move lineHit to the *theSet. This
+    // No matter what is the policy, move line2Replace to the *theSet. This
     // increases locality
-    moveToMRU(theSet, lineFree);
-
-    return *theSet;
+    if (line2Replace == theSet) {
+        return *line2Replace; // Hit in the first position
+    } else {
+        moveToMRU(theSet, line2Replace);
+        return *theSet;
+    }
 }
 
 ///

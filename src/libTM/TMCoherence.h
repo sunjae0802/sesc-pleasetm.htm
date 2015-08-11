@@ -172,7 +172,6 @@ protected:
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
     void abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbortType_e abortType);
-    void updateOverflow(Pid_t pid, VAddr newCaddr);
     void invalidateSharers(Pid_t pid, VAddr raddr, bool isTM);
     void cleanWriters(Pid_t pid, VAddr raddr, bool isTM);
 
