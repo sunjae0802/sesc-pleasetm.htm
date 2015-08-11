@@ -310,6 +310,7 @@ void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e ab
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
+    cleanDirtyLines(pid, caddr);
 }
 
 ///
@@ -329,6 +330,39 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e ab
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
+    invalidateLines(pid, caddr);
+}
+
+///
+// Helper function that cleans dirty lines in each cache except pid's.
+void TMIdealLECoherence::cleanDirtyLines(Pid_t pid, VAddr raddr) {
+    Cache* myCache = getCache(pid);
+
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
+        if(cache != myCache) {
+            Line* line = cache->findLine(raddr);
+            if(line && line->isValid() && line->isDirty()) {
+                line->makeClean();
+            }
+        }
+    }
+}
+
+///
+// Helper function that invalidates lines except pid's.
+void TMIdealLECoherence::invalidateLines(Pid_t pid, VAddr raddr) {
+    Cache* myCache = getCache(pid);
+
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
+        if(cache != myCache) {
+            Line* line = cache->findLine(raddr);
+            if(line && line->isValid()) {
+                line->invalidate();
+            }
+        }
+    }
 }
 
 ///
@@ -338,21 +372,25 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    if(linesRead[pid].find(caddr) == linesRead[pid].end()) {
-        abortTMWriters(pid, caddr, TM_ATYPE_DEFAULT);
-    }
-
-    // Do the read
-    readTrans(pid, raddr, caddr);
-
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        abortTMWriters(pid, caddr, TM_ATYPE_DEFAULT);
         line  = replaceLine(pid, raddr);
     } else {
         p_opStatus->wasHit = true;
+        if(line->isTransactional() == false && line->isDirty()) {
+            // If we were the previous writer, make clean and start anew
+            line->makeClean();
+        }
     }
+    // Update line
+    line->markTransactional();
+    line->addReader(pid);
+
+    // Do the read
+    readTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
 }
@@ -365,24 +403,24 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, V
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    if(linesWritten[pid].find(caddr) == linesWritten[pid].end()) {
-        abortTMSharers(pid, caddr, TM_ATYPE_DEFAULT);
-    }
-
-    // Do the write
-    writeTrans(pid, raddr, caddr);
-
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        abortTMSharers(pid, caddr, TM_ATYPE_DEFAULT);
         line  = replaceLine(pid, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        line->makeDirty();
+        abortTMSharers(pid, caddr, TM_ATYPE_DEFAULT);
     } else {
         p_opStatus->wasHit = true;
     }
+    // Update line
+    line->markTransactional();
+    line->makeTransactionalDirty(pid);
+
+    // Do the write
+    writeTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
 }
@@ -394,12 +432,11 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    abortTMWriters(pid, caddr, TM_ATYPE_NONTM);
-
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        abortTMWriters(pid, caddr, TM_ATYPE_NONTM);
         line  = replaceLine(pid, raddr);
     } else {
         p_opStatus->wasHit = true;
@@ -413,19 +450,21 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    abortTMSharers(pid, caddr, TM_ATYPE_NONTM);
-
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        abortTMSharers(pid, caddr, TM_ATYPE_NONTM);
         line  = replaceLine(pid, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        line->makeDirty();
+        abortTMSharers(pid, caddr, TM_ATYPE_NONTM);
     } else {
         p_opStatus->wasHit = true;
     }
+
+    // Update line
+    line->makeDirty();
 }
 
 void TMIdealLECoherence::removeTransaction(Pid_t pid) {

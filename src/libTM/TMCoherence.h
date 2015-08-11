@@ -141,6 +141,8 @@ protected:
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
+    void cleanDirtyLines(Pid_t pid, VAddr raddr);
+    void invalidateLines(Pid_t pid, VAddr raddr);
     void abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
     void abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
 
