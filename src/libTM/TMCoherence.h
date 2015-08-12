@@ -184,13 +184,12 @@ protected:
 
     // Statistics
     GStatsCntr      getSMsg;
-    GStatsCntr      getSAck;
     GStatsCntr      fwdGetSMsg;
-    GStatsCntr      fwdGetSAck;
     GStatsCntr      getMMsg;
-    GStatsCntr      getMAck;
     GStatsCntr      invMsg;
-    GStatsCntr      invAck;
+    GStatsCntr      flushMsg;
+    GStatsCntr      fwdGetSConflictMsg;
+    GStatsCntr      invConflictMsg;
 
     // State member variables
     std::vector<Cache*>         caches;
