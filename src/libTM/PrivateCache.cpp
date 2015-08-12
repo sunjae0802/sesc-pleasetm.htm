@@ -375,7 +375,7 @@ CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 // Mass-clear all transactional lines in the core.
 void CacheAssocTM::clearTransactional() {
     for(uint32_t i = 0; i < numLines; i++) {
-        if(mem[i].isDirty()) {
+        if(mem[i].isTransactional() && mem[i].isDirty()) {
             mem[i].makeClean();
         }
         mem[i].clearTransactional();
