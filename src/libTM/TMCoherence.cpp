@@ -492,10 +492,13 @@ void TMIdealLECoherence::removeTransaction(Pid_t pid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 TMLECoherence::TMLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
         TMCoherence(tmStyle, nProcs, line),
-        getSMsg("tm:getSMsg"), getSAck("tm:getSAck"),
-        fwdGetSMsg("tm:fwdGetSMsg"), fwdGetSAck("tm:fwdGetSAck"),
-        getMMsg("tm:getMMsg"), getMAck("tm:getMAck"),
-        invMsg("tm:invMsg"), invAck("tm:invAck") {
+        getSMsg("tm:getSMsg"),
+        fwdGetSMsg("tm:fwdGetSMsg"),
+        getMMsg("tm:getMMsg"),
+        invMsg("tm:invMsg"),
+        flushMsg("tm:flushMsg"),
+        fwdGetSConflictMsg("tm:fwdGetSConflictMsg"),
+        invConflictMsg("tm:invConflictMsg") {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -541,6 +544,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
         if(line->isTransactional() == false && line->isDirty()) {
             // If we were the previous writer, make clean and start anew
             line->makeClean();
+            flushMsg.inc();
         }
     }
 
@@ -666,6 +670,9 @@ TMLECoherence::Line* TMLECoherence::replaceLine(Pid_t pid, VAddr raddr) {
     if(line->isValid() && line->isTransactional()) {
         abortReplaced(line, pid, caddr, TM_ATYPE_NONTM);
     }
+    if(line->isValid() && line->isTransactional() == false && line->isDirty()) {
+        flushMsg.inc();
+    }
 
     // Replace the line
     line->invalidate();
@@ -686,6 +693,9 @@ TMLECoherence::Line* TMLECoherence::replaceLineTM(Pid_t pid, VAddr raddr) {
 
     if(line->isValid() && line->isTransactional()) {
         abortReplaced(line, pid, caddr, TM_ATYPE_SETCONFLICT);
+    }
+    if(line->isValid() && line->isTransactional() == false && line->isDirty()) {
+        flushMsg.inc();
     }
 
     // Replace the line
@@ -723,7 +733,6 @@ void TMLECoherence::abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TM
 // transactions.
 void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
     getMMsg.inc();
-    getMAck.inc();
 
     set<Pid_t> sharers;
 
@@ -731,20 +740,25 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
         Cache* cache = caches.at(cid);
         Line* line = cache->findLine(raddr);
         if(line) {
+            bool causedAbort = false;
             set<Pid_t> lineSharers;
             line->getAccessors(lineSharers);
 
             for(Pid_t s: lineSharers) {
                 if(s != pid) {
-                    line->clearTransactional();
+                    causedAbort = true;
+                    line->clearTransactional(s);
                     sharers.insert(s);
                 }
             }
             if(getCache(pid) != cache) {
                 // "Other" cache, so invalidate
                 line->invalidate();
-                invMsg.inc();
-                invAck.inc();
+                if(causedAbort) {
+                    invConflictMsg.inc();
+                } else {
+                    invMsg.inc();
+                }
             }
         }
     }
@@ -754,6 +768,7 @@ void TMLECoherence::invalidateSharers(Pid_t pid, VAddr raddr, bool isTM) {
     for(Pid_t p = 0; p < (Pid_t)nProcs; ++p) {
         if(p != pid) {
             if(overflow[p].find(caddr) != overflow[p].end()) {
+                invConflictMsg.inc();
                 sharers.insert(p);
             }
         }
@@ -773,7 +788,6 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
 	VAddr caddr = addrToCacheLine(raddr);
 
     getSMsg.inc();
-    getSAck.inc();
 
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
@@ -789,13 +803,11 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
                 // but don't invalidate line
                 line->makeClean();
 
-                fwdGetSMsg.inc();
-                fwdGetSAck.inc();
+                fwdGetSConflictMsg.inc();
             } else if(!line->isTransactional() && line->isDirty()) {
                 line->makeClean();
 
                 fwdGetSMsg.inc();
-                fwdGetSAck.inc();
             }
         }
     } // End foreach(cache)
