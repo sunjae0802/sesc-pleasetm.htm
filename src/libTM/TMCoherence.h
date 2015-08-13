@@ -218,8 +218,6 @@ protected:
     TMRWStatus handleConflict(Pid_t pid, std::set<Pid_t>& conflicting, VAddr caddr);
     virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
     Time_t getStartTime(Pid_t pid)   const { return startTime.at(pid); }
-    size_t numWriters(VAddr caddr) const;
-    size_t numReaders(VAddr caddr) const;
 
     Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
 
@@ -236,8 +234,6 @@ protected:
 
     // State member variables
     std::vector<Cache*>         caches;
-    std::map<VAddr, Pid_t>              wBits;
-    std::map<VAddr, std::list<Pid_t> >  rBits;
 
     std::map<Pid_t, bool>               cycleFlags;
     std::map<Pid_t, Time_t>             startTime;

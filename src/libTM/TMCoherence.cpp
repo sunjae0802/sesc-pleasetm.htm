@@ -872,23 +872,6 @@ uint32_t TMEECoherence::getNackRetryStallCycles(ThreadContext* context) {
     return ((r % nackMax) + 1);
 }
 
-size_t TMEECoherence::numWriters(VAddr caddr) const {
-    auto i_line = wBits.find(caddr);
-    if(i_line == wBits.end()) {
-        return 0;
-    } else {
-        return 1;
-    }
-}
-size_t TMEECoherence::numReaders(VAddr caddr) const {
-    auto i_line = rBits.find(caddr);
-    if(i_line == rBits.end()) {
-        return 0;
-    } else {
-        return i_line->second.size();
-    }
-}
-
 ///
 // Return true if pid is higher or equal priority than conflictPid
 bool TMEECoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid) {
@@ -959,9 +942,11 @@ TMRWStatus TMEECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
 	VAddr caddr = addrToCacheLine(raddr);
 
     std::set<Pid_t> conflicting;
-    if(wBits.find(caddr) != wBits.end() && wBits[caddr] != pid) {
-        conflicting.insert(wBits.at(caddr));
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
     }
+    conflicting.erase(pid);
+
     if(conflicting.size() > 0) {
         return handleConflict(pid, conflicting, caddr);
     }
@@ -973,9 +958,7 @@ TMRWStatus TMEECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
     // Do the read
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
     line->markTransactional();
-    if(find(rBits[caddr].begin(), rBits[caddr].end(), pid) == rBits[caddr].end()) {
-        rBits[caddr].push_back(pid);
-    }
+
     readTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
@@ -988,13 +971,13 @@ TMRWStatus TMEECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 	VAddr caddr = addrToCacheLine(raddr);
 
     std::set<Pid_t> conflicting;
-    if(wBits.find(caddr) != wBits.end() && wBits[caddr] != pid) {
-        conflicting.insert(wBits.at(caddr));
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
     }
-    if(rBits.find(caddr) != rBits.end()) {
-        conflicting.insert(rBits.at(caddr).begin(), rBits.at(caddr).end());
-        conflicting.erase(pid);
+    for(Pid_t reader: readers[caddr]) {
+        conflicting.insert(reader);
     }
+    conflicting.erase(pid);
 
     if(conflicting.size() > 0) {
         return handleConflict(pid, conflicting, caddr);
@@ -1009,10 +992,6 @@ TMRWStatus TMEECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
     line->markTransactional();
     line->makeTransactionalDirty(pid);
 
-    wBits[caddr] = pid;
-    if(find(rBits[caddr].begin(), rBits[caddr].end(), pid) == rBits[caddr].end()) {
-        rBits[caddr].push_back(pid);
-    }
     writeTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
@@ -1025,9 +1004,11 @@ void TMEECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
 
-    if(numWriters(caddr) != 0) {
-        markTransAborted(wBits.at(caddr), pid, caddr, TM_ATYPE_NONTM);
+    std::set<Pid_t> conflicting;
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
     }
+    markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
 
     // Update line
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
@@ -1039,14 +1020,15 @@ void TMEECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 
-    set<Pid_t> aborted;
-    if(numWriters(caddr) != 0) {
-        aborted.insert(wBits.at(caddr));
+    std::set<Pid_t> conflicting;
+    for(Pid_t writer: writers[caddr]) {
+        conflicting.insert(writer);
     }
-    if(numReaders(caddr) != 0) {
-        aborted.insert(rBits.at(caddr).begin(), rBits.at(caddr).end());
+    for(Pid_t reader: readers[caddr]) {
+        conflicting.insert(reader);
     }
-    markTransAborted(aborted, pid, caddr, TM_ATYPE_NONTM);
+
+    markTransAborted(conflicting, pid, caddr, TM_ATYPE_NONTM);
 
     // Update line
     Line*   line  = lookupLine(pid, raddr, p_opStatus);
@@ -1078,26 +1060,6 @@ void TMEECoherence::completeFallback(Pid_t pid) {
 void TMEECoherence::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
     cache->clearTransactional();
-
-    std::set<VAddr> accessed;
-    accessed.insert(linesWritten[pid].begin(), linesWritten[pid].end());
-    accessed.insert(linesRead[pid].begin(), linesRead[pid].end());
-
-    for(VAddr caddr:  accessed) {
-        if(wBits.find(caddr) != wBits.end() && wBits[caddr] == pid) {
-            wBits.erase(caddr);
-        }
-        auto i_readers = rBits.find(caddr);
-        if(i_readers == rBits.end()) {
-            fail("[%d] RBit not set for 0x%x\n", pid, caddr);
-        }
-
-        list<Pid_t>& myReaders = i_readers->second;
-        myReaders.remove(pid);
-        if(myReaders.empty()) {
-            rBits.erase(i_readers);
-        }
-    }
 
 	cycleFlags[pid] = false;
     nackCount[pid] = 0;
