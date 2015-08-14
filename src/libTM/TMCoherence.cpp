@@ -310,7 +310,9 @@ TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr
 
 ///
 // Helper function that aborts all transactional readers
-void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
+void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
+    TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
+
     // Collect writers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -322,12 +324,16 @@ void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e ab
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
-    cleanDirtyLines(pid, caddr);
+    if(isTM) {
+        except.insert(getCache(pid));
+    }
 }
 
 ///
 // Helper function that aborts all transactional readers and writers
-void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType) {
+void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
+    TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
+
     // Collect sharers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -342,17 +348,17 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e ab
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
-    invalidateLines(pid, caddr);
+    if(isTM) {
+        except.insert(getCache(pid));
+    }
 }
 
 ///
 // Helper function that cleans dirty lines in each cache except pid's.
-void TMIdealLECoherence::cleanDirtyLines(Pid_t pid, VAddr raddr) {
-    Cache* myCache = getCache(pid);
-
+void TMIdealLECoherence::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) {
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
-        if(cache != myCache) {
+        if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid() && line->isDirty()) {
                 line->makeClean();
@@ -363,12 +369,10 @@ void TMIdealLECoherence::cleanDirtyLines(Pid_t pid, VAddr raddr) {
 
 ///
 // Helper function that invalidates lines except pid's.
-void TMIdealLECoherence::invalidateLines(Pid_t pid, VAddr raddr) {
-    Cache* myCache = getCache(pid);
-
+void TMIdealLECoherence::invalidateLines(VAddr raddr, std::set<Cache*>& except) {
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
-        if(cache != myCache) {
+        if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid()) {
                 line->invalidate();
@@ -384,11 +388,14 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
+    std::set<Cache*> except;
+    abortTMWriters(pid, caddr, false, except);
+    cleanDirtyLines(caddr, except);
+
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        abortTMWriters(pid, caddr, TM_ATYPE_DEFAULT);
         line  = replaceLine(pid, raddr);
     } else {
         p_opStatus->wasHit = true;
@@ -415,15 +422,17 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, V
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
+    std::set<Cache*> except;
+    abortTMSharers(pid, caddr, true, except);
+    invalidateLines(caddr, except);
+
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        abortTMSharers(pid, caddr, TM_ATYPE_DEFAULT);
         line  = replaceLine(pid, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        abortTMSharers(pid, caddr, TM_ATYPE_DEFAULT);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -444,11 +453,14 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
+    std::set<Cache*> except;
+    abortTMWriters(pid, caddr, false, except);
+    cleanDirtyLines(caddr, except);
+
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        abortTMWriters(pid, caddr, TM_ATYPE_NONTM);
         line  = replaceLine(pid, raddr);
     } else {
         p_opStatus->wasHit = true;
@@ -462,15 +474,17 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
+    std::set<Cache*> except;
+    abortTMSharers(pid, caddr, false, except);
+    invalidateLines(caddr, except);
+
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        abortTMSharers(pid, caddr, TM_ATYPE_NONTM);
         line  = replaceLine(pid, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        abortTMSharers(pid, caddr, TM_ATYPE_NONTM);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -479,11 +493,38 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
     line->makeDirty();
 }
 
-void TMIdealLECoherence::removeTransaction(Pid_t pid) {
+TMBCStatus TMIdealLECoherence::myCommit(Pid_t pid) {
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
-    cache->clearTransactional();
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
 
-    removeTrans(pid);
+    for(Line* line: lines) {
+        line->clearTransactional();
+    }
+
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMIdealLECoherence::myAbort(Pid_t pid) {
+    // On abort, we need to throw away the work we've done so far, so invalidate them
+    Cache* cache = getCache(pid);
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        if(line->isDirty()) {
+            line->invalidate();
+        } else {
+            line->clearTransactional();
+        }
+    }
+
+    abortTrans(pid);
+    return TMBC_SUCCESS;
 }
 
 
@@ -792,33 +833,63 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         Line* line = cache->findLine(raddr);
-        if(line) {
-            Pid_t writer = line->getWriter();
-            if(writer != INVALID_PID && writer != pid) {
+        if(line && line->isDirty()) {
+            if(line->isTransactional()) {
+                Pid_t writer = line->getWriter();
+                if(writer == pid) { fail("Why clean my own write?\n"); }
+
                 if(isTM) {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_DEFAULT);
                 } else {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
                 }
-                // but don't invalidate line
-                line->makeClean();
-
                 fwdGetSConflictMsg.inc();
-            } else if(!line->isTransactional() && line->isDirty()) {
-                line->makeClean();
-
+            } else {
                 fwdGetSMsg.inc();
             }
+            line->makeClean();
         }
     } // End foreach(cache)
 }
 
-
-void TMLECoherence::removeTransaction(Pid_t pid) {
+TMBCStatus TMLECoherence::myCommit(Pid_t pid) {
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
-    cache->clearTransactional();
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        line->clearTransactional();
+    }
+
+    // Clear our overflow set
     overflow[pid].clear();
-    removeTrans(pid);
+
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMLECoherence::myAbort(Pid_t pid) {
+    // On abort, we need to throw away the work we've done so far, so invalidate them
+    Cache* cache = getCache(pid);
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        if(line->isDirty()) {
+            line->invalidate();
+        } else {
+            line->clearTransactional();
+        }
+    }
+
+    // Clear our overflow set
+    overflow[pid].clear();
+
+    abortTrans(pid);
+    return TMBC_SUCCESS;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

@@ -152,8 +152,8 @@ public:
     TMLine *findLine2Replace(VAddr addr);
     TMLine *lookupLine(VAddr addr);
     TMLine *findLine(VAddr addr);
-    void clearTransactional();
     size_t countLines(VAddr addr, const LineComparator& comp) const;
+    void collectLines(std::vector<TMLine*>& lines, const LineComparator& comp);
 
     uint32_t  getTMLineSize() const   {
         return lineSize;

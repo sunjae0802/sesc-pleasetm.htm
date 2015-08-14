@@ -136,15 +136,16 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       removeTransaction(Pid_t pid);
+    virtual TMBCStatus myAbort(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
 
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
-    void cleanDirtyLines(Pid_t pid, VAddr raddr);
-    void invalidateLines(Pid_t pid, VAddr raddr);
-    void abortTMWriters(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
-    void abortTMSharers(Pid_t pid, VAddr caddr, TMAbortType_e abortType);
+    void cleanDirtyLines(VAddr raddr, std::set<Cache*>& except);
+    void invalidateLines(VAddr raddr, std::set<Cache*>& except);
+    void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+    void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
 
     // Configurable member variables
     int             totalSize;
@@ -166,7 +167,8 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       removeTransaction(Pid_t pid);
+    virtual TMBCStatus myAbort(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
     Line* replaceLine(Pid_t pid, VAddr raddr);
     Line* replaceLineTM(Pid_t pid, VAddr raddr);
 

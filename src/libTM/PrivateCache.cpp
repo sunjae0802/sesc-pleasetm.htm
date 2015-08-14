@@ -372,13 +372,14 @@ CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 }
 
 ///
-// Mass-clear all transactional lines in the core.
-void CacheAssocTM::clearTransactional() {
+// Collect all transactional lines in the core.
+void CacheAssocTM::collectLines(std::vector<TMLine*>& lines, const LineComparator& comp) {
     for(uint32_t i = 0; i < numLines; i++) {
-        if(mem[i].isTransactional() && mem[i].isDirty()) {
-            mem[i].makeClean();
+        TMLine* line = mem + i;
+        if (comp(line)) {
+            lines.push_back(line);
         }
-        mem[i].clearTransactional();
     }
 }
+
 
