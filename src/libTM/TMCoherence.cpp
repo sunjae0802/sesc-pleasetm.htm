@@ -469,7 +469,14 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
 
 void TMIdealLECoherence::removeTransaction(Pid_t pid) {
     Cache* cache = getCache(pid);
-    cache->clearTransactional();
+
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        line->clearTransactional();
+    }
 
     removeTrans(pid);
 }
@@ -780,31 +787,61 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         Line* line = cache->findLine(raddr);
-        if(line) {
-            Pid_t writer = line->getWriter();
-            if(writer != INVALID_PID && writer != pid) {
+        if(line && line->isDirty()) {
+            if(line->isTransactional()) {
+                Pid_t writer = line->getWriter();
+                if(writer == pid) { fail("Why clean my own write?\n"); }
+
                 if(isTM) {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_DEFAULT);
                 } else {
                     markTransAborted(writer, pid, caddr, TM_ATYPE_NONTM);
                 }
-                // but don't invalidate line
-                line->makeClean();
-
                 fwdGetSConflictMsg.inc();
-            } else if(!line->isTransactional() && line->isDirty()) {
-                line->makeClean();
-
+            } else {
                 fwdGetSMsg.inc();
             }
+            line->makeClean();
         }
     } // End foreach(cache)
 }
 
-
-void TMLECoherence::removeTransaction(Pid_t pid) {
+TMBCStatus TMLECoherence::myCommit(Pid_t pid) {
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
-    cache->clearTransactional();
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        line->clearTransactional();
+    }
+
+    // Clear our overflow set
     overflow[pid].clear();
-    removeTrans(pid);
+
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus TMLECoherence::myAbort(Pid_t pid) {
+    // On abort, we need to throw away the work we've done so far, so invalidate them
+    Cache* cache = getCache(pid);
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        if(line->isDirty()) {
+            line->invalidate();
+        } else {
+            line->clearTransactional();
+        }
+    }
+
+    // Clear our overflow set
+    overflow[pid].clear();
+
+    abortTrans(pid);
+    return TMBC_SUCCESS;
 }
