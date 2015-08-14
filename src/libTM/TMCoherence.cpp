@@ -1118,6 +1118,16 @@ TMBCStatus TMEECoherence::myBegin(Pid_t pid, InstDesc* inst) {
 ///
 // TM commit also clears firstStartTime
 TMBCStatus TMEECoherence::myCommit(Pid_t pid) {
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
+    Cache* cache = getCache(pid);
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        line->clearTransactional();
+    }
+
     startTime.erase(pid);
     commitTrans(pid);
     return TMBC_SUCCESS;
@@ -1128,13 +1138,30 @@ void TMEECoherence::completeFallback(Pid_t pid) {
     startTime.erase(pid);
 }
 
-void TMEECoherence::removeTransaction(Pid_t pid) {
+TMBCStatus TMEECoherence::myAbort(Pid_t pid) {
+    // On abort, we need to throw away the work we've done so far, so invalidate them
     Cache* cache = getCache(pid);
-    cache->clearTransactional();
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
 
+    for(Line* line: lines) {
+        if(line->isDirty()) {
+            line->invalidate();
+        } else {
+            line->clearTransactional();
+        }
+    }
+
+    abortTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+void TMEECoherence::removeTransaction(Pid_t pid) {
 	cycleFlags[pid] = false;
     nackCount[pid] = 0;
     nackedBy.erase(pid);
+
     removeTrans(pid);
 }
 
@@ -1305,11 +1332,38 @@ void IdealPleaseTM::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr rad
     line->makeDirty();
 }
 
-void IdealPleaseTM::removeTransaction(Pid_t pid) {
+TMBCStatus IdealPleaseTM::myCommit(Pid_t pid) {
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
-    cache->clearTransactional();
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
 
-    removeTrans(pid);
+    for(Line* line: lines) {
+        line->clearTransactional();
+    }
+
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus IdealPleaseTM::myAbort(Pid_t pid) {
+    // On abort, we need to throw away the work we've done so far, so invalidate them
+    Cache* cache = getCache(pid);
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        if(line->isDirty()) {
+            line->invalidate();
+        } else {
+            line->clearTransactional();
+        }
+    }
+
+    abortTrans(pid);
+    return TMBC_SUCCESS;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1660,11 +1714,43 @@ void PleaseTM::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, M
 }
 
 void PleaseTM::removeTransaction(Pid_t pid) {
-    Cache* cache = getCache(pid);
-    cache->clearTransactional();
     overflow[pid].clear();
-    removeTrans(pid);
 }
+
+TMBCStatus PleaseTM::myCommit(Pid_t pid) {
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
+    Cache* cache = getCache(pid);
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        line->clearTransactional();
+    }
+
+    commitTrans(pid);
+    return TMBC_SUCCESS;
+}
+
+TMBCStatus PleaseTM::myAbort(Pid_t pid) {
+    // On abort, we need to throw away the work we've done so far, so invalidate them
+    Cache* cache = getCache(pid);
+    LineTMComparator tmCmp;
+    std::vector<Line*> lines;
+    cache->collectLines(lines, tmCmp);
+
+    for(Line* line: lines) {
+        if(line->isDirty()) {
+            line->invalidate();
+        } else {
+            line->clearTransactional();
+        }
+    }
+
+    abortTrans(pid);
+    return TMBC_SUCCESS;
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // PleaseTM with requester always losing

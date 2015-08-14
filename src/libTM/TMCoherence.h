@@ -212,6 +212,7 @@ protected:
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
+    virtual TMBCStatus myAbort(Pid_t pid);
     virtual TMBCStatus myCommit(Pid_t pid);
     virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
     virtual void completeFallback(Pid_t pid);
@@ -263,7 +264,8 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       removeTransaction(Pid_t pid);
+    virtual TMBCStatus myAbort(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
@@ -307,6 +309,8 @@ protected:
     virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
+    virtual TMBCStatus myAbort(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
     Line* replaceLine(Pid_t pid, VAddr raddr);
     Line* replaceLineTM(Pid_t pid, VAddr raddr);
 
