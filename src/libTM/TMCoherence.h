@@ -37,7 +37,7 @@ public:
     TMBCStatus completeAbort(Pid_t pid);
 
     // Functions about the fallback path for statistics that run across multiple retries
-    virtual void beginFallback(Pid_t pid) {}
+    virtual void beginFallback(Pid_t pid);
     virtual void completeFallback(Pid_t pid) {}
 
     // Query functions
@@ -117,6 +117,8 @@ protected:
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
+    GStatsHist      numAbortsBeforeCommit;
+    std::map<Pid_t, size_t>   abortsSoFar;
 
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
@@ -198,6 +200,56 @@ protected:
     std::map<Pid_t, std::set<VAddr> >   overflow;
 };
 
+class IdealLogTM: public TMCoherence {
+public:
+    IdealLogTM(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~IdealLogTM();
+    virtual uint32_t getNackRetryStallCycles(ThreadContext* context);
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       removeTransaction(Pid_t pid);
+    virtual TMBCStatus myAbort(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual void completeFallback(Pid_t pid);
+
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    TMRWStatus handleConflicts(Pid_t pid, VAddr caddr, std::set<Pid_t>& conflicting);
+    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
+    Time_t getStartTime(Pid_t pid)   const { return startTime.at(pid); }
+
+    Line* replaceLine(Pid_t pid, VAddr raddr);
+    void cleanDirtyLines(VAddr raddr, std::set<Cache*>& except);
+    void invalidateLines(VAddr raddr, std::set<Cache*>& except);
+    TMRWStatus abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+    TMRWStatus abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+    uint32_t        nackBase;
+    uint32_t        nackCap;
+
+    // RNG-related data
+    struct random_data randBuf;
+    static const int   RBUF_SIZE = 32;
+    char               rbuf[RBUF_SIZE];
+
+    // State member variables
+    std::vector<Cache*>         caches;
+
+    std::map<Pid_t, bool>               cycleFlags;
+    std::map<Pid_t, Time_t>             startTime;
+    std::map<Pid_t, size_t>             nackCount;
+    std::map<Pid_t, Pid_t>              nackedBy;
+};
+
 class TMEECoherence: public TMCoherence {
 public:
     TMEECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
@@ -268,9 +320,13 @@ protected:
     virtual TMBCStatus myCommit(Pid_t pid);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
-    Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
+    Line* replaceLine(Pid_t pid, VAddr raddr);
+    void cleanDirtyLines(VAddr raddr, std::set<Cache*>& except);
+    void invalidateLines(VAddr raddr, std::set<Cache*>& except);
+    void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+    void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+    void handleConflicts(Pid_t pid, VAddr caddr, bool isTM, std::set<Pid_t>& conflicting);
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) = 0;
-    void abortOthers(Pid_t pid, VAddr raddr, std::set<Pid_t>& conflicting);
 
     // Configurable member variables
     int             totalSize;
