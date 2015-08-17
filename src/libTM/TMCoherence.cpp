@@ -284,7 +284,14 @@ void TMCoherence::removeTransaction(Pid_t pid) {
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
 /////////////////////////////////////////////////////////////////////////////////////////
 TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMCoherence(tmStyle, nProcs, line) {
+        TMCoherence(tmStyle, nProcs, line),
+        getSMsg("tm:getSMsg"),
+        fwdGetSMsg("tm:fwdGetSMsg"),
+        getMMsg("tm:getMMsg"),
+        invMsg("tm:invMsg"),
+        flushMsg("tm:flushMsg"),
+        fwdGetSConflictMsg("tm:fwdGetSConflictMsg"),
+        invConflictMsg("tm:invConflictMsg") {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -369,11 +376,18 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::
 ///
 // Helper function that cleans dirty lines in each cache except pid's.
 void TMIdealLECoherence::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) {
+    getSMsg.inc();
+
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid() && line->isDirty()) {
+                if(line->isTransactional()) {
+                    fwdGetSConflictMsg.inc();
+                } else {
+                    fwdGetSMsg.inc();
+                }
                 line->makeClean();
             }
         }
@@ -383,11 +397,18 @@ void TMIdealLECoherence::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) 
 ///
 // Helper function that invalidates lines except pid's.
 void TMIdealLECoherence::invalidateLines(VAddr raddr, std::set<Cache*>& except) {
+    getMMsg.inc();
+
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid()) {
+                if(line->isTransactional()) {
+                    invConflictMsg.inc();
+                } else {
+                    invMsg.inc();
+                }
                 line->invalidate();
             }
         }
@@ -415,6 +436,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
         if(line->isTransactional() == false && line->isDirty()) {
             // If we were the previous writer, make clean and start anew
             line->makeClean();
+            flushMsg.inc();
         }
     }
     // Update line
@@ -909,7 +931,15 @@ TMBCStatus TMLECoherence::myAbort(Pid_t pid) {
 // IdealLogTM coherence. Tries to mimic LogTM as closely as possible
 /////////////////////////////////////////////////////////////////////////////////////////
 IdealLogTM::IdealLogTM(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMCoherence(tmStyle, nProcs, line) {
+        TMCoherence(tmStyle, nProcs, line),
+        getSMsg("tm:getSMsg"),
+        fwdGetSMsg("tm:fwdGetSMsg"),
+        getMMsg("tm:getMMsg"),
+        invMsg("tm:invMsg"),
+        flushMsg("tm:flushMsg"),
+        fwdGetSConflictMsg("tm:fwdGetSConflictMsg"),
+        invConflictMsg("tm:invConflictMsg"),
+        nackMsg("tm:nackMsg") {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -990,6 +1020,8 @@ TMRWStatus IdealLogTM::handleConflicts(Pid_t pid, VAddr caddr, std::set<Pid_t>& 
         markTransAborted(pid, higherPid, caddr, TM_ATYPE_DEFAULT);
         return TMRW_ABORT;
     } else {
+        nackMsg.inc();
+
         nackCount[pid]++;
         nackedBy[pid] = highestPid;
         return TMRW_NACKED;
@@ -1068,11 +1100,18 @@ TMRWStatus IdealLogTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::se
 ///
 // Helper function that cleans dirty lines in each cache except pid's.
 void IdealLogTM::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) {
+    getSMsg.inc();
+
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid() && line->isDirty()) {
+                if(line->isTransactional()) {
+                    fwdGetSConflictMsg.inc();
+                } else {
+                    fwdGetSMsg.inc();
+                }
                 line->makeClean();
             }
         }
@@ -1082,11 +1121,18 @@ void IdealLogTM::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) {
 ///
 // Helper function that invalidates lines except pid's.
 void IdealLogTM::invalidateLines(VAddr raddr, std::set<Cache*>& except) {
+    getMMsg.inc();
+
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid()) {
+                if(line->isTransactional()) {
+                    invConflictMsg.inc();
+                } else {
+                    invMsg.inc();
+                }
                 line->invalidate();
             }
         }
@@ -1122,6 +1168,7 @@ TMRWStatus IdealLogTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr radd
         if(line->isTransactional() == false && line->isDirty()) {
             // If we were the previous writer, make clean and start anew
             line->makeClean();
+            flushMsg.inc();
         }
     }
 
@@ -1568,7 +1615,16 @@ bool TMEENumReadsCoherence::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid
 // PleaseTM with conflict resolution done with plea bits, using ideal cache
 /////////////////////////////////////////////////////////////////////////////////////////
 IdealPleaseTM::IdealPleaseTM(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMCoherence(tmStyle, nProcs, line) {
+        TMCoherence(tmStyle, nProcs, line),
+        getSMsg("tm:getSMsg"),
+        fwdGetSMsg("tm:fwdGetSMsg"),
+        getMMsg("tm:getMMsg"),
+        invMsg("tm:invMsg"),
+        flushMsg("tm:flushMsg"),
+        fwdGetSConflictMsg("tm:fwdGetSConflictMsg"),
+        invConflictMsg("tm:invConflictMsg"),
+        rfchSuccMsg("tm:rfchSuccMsg"),
+        rfchFailMsg("tm:rfchFailMsg") {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -1623,6 +1679,10 @@ void IdealPleaseTM::handleConflicts(Pid_t pid, VAddr caddr, bool isTM, set<Pid_t
     TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
     if(losers.size() > 0) {
         markTransAborted(losers, pid, caddr, abortType);
+        rfchSuccMsg.add(losers.size());
+    }
+    if(winners.size() > 0) {
+        rfchFailMsg.add(winners.size());
     }
 
     conflicting = winners;
@@ -1664,6 +1724,7 @@ void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<C
 
     // If any winners are around, we self abort and add them to the except set
     if(conflicting.size() > 0) {
+        rfchFailMsg.add(conflicting.size());
         markTransAborted(pid, (*conflicting.begin()), caddr, TM_ATYPE_DEFAULT);
         for(Pid_t c: conflicting) {
             except.insert(getCache(c));
@@ -1676,11 +1737,18 @@ void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<C
 ///
 // Helper function that cleans dirty lines in each cache except pid's.
 void IdealPleaseTM::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) {
+    getSMsg.inc();
+
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid() && line->isDirty()) {
+                if(line->isTransactional()) {
+                    fwdGetSConflictMsg.inc();
+                } else {
+                    fwdGetSMsg.inc();
+                }
                 line->makeClean();
             }
         }
@@ -1690,11 +1758,18 @@ void IdealPleaseTM::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) {
 ///
 // Helper function that invalidates lines except pid's.
 void IdealPleaseTM::invalidateLines(VAddr raddr, std::set<Cache*>& except) {
+    getMMsg.inc();
+
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
         if(except.find(cache) == except.end()) {
             Line* line = cache->findLine(raddr);
             if(line && line->isValid()) {
+                if(line->isTransactional()) {
+                    invConflictMsg.inc();
+                } else {
+                    invMsg.inc();
+                }
                 line->invalidate();
             }
         }
@@ -1725,6 +1800,7 @@ TMRWStatus IdealPleaseTM::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
         if(line->isTransactional() == false && line->isDirty()) {
             // If we were the previous writer, make clean and start anew
             line->makeClean();
+            flushMsg.inc();
         }
     }
 

@@ -153,6 +153,15 @@ protected:
     int             totalSize;
     int             assoc;
 
+    // Statistics
+    GStatsCntr      getSMsg;
+    GStatsCntr      fwdGetSMsg;
+    GStatsCntr      getMMsg;
+    GStatsCntr      invMsg;
+    GStatsCntr      flushMsg;
+    GStatsCntr      fwdGetSConflictMsg;
+    GStatsCntr      invConflictMsg;
+
     // State member variables
     std::vector<Cache*>         caches;
 };
@@ -240,6 +249,16 @@ protected:
     struct random_data randBuf;
     static const int   RBUF_SIZE = 32;
     char               rbuf[RBUF_SIZE];
+
+    // Statistics
+    GStatsCntr      getSMsg;
+    GStatsCntr      fwdGetSMsg;
+    GStatsCntr      getMMsg;
+    GStatsCntr      invMsg;
+    GStatsCntr      flushMsg;
+    GStatsCntr      fwdGetSConflictMsg;
+    GStatsCntr      invConflictMsg;
+    GStatsCntr      nackMsg;
 
     // State member variables
     std::vector<Cache*>         caches;
@@ -331,6 +350,17 @@ protected:
     // Configurable member variables
     int             totalSize;
     int             assoc;
+
+    // Statistics
+    GStatsCntr      getSMsg;
+    GStatsCntr      fwdGetSMsg;
+    GStatsCntr      getMMsg;
+    GStatsCntr      invMsg;
+    GStatsCntr      flushMsg;
+    GStatsCntr      fwdGetSConflictMsg;
+    GStatsCntr      invConflictMsg;
+    GStatsCntr      rfchSuccMsg;
+    GStatsCntr      rfchFailMsg;
 
     // State member variables
     std::vector<Cache*>         caches;
