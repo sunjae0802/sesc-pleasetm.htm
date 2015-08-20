@@ -299,8 +299,6 @@ TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr
 ///
 // Helper function that aborts all transactional readers
 void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
-    TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
-
     // Collect writers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -308,20 +306,19 @@ void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::
     }
     aborted.erase(pid);
 
+    TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
+
     if(aborted.size() > 0) {
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
-    if(isTM) {
-        except.insert(getCache(pid));
-    }
+
+    except.insert(getCache(pid));
 }
 
 ///
 // Helper function that aborts all transactional readers and writers
 void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
-    TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
-
     // Collect sharers
     set<Pid_t> aborted;
     if(numWriters(caddr) != 0) {
@@ -332,13 +329,14 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::
     }
     aborted.erase(pid);
 
+    TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
+
     if(aborted.size() > 0) {
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
-    if(isTM) {
-        except.insert(getCache(pid));
-    }
+
+    except.insert(getCache(pid));
 }
 
 ///
