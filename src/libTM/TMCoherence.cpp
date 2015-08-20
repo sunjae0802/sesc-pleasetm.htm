@@ -377,7 +377,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
 	VAddr caddr = addrToCacheLine(raddr);
 
     std::set<Cache*> except;
-    abortTMWriters(pid, caddr, false, except);
+    abortTMWriters(pid, caddr, true, except);
     cleanDirtyLines(caddr, except);
 
     // Do cache hit/miss stats
