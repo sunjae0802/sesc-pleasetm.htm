@@ -67,9 +67,16 @@ void TMCoherence::commitTrans(Pid_t pid) {
     removeTransaction(pid);
 }
 void TMCoherence::abortTrans(Pid_t pid) {
+    if(getState(pid) != TM_MARKABORT) {
+        fail("%d should be marked abort before starting abort: %d", pid, getState(pid));
+    }
 	transStates[pid].startAborting();
 }
 void TMCoherence::completeAbortTrans(Pid_t pid) {
+    if(getState(pid) != TM_ABORTING) {
+        fail("%d should be doing aborting before completing it: %d", pid, getState(pid));
+    }
+
     const TMAbortState& abortState = abortStates.at(pid);
     // Update Statistics
     numAborts.inc();
@@ -187,9 +194,7 @@ void TMCoherence::markAbort(InstDesc* inst, ThreadContext* context, TMAbortType_
 // Entry point for TM complete abort operation (to be called after an aborted TM returns to
 // tm.begin).
 TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
-    if(getState(pid) == TM_ABORTING) {
-        myCompleteAbort(pid);
-    }
+    myCompleteAbort(pid);
     return TMBC_SUCCESS;
 }
 
