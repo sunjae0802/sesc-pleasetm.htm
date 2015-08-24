@@ -117,8 +117,10 @@ protected:
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
+    GStatsCntr      numFutileAborts;
     GStatsHist      numAbortsBeforeCommit;
     std::map<Pid_t, size_t>   abortsSoFar;
+    std::map<Pid_t, size_t>   abortsCaused;
 
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
@@ -144,8 +146,8 @@ protected:
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
-    void cleanDirtyLines(VAddr raddr, std::set<Cache*>& except);
-    void invalidateLines(VAddr raddr, std::set<Cache*>& except);
+    void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
+    void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
     void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
     void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
 
@@ -269,6 +271,73 @@ protected:
     std::map<Pid_t, Pid_t>              nackedBy;
 };
 
+class FasTMAbort: public TMCoherence {
+public:
+    FasTMAbort(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~FasTMAbort();
+
+    typedef CacheAssocTM    Cache;
+    typedef TMLine          Line;
+protected:
+    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMBCStatus myAbort(Pid_t pid);
+    virtual TMBCStatus myCommit(Pid_t pid);
+
+    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    TMRWStatus handleConflicts(Pid_t pid, VAddr caddr, std::set<Pid_t>& conflicting);
+    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid) = 0;
+
+    Line* replaceLine(Pid_t pid, VAddr raddr);
+    void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
+    void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
+    TMRWStatus abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+    TMRWStatus abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+
+    // Configurable member variables
+    int             totalSize;
+    int             assoc;
+
+    // Statistics
+    GStatsCntr      getSMsg;
+    GStatsCntr      fwdGetSMsg;
+    GStatsCntr      getMMsg;
+    GStatsCntr      invMsg;
+    GStatsCntr      flushMsg;
+    GStatsCntr      fwdGetSConflictMsg;
+    GStatsCntr      invConflictMsg;
+    GStatsCntr      nackMsg;
+
+    // State member variables
+    std::vector<Cache*>         caches;
+};
+
+class FasTMAbortMoreReadsWins: public FasTMAbort {
+public:
+    FasTMAbortMoreReadsWins(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~FasTMAbortMoreReadsWins() { }
+
+private:
+    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
+};
+
+class FasTMAbortOlderWins: public FasTMAbort {
+public:
+    FasTMAbortOlderWins(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~FasTMAbortOlderWins() { }
+
+    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual void completeFallback(Pid_t pid);
+private:
+    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
+    Time_t getStartTime(Pid_t pid)   const { return startTime.at(pid); }
+
+    std::map<Pid_t, Time_t>             startTime;
+};
+
 class TMEECoherence: public TMCoherence {
 public:
     TMEECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
@@ -340,8 +409,8 @@ protected:
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
-    void cleanDirtyLines(VAddr raddr, std::set<Cache*>& except);
-    void invalidateLines(VAddr raddr, std::set<Cache*>& except);
+    void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
+    void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
     void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
     void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
     void handleConflicts(Pid_t pid, VAddr caddr, bool isTM, std::set<Pid_t>& conflicting);
