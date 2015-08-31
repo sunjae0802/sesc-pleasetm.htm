@@ -381,13 +381,13 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
 
     std::set<Cache*> except;
     abortTMWriters(pid, caddr, true, except);
-    cleanDirtyLines(caddr, except);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         line  = replaceLine(pid, raddr);
+        cleanDirtyLines(caddr, except);
     } else {
         p_opStatus->wasHit = true;
         if(line->isTransactional() == false && line->isDirty()) {
@@ -415,15 +415,16 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, V
 
     std::set<Cache*> except;
     abortTMSharers(pid, caddr, true, except);
-    invalidateLines(caddr, except);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         line  = replaceLine(pid, raddr);
+        invalidateLines(caddr, except);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
+        invalidateLines(caddr, except);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -446,13 +447,13 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
 
     std::set<Cache*> except;
     abortTMWriters(pid, caddr, false, except);
-    cleanDirtyLines(caddr, except);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         line  = replaceLine(pid, raddr);
+        cleanDirtyLines(caddr, except);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -467,15 +468,16 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
 
     std::set<Cache*> except;
     abortTMSharers(pid, caddr, false, except);
-    invalidateLines(caddr, except);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
         line  = replaceLine(pid, raddr);
+        invalidateLines(caddr, except);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
+        invalidateLines(caddr, except);
     } else {
         p_opStatus->wasHit = true;
     }
