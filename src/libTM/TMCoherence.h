@@ -142,8 +142,8 @@ protected:
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
-    void cleanDirtyLines(VAddr raddr, std::set<Cache*>& except);
-    void invalidateLines(VAddr raddr, std::set<Cache*>& except);
+    void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
+    void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
     void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
     void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
 

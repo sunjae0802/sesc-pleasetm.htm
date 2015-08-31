@@ -317,8 +317,6 @@ void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
-
-    except.insert(getCache(pid));
 }
 
 ///
@@ -340,19 +338,22 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
     }
-
-    except.insert(getCache(pid));
 }
 
 ///
 // Helper function that cleans dirty lines in each cache except pid's.
-void TMIdealLECoherence::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) {
+void TMIdealLECoherence::cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
+    Cache* myCache = getCache(pid);
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
-        if(except.find(cache) == except.end()) {
-            Line* line = cache->findLine(raddr);
-            if(line && line->isValid() && line->isDirty()) {
+        Line* line = cache->findLine(caddr);
+        if(line && line->isValid() && line->isDirty()) {
+            if(except.find(cache) == except.end()) {
                 line->makeClean();
+            } else if(cache == myCache) {
+                // Requester's cache should be left alone
+            } else {
+                // In except set so don't do anything
             }
         }
     }
@@ -360,13 +361,18 @@ void TMIdealLECoherence::cleanDirtyLines(VAddr raddr, std::set<Cache*>& except) 
 
 ///
 // Helper function that invalidates lines except pid's.
-void TMIdealLECoherence::invalidateLines(VAddr raddr, std::set<Cache*>& except) {
+void TMIdealLECoherence::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
+    Cache* myCache = getCache(pid);
     for(size_t cid = 0; cid < caches.size(); cid++) {
         Cache* cache = caches.at(cid);
-        if(except.find(cache) == except.end()) {
-            Line* line = cache->findLine(raddr);
-            if(line && line->isValid()) {
+        Line* line = cache->findLine(caddr);
+        if(line && line->isValid()) {
+            if(except.find(cache) == except.end()) {
                 line->invalidate();
+            } else if(cache == myCache) {
+                // Requester's cache should be left alone
+            } else {
+                // In except set so don't do anything
             }
         }
     }
@@ -386,8 +392,8 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        cleanDirtyLines(pid, caddr, except);
         line  = replaceLine(pid, raddr);
-        cleanDirtyLines(caddr, except);
     } else {
         p_opStatus->wasHit = true;
         if(line->isTransactional() == false && line->isDirty()) {
@@ -420,11 +426,11 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, V
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        invalidateLines(pid, caddr, except);
         line  = replaceLine(pid, raddr);
-        invalidateLines(caddr, except);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        invalidateLines(caddr, except);
+        invalidateLines(pid, caddr, except);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -452,8 +458,8 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        cleanDirtyLines(pid, caddr, except);
         line  = replaceLine(pid, raddr);
-        cleanDirtyLines(caddr, except);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -473,11 +479,11 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
+        invalidateLines(pid, caddr, except);
         line  = replaceLine(pid, raddr);
-        invalidateLines(caddr, except);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        invalidateLines(caddr, except);
+        invalidateLines(pid, caddr, except);
     } else {
         p_opStatus->wasHit = true;
     }
