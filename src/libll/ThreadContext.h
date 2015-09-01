@@ -147,7 +147,6 @@ public:
     static Time_t resetTS;
     std::vector<FuncBoundaryData> funcData;
 
-    uint64_t nRetiredInsts;
     AtomicRegionStats       currentRegion;
     static TimeTrackerStats timeTrackerStats;
     TimeTrackerStats        myTimeStats;
@@ -207,6 +206,8 @@ private:
     // Flag indicating whether the last memory access was a hit in L1
     bool      l1Hit;
     size_t    nDInsts;
+    // Number of retired DInsts during this thread's lifetime
+    size_t    nRetiredInsts;
 
     // HACK to balance calls/returns
     typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
@@ -288,6 +289,9 @@ public:
     // memop NACK handling methods
     void startRetryTimer() {
         startStalling(tmCohManager->getNackRetryStallCycles());
+    }
+    static bool isFallbackMutexAddr(VAddr cAddr) {
+        return tmFallbackMutexCAddrs.find(cAddr) != tmFallbackMutexCAddrs.end();
     }
 #endif
     // Thread stalling methods
@@ -427,6 +431,9 @@ public:
     }
     inline size_t getNDInsts(void) {
         return nDInsts;
+    }
+    inline size_t getNRetiredInsts(void) {
+        return nRetiredInsts;
     }
     static inline int32_t nextReady(int32_t startPid) {
         int32_t foundPid=startPid;
@@ -719,11 +726,9 @@ public:
     static size_t numThreads;
 
     std::ofstream tracefile;
-    std::ofstream& getTracefile() {
+    static std::ofstream& getTracefile() {
         return getMainThreadContext()->tracefile;
     }
-    void traceFunction(DInst *dinst, FuncBoundaryData& funcData);
-    void traceTM(DInst* dinst);
 };
 
 #endif // THREADCONTEXT_H
