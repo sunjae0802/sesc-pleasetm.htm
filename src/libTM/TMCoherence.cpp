@@ -155,32 +155,32 @@ void TMCoherence::removeTrans(Pid_t pid) {
 
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
-TMBCStatus TMCoherence::begin(InstDesc* inst, ThreadContext* context) {
+TMBCStatus TMCoherence::begin(InstDesc* inst, const ThreadContext* context) {
     Pid_t pid   = context->getPid();
-    return myBegin(pid, inst);
+    return myBegin(inst, context);
 }
 
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
-TMBCStatus TMCoherence::commit(InstDesc* inst, ThreadContext* context) {
+TMBCStatus TMCoherence::commit(InstDesc* inst, const ThreadContext* context) {
     Pid_t pid   = context->getPid();
 	if(getState(pid) == TM_MARKABORT) {
 		return TMBC_ABORT;
 	} else {
-		return myCommit(pid);
+		return myCommit(inst, context);
 	}
 }
 
-TMBCStatus TMCoherence::abort(InstDesc* inst, ThreadContext* context) {
+TMBCStatus TMCoherence::abort(InstDesc* inst, const ThreadContext* context) {
     Pid_t pid   = context->getPid();
     abortStates.at(pid).setAbortIAddr(context->getIAddr());
-    return myAbort(pid);
+    return myAbort(inst, context);
 }
 
 ///
 // If the abort type is driven externally (syscall/user), then mark the transaction as aborted.
 // Acutal abort needs to be called later.
-void TMCoherence::markAbort(InstDesc* inst, ThreadContext* context, TMAbortType_e abortType) {
+void TMCoherence::markAbort(InstDesc* inst, const ThreadContext* context, TMAbortType_e abortType) {
     Pid_t pid   = context->getPid();
     if(abortType != TM_ATYPE_SYSCALL && abortType != TM_ATYPE_USER) {
         fail("AbortType %d cannot be set manually\n", abortType);
@@ -200,7 +200,7 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
 
 ///
 // Entry point for TM read operation. Checks transaction state and then calls the real read.
-TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMCoherence::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
@@ -215,7 +215,7 @@ TMRWStatus TMCoherence::read(InstDesc* inst, ThreadContext* context, VAddr raddr
 
 ///
 // Entry point for TM write operation. Checks transaction state and then calls the real write.
-TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMCoherence::write(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
@@ -230,21 +230,24 @@ TMRWStatus TMCoherence::write(InstDesc* inst, ThreadContext* context, VAddr radd
 
 ///
 // A basic type of TM begin that will be used if child does not override
-TMBCStatus TMCoherence::myBegin(Pid_t pid, InstDesc* inst) {
+TMBCStatus TMCoherence::myBegin(InstDesc* inst, const ThreadContext* context) {
+    Pid_t pid   = context->getPid();
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
 
 ///
 // A basic type of TM abort if child does not override
-TMBCStatus TMCoherence::myAbort(Pid_t pid) {
+TMBCStatus TMCoherence::myAbort(InstDesc* inst, const ThreadContext* context) {
+    Pid_t pid   = context->getPid();
 	abortTrans(pid);
 	return TMBC_SUCCESS;
 }
 
 ///
 // A basic type of TM commit if child does not override
-TMBCStatus TMCoherence::myCommit(Pid_t pid) {
+TMBCStatus TMCoherence::myCommit(InstDesc* inst, const ThreadContext* context) {
+    Pid_t pid   = context->getPid();
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
@@ -380,7 +383,7 @@ void TMIdealLECoherence::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*
 
 ///
 // Do a transactional read.
-TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -414,7 +417,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VA
 
 ///
 // Do a transactional write.
-TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -446,7 +449,7 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, V
 
 ///
 // Do a non-transactional read, i.e. when a thread not inside a transaction.
-void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMIdealLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -467,7 +470,7 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr
 
 ///
 // Do a non-transactional write, i.e. when a thread not inside a transaction.
-void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMIdealLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -492,9 +495,11 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAdd
     line->makeDirty();
 }
 
-TMBCStatus TMIdealLECoherence::myCommit(Pid_t pid) {
+TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* context) {
     // On commit, we clear all transactional bits, but otherwise leave lines alone
+    Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
+
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
     cache->collectLines(lines, tmCmp);
@@ -507,9 +512,11 @@ TMBCStatus TMIdealLECoherence::myCommit(Pid_t pid) {
     return TMBC_SUCCESS;
 }
 
-TMBCStatus TMIdealLECoherence::myAbort(Pid_t pid) {
+TMBCStatus TMIdealLECoherence::myAbort(InstDesc* inst, const ThreadContext* context) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
+    Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
+
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
     cache->collectLines(lines, tmCmp);
@@ -565,7 +572,7 @@ TMLECoherence::~TMLECoherence() {
 
 ///
 // Do a transactional read.
-TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMLECoherence::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -604,7 +611,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, ThreadContext* context, VAddr r
 
 ///
 // Do a transactional write.
-TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -645,7 +652,7 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, ThreadContext* context, VAddr 
 
 ///
 // Do a non-transactional read, i.e. when a thread not inside a transaction.
-void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -666,7 +673,7 @@ void TMLECoherence::nonTMRead(InstDesc* inst, ThreadContext* context, VAddr radd
 
 ///
 // Do a non-transactional write, i.e. when a thread not inside a transaction.
-void TMLECoherence::nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -851,9 +858,11 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
     } // End foreach(cache)
 }
 
-TMBCStatus TMLECoherence::myCommit(Pid_t pid) {
+TMBCStatus TMLECoherence::myCommit(InstDesc* inst, const ThreadContext* context) {
     // On commit, we clear all transactional bits, but otherwise leave lines alone
+    Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
+
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
     cache->collectLines(lines, tmCmp);
@@ -869,9 +878,11 @@ TMBCStatus TMLECoherence::myCommit(Pid_t pid) {
     return TMBC_SUCCESS;
 }
 
-TMBCStatus TMLECoherence::myAbort(Pid_t pid) {
+TMBCStatus TMLECoherence::myAbort(InstDesc* inst, const ThreadContext* context) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
+    Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
+
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
     cache->collectLines(lines, tmCmp);
