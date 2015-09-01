@@ -423,7 +423,7 @@ void SMPCache::access(MemRequest *mreq)
     //if(globalClock>130660443) sdprint = true; // conj:ocean 130670443
     //sdprint = true;
 
-    if(mreq->getDInst()->wasL1Hit()) {
+    if(mreq->isDataReq() && mreq->getDInst() && mreq->getDInst()->wasL1Hit()) {
         hitL1CacheCB::scheduleAbs(nextSlot(), this, mreq);
         return;
     }
