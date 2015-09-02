@@ -151,6 +151,8 @@ public:
     uint32_t    tmLat;
     // If this instruction is a function boundary, this contains info about that function
     std::vector<FuncBoundaryData> funcData;
+    // PleaseTM peers that need refetch
+    std::set<Pid_t> needRefetch;
 
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
@@ -198,6 +200,8 @@ private:
     // Common set of fallback mutex addresses to check if the abort is caused by a fallback
     static std::set<uint32_t> tmFallbackMutexCAddrs;
     bool    tmMemopHadStalled;
+    // PleaseTM addresses that need refetch
+    std::set<VAddr> refetchAddrs;
 #endif
 
     // Memory Mapping
@@ -278,6 +282,17 @@ public:
 
     bool getTMMemopHadStalled() const { return tmMemopHadStalled; }
     void clearTMMemopHadStalled() { tmMemopHadStalled = false; }
+
+    // PleaseTM-related memory refetch methods
+    void updateRefetchAddrs(VAddr addr) {
+        for(Pid_t peer: instContext.needRefetch) {
+            pid2context[peer]->refetchAddrs.insert(addr);
+        }
+    }
+    void clearRefetchAddrs() {
+        refetchAddrs.clear();
+    }
+    const std::set<VAddr>& getRefetchAddrs() const { return refetchAddrs; }
 
     // TM getters
     uint32_t getTMArg()       const { return tmArg; }

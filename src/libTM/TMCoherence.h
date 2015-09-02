@@ -411,8 +411,8 @@ protected:
     Line* replaceLine(Pid_t pid, VAddr raddr);
     void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
     void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
-    void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
-    void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+    void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus);
+    void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus);
     void handleConflicts(Pid_t pid, VAddr caddr, bool isTM, std::set<Pid_t>& conflicting);
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) = 0;
 

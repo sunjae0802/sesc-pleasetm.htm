@@ -1523,6 +1523,7 @@ public:
 #if (defined TM)
                 if(tmCohManager) {
                     tmRWStatus = tmCohManager->read(inst, context, addr, &context->getInstContext());
+                    context->updateRefetchAddrs(addr);
                     if(tmRWStatus == TMRW_SUCCESS) {
                         mval = readMemTM<MemT>(context, addr);
                     }
@@ -1550,6 +1551,7 @@ public:
 #if (defined TM)
                 if(tmCohManager) {
                     tmRWStatus = tmCohManager->read(inst, context, addr, &context->getInstContext());
+                    context->updateRefetchAddrs(addr);
                     if(tmRWStatus == TMRW_SUCCESS) {
                         val = readMemTM<MemT>(context, addr);
                     }
@@ -1602,6 +1604,7 @@ public:
                     EndianDefs<mode>::cvtEndian(val);
                     if(tmCohManager) {
                         tmRWStatus = tmCohManager->write(inst, context, addr, &context->getInstContext());
+                        context->updateRefetchAddrs(addr);
                         if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush
@@ -1616,6 +1619,7 @@ public:
                 } else {
                     if(tmCohManager) {
                         tmRWStatus = tmCohManager->write(inst, context, addr, &context->getInstContext());
+                        context->updateRefetchAddrs(addr);
                         if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush

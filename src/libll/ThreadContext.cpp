@@ -41,6 +41,7 @@ void InstContext::clear() {
     setConflict = false;
     tmLat       = 0;
     funcData.clear();
+    needRefetch.clear();
 
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;

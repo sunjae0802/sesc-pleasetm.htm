@@ -2156,7 +2156,7 @@ void IdealPleaseTM::handleConflicts(Pid_t pid, VAddr caddr, bool isTM, set<Pid_t
 }
 ///
 // Helper function that aborts all transactional readers and writers
-void IdealPleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
+void IdealPleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
     set<Pid_t> conflicting;
     for(Pid_t writer: writers[caddr]) {
         conflicting.insert(writer);
@@ -2168,13 +2168,14 @@ void IdealPleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<C
     // If any winners are around, we self abort and add them to the except set
     if(conflicting.size() > 0) {
         for(Pid_t c: conflicting) {
+            p_opStatus->needRefetch.insert(c);
             except.insert(getCache(c));
         }
     }
 }
 ///
 // Helper function that aborts all transactional readers and writers
-void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
+void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
     set<Pid_t> conflicting;
     for(Pid_t writer: writers[caddr]) {
         conflicting.insert(writer);
@@ -2189,6 +2190,7 @@ void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<C
     // If any winners are around, we self abort and add them to the except set
     if(conflicting.size() > 0) {
         for(Pid_t c: conflicting) {
+            p_opStatus->needRefetch.insert(c);
             except.insert(getCache(c));
         }
     }
@@ -2263,7 +2265,7 @@ TMRWStatus IdealPleaseTM::TMRead(InstDesc* inst, const ThreadContext* context, V
     Cache* cache = getCache(pid);
 
     std::set<Cache*> except;
-    abortTMWriters(pid, caddr, true, except);
+    abortTMWriters(pid, caddr, true, except, p_opStatus);
 
     if(getState(pid) == TM_MARKABORT) {
         cleanDirtyLines(pid, caddr, except);
@@ -2303,7 +2305,7 @@ TMRWStatus IdealPleaseTM::TMWrite(InstDesc* inst, const ThreadContext* context, 
     Cache* cache = getCache(pid);
 
     std::set<Cache*> except;
-    abortTMSharers(pid, caddr, true, except);
+    abortTMSharers(pid, caddr, true, except, p_opStatus);
 
     if(getState(pid) == TM_MARKABORT) {
         invalidateLines(pid, caddr, except);
@@ -2341,7 +2343,7 @@ void IdealPleaseTM::nonTMRead(InstDesc* inst, const ThreadContext* context, VAdd
     Cache* cache= getCache(pid);
 
     std::set<Cache*> except;
-    abortTMWriters(pid, caddr, false, except);
+    abortTMWriters(pid, caddr, false, except, p_opStatus);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
@@ -2362,7 +2364,7 @@ void IdealPleaseTM::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAd
     Cache* cache = getCache(pid);
 
     std::set<Cache*> except;
-    abortTMSharers(pid, caddr, false, except);
+    abortTMSharers(pid, caddr, false, except, p_opStatus);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);

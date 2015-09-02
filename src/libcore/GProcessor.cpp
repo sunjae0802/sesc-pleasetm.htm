@@ -32,6 +32,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "libll/ExecutionFlow.h"
 #include "GMemoryOS.h"
 #include "GMemorySystem.h"
+#include "MemRequest.h"
 #include "LDSTBuffer.h"
 
 
@@ -479,6 +480,17 @@ void GProcessor::retire()
         if( !dinst->isExecuted() ) {
             addStatsNoRetire(i, dinst, NotExecuted);
             return;
+        }
+
+        // Issue PleaseTM refetches if needed
+        ThreadContext* context = dinst->context;
+        if(context) {
+            uint32_t refetchAt = 1;
+            for(VAddr refAddr: context->getRefetchAddrs()) {
+                CBMemRequest::create(refetchAt, memorySystem->getDataSource(), MemRead, refAddr, 0);
+                refetchAt++;
+            }
+            context->clearRefetchAddrs();
         }
 
         // save it now because retire can destroy DInst
