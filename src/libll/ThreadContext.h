@@ -124,7 +124,7 @@ struct AtomicRegionStats {
         endAt = at;
     }
     void clear();
-    void markRetireFuncBoundary(DInst* dinst, FuncBoundaryData& funcData);
+    void markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData);
     void markRetireTM(DInst* dinst);
     void addNackStall(DInst* dinst, Time_t prevRetired);
     void calculate(TimeTrackerStats* p_stats);
@@ -149,6 +149,8 @@ public:
     bool setConflict;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
+    // If this instruction is a function boundary, this contains info about that function
+    std::vector<FuncBoundaryData> funcData;
 
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
@@ -165,7 +167,6 @@ public:
     static bool simDone;
 	static int64_t finalSkip;
     static Time_t resetTS;
-    std::vector<FuncBoundaryData> funcData;
 
     Time_t prevDInstRetired;
     AtomicRegionStats       currentRegion;
@@ -233,6 +234,14 @@ private:
 
 public:
     void markRetire(DInst* dinst);
+
+    // Function call/return hook handling
+    void createCall(enum FuncName funcName, uint32_t retA, uint32_t arg0, uint32_t arg1) {
+        instContext.funcData.push_back(FuncBoundaryData::createCall(funcName, retA, arg0, arg1));
+    }
+    void createRet(enum FuncName funcName, uint32_t retV) {
+        instContext.funcData.push_back(FuncBoundaryData::createRet(funcName, retV));
+    }
     void saveCallRetStack() {
         retHandlersSaved = retHandlers;
     }
