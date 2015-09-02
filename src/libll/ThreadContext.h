@@ -141,8 +141,14 @@ public:
     InstContext() { clear(); }
     void clear();
 
+    // Whether the memory operation hit in the emul'd private cache
     bool wasHit;
     bool setConflict;
+    // Cycles for stalling retire of a tm instruction
+    uint32_t    tmLat;
+
+    TMBeginSubtype tmBeginSubtype;
+    TMCommitSubtype tmCommitSubtype;
 };
 
 // Use this define to debug the simulated application
@@ -184,12 +190,8 @@ private:
     VAddr tmCallsite;
     // User-passed HTM command arg
     uint32_t tmArg;
-    // Cycles for stalling retire of a tm instruction
-    uint32_t    tmLat;
     // Common set of fallback mutex addresses to check if the abort is caused by a fallback
     static std::set<uint32_t> tmFallbackMutexCAddrs;
-    TMBeginSubtype tmBeginSubtype;
-    TMCommitSubtype tmCommitSubtype;
 #endif
 
     // Memory Mapping
@@ -260,14 +262,8 @@ public:
     void setTMCallsite(VAddr ra) { tmCallsite = ra; }
     VAddr getTMCallsite() const { return tmCallsite; }
 
-    TMBeginSubtype getTMBeginSubtype() const { return tmBeginSubtype; }
-    void clearTMBeginSubtype() { tmBeginSubtype = TM_BEGIN_INVALID; }
-    TMCommitSubtype getTMCommitSubtype() const { return tmCommitSubtype; }
-    void clearTMCommitSubtype() { tmCommitSubtype = TM_COMMIT_INVALID; }
-
     // TM getters
     uint32_t getTMArg()       const { return tmArg; }
-    uint32_t getTMLat()       const { return tmLat; }
 
     // Transactional Methods
     void setTMlibUserTid(uint32_t arg);

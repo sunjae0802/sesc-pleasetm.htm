@@ -155,26 +155,26 @@ void TMCoherence::removeTrans(Pid_t pid) {
 
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
-TMBCStatus TMCoherence::begin(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMCoherence::begin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-    return myBegin(inst, context);
+    return myBegin(inst, context, p_opStatus);
 }
 
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
-TMBCStatus TMCoherence::commit(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMCoherence::commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	if(getState(pid) == TM_MARKABORT) {
 		return TMBC_ABORT;
 	} else {
-		return myCommit(inst, context);
+		return myCommit(inst, context, p_opStatus);
 	}
 }
 
-TMBCStatus TMCoherence::abort(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMCoherence::abort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     abortStates.at(pid).setAbortIAddr(context->getIAddr());
-    return myAbort(inst, context);
+    return myAbort(inst, context, p_opStatus);
 }
 
 ///
@@ -193,7 +193,10 @@ void TMCoherence::markAbort(InstDesc* inst, const ThreadContext* context, TMAbor
 ///
 // Entry point for TM complete abort operation (to be called after an aborted TM returns to
 // tm.begin).
-TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
+TMBCStatus TMCoherence::completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+    Pid_t pid   = context->getPid();
+    p_opStatus->tmBeginSubtype=TM_COMPLETE_ABORT;
+
     myCompleteAbort(pid);
     return TMBC_SUCCESS;
 }
@@ -230,15 +233,17 @@ TMRWStatus TMCoherence::write(InstDesc* inst, const ThreadContext* context, VAdd
 
 ///
 // A basic type of TM begin that will be used if child does not override
-TMBCStatus TMCoherence::myBegin(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMCoherence::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
+    p_opStatus->tmBeginSubtype=TM_BEGIN_REGULAR;
     beginTrans(pid, inst);
+
     return TMBC_SUCCESS;
 }
 
 ///
 // A basic type of TM abort if child does not override
-TMBCStatus TMCoherence::myAbort(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMCoherence::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	abortTrans(pid);
 	return TMBC_SUCCESS;
@@ -246,8 +251,10 @@ TMBCStatus TMCoherence::myAbort(InstDesc* inst, const ThreadContext* context) {
 
 ///
 // A basic type of TM commit if child does not override
-TMBCStatus TMCoherence::myCommit(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMCoherence::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
+    p_opStatus->tmCommitSubtype=TM_COMMIT_REGULAR;
+
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
@@ -495,9 +502,11 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context
     line->makeDirty();
 }
 
-TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* context) {
-    // On commit, we clear all transactional bits, but otherwise leave lines alone
+TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
+    p_opStatus->tmLat = 4 + getNumWrites(pid);
+
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
 
     LineTMComparator tmCmp;
@@ -512,7 +521,7 @@ TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* con
     return TMBC_SUCCESS;
 }
 
-TMBCStatus TMIdealLECoherence::myAbort(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMIdealLECoherence::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -858,9 +867,11 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
     } // End foreach(cache)
 }
 
-TMBCStatus TMLECoherence::myCommit(InstDesc* inst, const ThreadContext* context) {
-    // On commit, we clear all transactional bits, but otherwise leave lines alone
+TMBCStatus TMLECoherence::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
+    p_opStatus->tmLat = 4 + getNumWrites(pid);
+
+    // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
 
     LineTMComparator tmCmp;
@@ -878,7 +889,7 @@ TMBCStatus TMLECoherence::myCommit(InstDesc* inst, const ThreadContext* context)
     return TMBC_SUCCESS;
 }
 
-TMBCStatus TMLECoherence::myAbort(InstDesc* inst, const ThreadContext* context) {
+TMBCStatus TMLECoherence::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);

@@ -37,8 +37,11 @@ bool ThreadContext::inMain = false;
 size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
-    wasHit = false;
+    wasHit      = false;
     setConflict = false;
+    tmLat       = 0;
+    tmBeginSubtype=TM_BEGIN_INVALID;
+    tmCommitSubtype=TM_COMMIT_INVALID;
 }
 
 void ThreadContext::initialize(bool child) {
@@ -53,13 +56,10 @@ void ThreadContext::initialize(bool child) {
 
 #if (defined TM)
     tmArg       = 0;
-    tmLat       = 0;
     tmContext   = NULL;
     tmDepth     = 0;
     tmCallsite  = 0;
     tmlibUserTid= INVALID_USER_TID;
-    tmBeginSubtype=TM_BEGIN_INVALID;
-    tmCommitSubtype=TM_COMMIT_INVALID;
 #endif
 
     getTracefile() << ThreadContext::numThreads << " 0 "
@@ -94,12 +94,10 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     if(tmDepth > 0) {
         fail("Transaction nesting not complete\n");
     }
-    TMBCStatus status = tmCohManager->begin(inst, this);
+    TMBCStatus status = tmCohManager->begin(inst, this, &instContext);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
-            tmBeginSubtype=TM_BEGIN_REGULAR;
-            tmCommitSubtype=TM_COMMIT_INVALID;
 
             uint64_t utid = transState.getUtid();
             tmContext   = new TMContext(this, inst, utid);
@@ -107,10 +105,6 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
             saveCallRetStack();
             tmDepth++;
 
-            break;
-        }
-        case TMBC_NACK: {
-            tmBeginSubtype=TM_BEGIN_NACKED;
             break;
         }
         default:
@@ -129,26 +123,17 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     // Save UTID before committing
     uint64_t utid = tmCohManager->getUtid(pid);
     size_t numWrites = tmCohManager->getNumWrites(pid);
-    tmLat       = 4;
 
-    TMBCStatus status = tmCohManager->commit(inst, this);
+    TMBCStatus status = tmCohManager->commit(inst, this, &instContext);
     switch(status) {
-        case TMBC_NACK: {
-            // In the case of a Lazy model that can not commit yet
-            break;
-        }
         case TMBC_ABORT: {
             // In the case of a Lazy model where we are forced to Abort
-            tmCommitSubtype=TM_COMMIT_ABORTED;
             abortTransaction(inst);
             break;
         }
         case TMBC_SUCCESS: {
             // If we have already delayed, go ahead and finalize commit in memory
             tmContext->flushMemory();
-
-            tmLat       += numWrites;
-            tmCommitSubtype=TM_COMMIT_REGULAR;
 
             TMContext* oldTMContext = tmContext;
             if(isInTM()) {
@@ -179,7 +164,7 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     // Save UTID before aborting
     uint64_t utid = tmCohManager->getUtid(pid);
 
-    TMBCStatus status = tmCohManager->abort(inst, this);
+    TMBCStatus status = tmCohManager->abort(inst, this, &instContext);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
@@ -214,8 +199,7 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
 }
 
 void ThreadContext::completeAbort(InstDesc* inst) {
-    tmCohManager->completeAbort(pid);
-    tmBeginSubtype=TM_COMPLETE_ABORT;
+    tmCohManager->completeAbort(inst, this, &instContext);
 }
 
 uint32_t ThreadContext::getAbortRV() {

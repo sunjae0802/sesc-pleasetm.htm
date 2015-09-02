@@ -29,12 +29,12 @@ public:
     // Entry point functions for TM operations
     TMRWStatus read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     TMRWStatus write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    TMBCStatus abort(InstDesc* inst, const ThreadContext* context);
-    TMBCStatus commit(InstDesc* inst, const ThreadContext* context);
-    TMBCStatus begin(InstDesc* inst, const ThreadContext* context);
+    TMBCStatus abort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    TMBCStatus commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    TMBCStatus begin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     void markAbort(InstDesc* inst, const ThreadContext* context, TMAbortType_e abortType);
-    TMBCStatus completeAbort(Pid_t pid);
+    TMBCStatus completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Functions about the fallback path for statistics that run across multiple retries
     virtual void beginFallback(Pid_t pid) {}
@@ -100,9 +100,9 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
     virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
     virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
-    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context);
-    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context);
-    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual void       myCompleteAbort(Pid_t pid);
     virtual void       removeTransaction(Pid_t pid);
 
@@ -136,8 +136,8 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context);
-    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
@@ -167,8 +167,8 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context);
-    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     Line* replaceLine(Pid_t pid, VAddr raddr);
     Line* replaceLineTM(Pid_t pid, VAddr raddr);
 

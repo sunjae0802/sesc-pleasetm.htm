@@ -276,21 +276,11 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->tmCallsite   = 0;
     i->tmArg        = 0;
     i->tmState      = TransState(INVALID_PID);
-    i->tmLat        = 0;
-    i->tmBeginSubtype= TM_BEGIN_INVALID;
-    i->tmCommitSubtype=TM_COMMIT_INVALID;
 
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
         i->tmCallsite   = context->getTMCallsite();
         i->tmArg        = context->getTMArg();
-        i->tmBeginSubtype   = context->getTMBeginSubtype();
-        context->clearTMBeginSubtype();
-        i->tmCommitSubtype  = context->getTMCommitSubtype();
-        context->clearTMCommitSubtype();
-        if(i->tmCommitOp()) {
-            i->tmLat        = context->getTMLat();
-        }
     }
 
     return i;
@@ -520,7 +510,7 @@ void DInst::traceTM() {
         if(getTMCommitSubtype() == TM_COMMIT_REGULAR) {
             ThreadContext::getTracefile()<<pid<<" C"
                         <<" 0x"<<std::hex<<tmCallsite<<std::dec
-                        <<" "<<(100-tmLat)
+                        <<" "<<(100-getTMLat())
                         <<" "<<tmArg
                         <<" "<< context->getNRetiredInsts()
                         <<" "<< globalClock << std::endl;
