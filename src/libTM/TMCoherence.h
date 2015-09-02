@@ -27,14 +27,14 @@ public:
     static TMCoherence *create(int32_t nProcs);
 
     // Entry point functions for TM operations
-    TMRWStatus read(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    TMRWStatus write(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    TMBCStatus abort(InstDesc* inst, ThreadContext* context);
-    TMBCStatus commit(InstDesc* inst, ThreadContext* context);
-    TMBCStatus begin(InstDesc* inst, ThreadContext* context);
+    TMRWStatus read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    TMRWStatus write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    TMBCStatus abort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    TMBCStatus commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    TMBCStatus begin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
-    void markAbort(InstDesc* inst, ThreadContext* context, TMAbortType_e abortType);
-    TMBCStatus completeAbort(Pid_t pid);
+    void markAbort(InstDesc* inst, const ThreadContext* context, TMAbortType_e abortType);
+    TMBCStatus completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Functions about the fallback path for statistics that run across multiple retries
     virtual void beginFallback(Pid_t pid);
@@ -96,13 +96,13 @@ protected:
     void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
 
     // Interface for child classes to override and actually implement the TM OP
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) = 0;
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual void       myCompleteAbort(Pid_t pid);
     virtual void       removeTransaction(Pid_t pid);
 
@@ -136,12 +136,12 @@ public:
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
 protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
@@ -176,18 +176,18 @@ public:
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
 protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     Line* replaceLine(Pid_t pid, VAddr raddr);
     Line* replaceLineTM(Pid_t pid, VAddr raddr);
 
     // Helper functions for handling Cache lines
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
-    Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, MemOpStatus* p_opStatus);
+    Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, InstContext* p_opStatus);
     void abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbortType_e abortType);
     void invalidateSharers(Pid_t pid, VAddr raddr, bool isTM);
     void cleanWriters(Pid_t pid, VAddr raddr, bool isTM);
@@ -220,14 +220,14 @@ public:
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
 protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual void completeFallback(Pid_t pid);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
@@ -279,12 +279,12 @@ public:
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
 protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     TMRWStatus handleConflicts(Pid_t pid, VAddr caddr, std::set<Pid_t>& conflicting);
@@ -328,8 +328,8 @@ public:
     FasTMAbortOlderWins(const char tmStyle[], int32_t nProcs, int32_t line);
     virtual ~FasTMAbortOlderWins() { }
 
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
-    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual void completeFallback(Pid_t pid);
 private:
     virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
@@ -347,14 +347,14 @@ public:
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
 protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
-    virtual TMBCStatus myBegin(Pid_t pid, InstDesc *inst);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual void completeFallback(Pid_t pid);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
@@ -362,7 +362,7 @@ protected:
     virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
     Time_t getStartTime(Pid_t pid)   const { return startTime.at(pid); }
 
-    Line* lookupLine(Pid_t pid, VAddr raddr, MemOpStatus* p_opStatus);
+    Line* lookupLine(Pid_t pid, VAddr raddr, InstContext* p_opStatus);
 
     // Configurable member variables
     int             totalSize;
@@ -400,12 +400,12 @@ public:
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
 protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     Cache* getCache(Pid_t pid) { return caches.at(pid); }
     Line* replaceLine(Pid_t pid, VAddr raddr);
@@ -459,13 +459,13 @@ public:
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
 protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus);
+    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
+    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     virtual void       removeTransaction(Pid_t pid);
-    virtual TMBCStatus myAbort(Pid_t pid);
-    virtual TMBCStatus myCommit(Pid_t pid);
+    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     Line* replaceLine(Pid_t pid, VAddr raddr);
     Line* replaceLineTM(Pid_t pid, VAddr raddr);
 

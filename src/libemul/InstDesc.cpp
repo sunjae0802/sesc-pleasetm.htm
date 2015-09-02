@@ -1521,10 +1521,8 @@ public:
                 addr       = addr - offs;
                 MemT   mval=readMem<MemT>(context,addr);
 #if (defined TM)
-                MemOpStatus opStatus;
                 if(tmCohManager) {
-                    tmRWStatus = tmCohManager->read(inst, context, addr, &opStatus);
-                    context->setL1Hit(opStatus.wasHit);
+                    tmRWStatus = tmCohManager->read(inst, context, addr, &context->getInstContext());
                     if(tmRWStatus == TMRW_SUCCESS) {
                         mval = readMemTM<MemT>(context, addr);
                     }
@@ -1550,10 +1548,8 @@ public:
             } else {
                 MemT  val=readMem<MemT>(context,addr);
 #if (defined TM)
-                MemOpStatus opStatus;
                 if(tmCohManager) {
-                    tmRWStatus = tmCohManager->read(inst, context, addr, &opStatus);
-                    context->setL1Hit(opStatus.wasHit);
+                    tmRWStatus = tmCohManager->read(inst, context, addr, &context->getInstContext());
                     if(tmRWStatus == TMRW_SUCCESS) {
                         val = readMemTM<MemT>(context, addr);
                     }
@@ -1604,10 +1600,8 @@ public:
                     size_t tsiz=sizeof(MemT);
                     size_t offs=(addr%tsiz);
                     EndianDefs<mode>::cvtEndian(val);
-                    MemOpStatus opStatus;
                     if(tmCohManager) {
-                        tmRWStatus = tmCohManager->write(inst, context, addr, &opStatus);
-                        context->setL1Hit(opStatus.wasHit);
+                        tmRWStatus = tmCohManager->write(inst, context, addr, &context->getInstContext());
                         if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush
@@ -1620,10 +1614,8 @@ public:
                         }
                     }
                 } else {
-                    MemOpStatus opStatus;
                     if(tmCohManager) {
-                        tmRWStatus = tmCohManager->write(inst, context, addr, &opStatus);
-                        context->setL1Hit(opStatus.wasHit);
+                        tmRWStatus = tmCohManager->write(inst, context, addr, &context->getInstContext());
                         if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush

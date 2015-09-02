@@ -36,6 +36,14 @@ int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
 size_t ThreadContext::numThreads = 0;
 
+void InstContext::clear() {
+    wasHit      = false;
+    setConflict = false;
+    tmLat       = 0;
+    tmBeginSubtype=TM_BEGIN_INVALID;
+    tmCommitSubtype=TM_COMMIT_INVALID;
+}
+
 void ThreadContext::initialize(bool child) {
     if(pid == getMainThreadContext()->getPid()) {
         char filename[256];
@@ -49,13 +57,10 @@ void ThreadContext::initialize(bool child) {
 
 #if (defined TM)
     tmArg       = 0;
-    tmLat       = 0;
     tmContext   = NULL;
     tmDepth     = 0;
     tmCallsite  = 0;
     tmlibUserTid= INVALID_USER_TID;
-    tmBeginSubtype=TM_BEGIN_INVALID;
-    tmCommitSubtype=TM_COMMIT_INVALID;
     tmMemopHadStalled = false;
 #endif
 
@@ -91,12 +96,10 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     if(tmDepth > 0) {
         fail("Transaction nesting not complete\n");
     }
-    TMBCStatus status = tmCohManager->begin(inst, this);
+    TMBCStatus status = tmCohManager->begin(inst, this, &instContext);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
-            tmBeginSubtype=TM_BEGIN_REGULAR;
-            tmCommitSubtype=TM_COMMIT_INVALID;
 
             uint64_t utid = transState.getUtid();
             tmContext   = new TMContext(this, inst, utid);
@@ -104,10 +107,6 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
             saveCallRetStack();
             tmDepth++;
 
-            break;
-        }
-        case TMBC_NACK: {
-            tmBeginSubtype=TM_BEGIN_NACKED;
             break;
         }
         default:
@@ -126,26 +125,17 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     // Save UTID before committing
     uint64_t utid = tmCohManager->getUtid(pid);
     size_t numWrites = tmCohManager->getNumWrites(pid);
-    tmLat       = 4;
 
-    TMBCStatus status = tmCohManager->commit(inst, this);
+    TMBCStatus status = tmCohManager->commit(inst, this, &instContext);
     switch(status) {
-        case TMBC_NACK: {
-            // In the case of a Lazy model that can not commit yet
-            break;
-        }
         case TMBC_ABORT: {
             // In the case of a Lazy model where we are forced to Abort
-            tmCommitSubtype=TM_COMMIT_ABORTED;
             abortTransaction(inst);
             break;
         }
         case TMBC_SUCCESS: {
             // If we have already delayed, go ahead and finalize commit in memory
             tmContext->flushMemory();
-
-            tmLat       += numWrites;
-            tmCommitSubtype=TM_COMMIT_REGULAR;
 
             TMContext* oldTMContext = tmContext;
             if(isInTM()) {
@@ -176,7 +166,7 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     // Save UTID before aborting
     uint64_t utid = tmCohManager->getUtid(pid);
 
-    TMBCStatus status = tmCohManager->abort(inst, this);
+    TMBCStatus status = tmCohManager->abort(inst, this, &instContext);
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
@@ -211,8 +201,7 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
 }
 
 void ThreadContext::completeAbort(InstDesc* inst) {
-    tmCohManager->completeAbort(pid);
-    tmBeginSubtype=TM_COMPLETE_ABORT;
+    tmCohManager->completeAbort(inst, this, &instContext);
 }
 
 uint32_t ThreadContext::getAbortRV() {
@@ -288,7 +277,6 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
     iAddr(0),
     iDesc(InvalidInstDesc),
     dAddr(0),
-    l1Hit(false),
     nDInsts(0),
     stallUntil(0),
     fileSys(fileSys),
@@ -333,7 +321,6 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     myStackAddrLb(parent.myStackAddrLb),
     myStackAddrUb(parent.myStackAddrUb),
     dAddr(0),
-    l1Hit(false),
     nDInsts(0),
     stallUntil(0),
     fileSys(cloneFileSys?((FileSys::FileSys *)(parent.fileSys)):(new FileSys::FileSys(*(parent.fileSys),newNameSpace))),
@@ -760,7 +747,7 @@ void ThreadContext::markRetire(DInst* dinst) {
     const Instruction* inst = dinst->getInst();
 
     if(inst->isTM()) {
-        traceTM(dinst);
+        dinst->traceTM();
         currentRegion.markRetireTM(dinst);
     }
 
@@ -771,7 +758,7 @@ void ThreadContext::markRetire(DInst* dinst) {
     // Track function boundaries, by for example initializing and ending atomic regions.
     for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
             i_funcData != dinst->funcData.end(); ++i_funcData) {
-        traceFunction(dinst, *i_funcData);
+        dinst->traceFunction(*i_funcData);
 
         switch(i_funcData->funcName) {
             case FUNC_TM_BEGIN:
@@ -789,142 +776,6 @@ void ThreadContext::markRetire(DInst* dinst) {
     } // end foreach funcBoundaryData
 
     prevDInstRetired = globalClock;
-}
-
-/// Trace function boundaries (call and return)
-void ThreadContext::traceFunction(DInst *dinst, FuncBoundaryData& funcData) {
-    char eventType = '?';
-    switch(funcData.funcName) {
-        case FUNC_PTHREAD_BARRIER:
-            if(funcData.isCall) {
-                eventType = 'B';
-            } else {
-                eventType = 'b';
-            }
-            break;
-        case FUNC_TM_BEGIN:
-            if(funcData.isCall) {
-                eventType = 'S';
-            }
-            break;
-        case FUNC_TM_BEGIN_FALLBACK:
-            if(funcData.isCall) {
-                eventType = 'F';
-            } else {
-                eventType = 'E';
-            }
-            break;
-        case FUNC_TM_END_FALLBACK:
-            if(funcData.isCall == false) {
-                eventType = 'f';
-            }
-            break;
-        case FUNC_TM_WAIT:
-            if(funcData.isCall) {
-                eventType = 'V';
-            } else {
-                eventType = 'v';
-            }
-            break;
-        case FUNC_TM_END:
-            if(funcData.isCall == false) {
-                eventType = 's';
-            }
-            break;
-        default:
-            // Do nothing
-            break;
-    }
-    if(eventType != '?') {
-        std::ofstream& out = getTracefile();
-        out << pid << ' ' << eventType;
-        if(funcData.isCall) {
-            out << " 0x" << hex << funcData.ra
-                << " 0x" << funcData.arg0
-                << " 0x" << funcData.arg1 << dec;
-        } else {
-            out << " 0x" << hex << funcData.rv << dec;
-        }
-        out << ' ' << nRetiredInsts << ' ' << globalClock << '\n';
-    }
-}
-
-/// Trace TM related instructions
-void ThreadContext::traceTM(DInst* dinst) {
-    const Instruction *inst = dinst->getInst();
-
-    if(dinst->tmAbortCompleteOp()) {
-        // Get abort state
-        const TMAbortState& abortState = tmCohManager->getAbortState(pid);
-        Pid_t aborter           = abortState.getAborterPid();
-        TMAbortType_e abortType = abortState.getAbortType();
-        VAddr abortByAddr       = abortState.getAbortByAddr();
-        VAddr abortIAddr        = abortState.getAbortIAddr();
-
-        bool causedByFallback = ThreadContext::tmFallbackMutexCAddrs.find(abortByAddr)
-                                   != ThreadContext::tmFallbackMutexCAddrs.end();
-
-        // Trace this instruction
-        if(abortType == TM_ATYPE_DEFAULT) {
-            if(abortByAddr == 0) {
-                fail("Why abort addr NULL?\n");
-            }
-            getTracefile()<<pid<<" A"
-                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
-                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
-                            <<" "<<aborter
-                            <<" "<< nRetiredInsts
-                            <<" "<< globalClock << std::endl;
-        } else if(causedByFallback) {
-            getTracefile()<<pid<<" Z"
-                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
-                            <<" 254"
-                            <<" "<<aborter
-                            <<" "<< nRetiredInsts
-                            <<" "<< globalClock << std::endl;
-        } else if(abortType == TM_ATYPE_NONTM) {
-            if(abortByAddr == 0) {
-                fail("Why abort addr NULL?\n");
-            }
-            getTracefile()<<pid<<" a"
-                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
-                            <<" 0x"<<std::hex<<abortByAddr<<std::dec
-                            <<" "<<aborter
-                            <<" "<< nRetiredInsts
-                            <<" "<< globalClock << std::endl;
-        } else {
-            uint32_t abortArg = 0;
-            if(abortType == TM_ATYPE_USER) {
-                abortArg = dinst->tmArg;
-            } else {
-                abortArg = abortByAddr;
-            }
-            getTracefile()<<pid<<" Z"
-                            <<" 0x"<<std::hex<<abortIAddr<<std::dec
-                            <<" "<<abortType
-                            <<" 0x"<<std::hex<<abortArg<<std::dec
-                            <<" "<< nRetiredInsts
-                            <<" "<< globalClock << std::endl;
-        }
-    } else if(dinst->tmBeginOp()) {
-        if(dinst->getTMBeginSubtype() == TM_BEGIN_REGULAR) {
-            getTracefile()<<pid<<" T"
-                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                        <<" "<<dinst->tmState.getUtid()
-                        <<" "<<dinst->tmArg
-                        <<" "<< nRetiredInsts
-                        <<" "<< globalClock << std::endl;
-        }
-    } else if(dinst->tmCommitOp()) {
-        if(dinst->getTMCommitSubtype() == TM_COMMIT_REGULAR) {
-            getTracefile()<<pid<<" C"
-                        <<" 0x"<<std::hex<<dinst->tmCallsite<<std::dec
-                        <<" "<<(100-dinst->tmLat)
-                        <<" "<<dinst->tmArg
-                        <<" "<< nRetiredInsts
-                        <<" "<< globalClock << std::endl;
-        }
-    }
 }
 
 void TimeTrackerStats::print() const {

@@ -156,8 +156,8 @@ RetOutcome FUMemory::retire(DInst *dinst)
     const Instruction *inst = dinst->getInst();
 
     if(inst->isTM()) {
-        if(dinst->tmLat > 0) {
-            dinst->tmLat--;
+        if(dinst->getTMLat() > 0) {
+            dinst->decTMLat();
             return WaitForFence;
         }
 

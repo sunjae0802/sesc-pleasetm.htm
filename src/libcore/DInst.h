@@ -119,15 +119,12 @@ private:
 
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
-    TMBeginSubtype tmBeginSubtype;
-    TMCommitSubtype tmCommitSubtype;
     bool tmMemopHadStalled;
 public:
     std::vector<FuncBoundaryData> funcData;
     VAddr       tmCallsite;
     TransState  tmState;
     uint32_t    tmArg;
-    size_t      tmLat;
 private:
 
 #ifdef SESC_MISPATH
@@ -202,7 +199,7 @@ private:
 
     const Instruction *inst;
     VAddr vaddr;
-    bool  l1Hit;
+    InstContext  instContext;
     Resource    *resource;
     DInst      **RATEntry;
     FetchEngine *fetch;
@@ -418,7 +415,7 @@ public:
 	}
 
     TMBeginSubtype getTMBeginSubtype() const {
-        return tmBeginSubtype;
+        return instContext.tmBeginSubtype;
     }
 
     bool tmBeginOp() const {
@@ -434,7 +431,7 @@ public:
     }
 
     TMCommitSubtype getTMCommitSubtype() const {
-        return tmCommitSubtype;
+        return instContext.tmCommitSubtype;
     }
 
     bool getTMMemopHadStalled() const {
@@ -446,7 +443,15 @@ public:
     }
 
     bool wasL1Hit() const {
-        return l1Hit;
+        return instContext.wasHit;
+    }
+
+    void decTMLat() {
+         instContext.tmLat--;
+    }
+
+    size_t getTMLat() const {
+         return instContext.tmLat;
     }
 
     int32_t getContextId() const {
@@ -554,6 +559,8 @@ public:
     Time_t getWakeUpTime() const {
         return wakeUpTime;
     }
+    void traceTM();
+    void traceFunction(const FuncBoundaryData& funcData);
 
 #ifdef SESC_BAAD
     void setFetch1Time();
