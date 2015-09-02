@@ -40,6 +40,8 @@ void InstContext::clear() {
     wasHit      = false;
     setConflict = false;
     tmLat       = 0;
+    funcData.clear();
+
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;
 }
@@ -750,8 +752,8 @@ void ThreadContext::markRetire(DInst* dinst) {
     }
 
     // Track function boundaries, by for example initializing and ending atomic regions.
-    for(std::vector<FuncBoundaryData>::iterator i_funcData = dinst->funcData.begin();
-            i_funcData != dinst->funcData.end(); ++i_funcData) {
+    for(std::vector<FuncBoundaryData>::const_iterator i_funcData = dinst->getInstContext().funcData.begin();
+            i_funcData != dinst->getInstContext().funcData.end(); ++i_funcData) {
         dinst->traceFunction(*i_funcData);
 
         switch(i_funcData->funcName) {

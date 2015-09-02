@@ -146,6 +146,8 @@ public:
     bool setConflict;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
+    // If this instruction is a function boundary, this contains info about that function
+    std::vector<FuncBoundaryData> funcData;
 
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
@@ -162,7 +164,6 @@ public:
     static bool simDone;
 	static int64_t finalSkip;
     static Time_t resetTS;
-    std::vector<FuncBoundaryData> funcData;
 
     AtomicRegionStats       currentRegion;
     static TimeTrackerStats timeTrackerStats;
@@ -231,10 +232,10 @@ public:
 
     // Function call/return hook handling
     void createCall(enum FuncName funcName, uint32_t retA, uint32_t arg0, uint32_t arg1) {
-        funcData.push_back(FuncBoundaryData::createCall(funcName, retA, arg0, arg1));
+        instContext.funcData.push_back(FuncBoundaryData::createCall(funcName, retA, arg0, arg1));
     }
     void createRet(enum FuncName funcName, uint32_t retV) {
-        funcData.push_back(FuncBoundaryData::createRet(funcName, retV));
+        instContext.funcData.push_back(FuncBoundaryData::createRet(funcName, retV));
     }
     void saveCallRetStack() {
         retHandlersSaved = retHandlers;

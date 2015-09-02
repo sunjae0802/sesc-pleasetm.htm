@@ -120,7 +120,6 @@ private:
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
 public:
-    std::vector<FuncBoundaryData> funcData;
     VAddr       tmCallsite;
     TransState  tmState;
     uint32_t    tmArg;
@@ -412,6 +411,10 @@ public:
 	InstType getOpcode() const {
 		return inst->getOpcode();
 	}
+
+    const InstContext& getInstContext() const {
+        return instContext;
+    }
 
     TMBeginSubtype getTMBeginSubtype() const {
         return instContext.tmBeginSubtype;

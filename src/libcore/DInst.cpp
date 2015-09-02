@@ -267,10 +267,6 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->instContext = context->getInstContext();
     context->clearInstContext();
 
-    i->funcData.clear();
-    i->funcData     = context->funcData;
-    context->funcData.clear();
-
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);
     i->tmCallsite   = 0;
