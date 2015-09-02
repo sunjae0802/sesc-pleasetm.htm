@@ -122,7 +122,7 @@ struct AtomicRegionStats {
         endAt = at;
     }
     void clear();
-    void markRetireFuncBoundary(DInst* dinst, FuncBoundaryData& funcData);
+    void markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData);
     void markRetireTM(DInst* dinst);
     void calculate(TimeTrackerStats* p_stats);
     typedef std::vector<AtomicSubregion*> Subregions;
@@ -228,6 +228,14 @@ private:
 
 public:
     void markRetire(DInst* dinst);
+
+    // Function call/return hook handling
+    void createCall(enum FuncName funcName, uint32_t retA, uint32_t arg0, uint32_t arg1) {
+        funcData.push_back(FuncBoundaryData::createCall(funcName, retA, arg0, arg1));
+    }
+    void createRet(enum FuncName funcName, uint32_t retV) {
+        funcData.push_back(FuncBoundaryData::createRet(funcName, retV));
+    }
     void saveCallRetStack() {
         retHandlersSaved = retHandlers;
     }

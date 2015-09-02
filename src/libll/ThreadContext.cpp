@@ -793,7 +793,7 @@ void TimeTrackerStats::sum(const TimeTrackerStats& other) {
 }
 
 /// If the DInst is at a function boundary, update statistics
-void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, FuncBoundaryData& funcData) {
+void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData) {
     switch(funcData.funcName) {
         case FUNC_TM_BEGIN_FALLBACK:
             if(funcData.isCall) {

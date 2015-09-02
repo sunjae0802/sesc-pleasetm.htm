@@ -2197,13 +2197,13 @@ void funcDataInitCall(ThreadContext* context, enum FuncName funcName, retHandler
     uint32_t arg0   = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
     uint32_t arg1   = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA1);
 
-    context->funcData.push_back(FuncBoundaryData::createCall(funcName, ra, arg0, arg1));
+    context->createCall(funcName, ra, arg0, arg1);
     addRetHandler(context, retHandler);
 }
 void funcDataInitRet(ThreadContext* context, enum FuncName funcName) {
     uint32_t rv     = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0);
 
-    context->funcData.push_back(FuncBoundaryData::createRet(funcName, rv));
+    context->createRet(funcName, rv);
 }
 
 // pthread_mutex call/return
