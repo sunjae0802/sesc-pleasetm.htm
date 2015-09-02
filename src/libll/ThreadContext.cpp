@@ -36,6 +36,11 @@ int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
 size_t ThreadContext::numThreads = 0;
 
+void InstContext::clear() {
+    wasHit = false;
+    setConflict = false;
+}
+
 void ThreadContext::initialize(bool child) {
     if(pid == getMainThreadContext()->getPid()) {
         char filename[256];
@@ -286,7 +291,6 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
     iAddr(0),
     iDesc(InvalidInstDesc),
     dAddr(0),
-    l1Hit(false),
     nDInsts(0),
     stallUntil(0),
     fileSys(fileSys),
@@ -331,7 +335,6 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     myStackAddrLb(parent.myStackAddrLb),
     myStackAddrUb(parent.myStackAddrUb),
     dAddr(0),
-    l1Hit(false),
     nDInsts(0),
     stallUntil(0),
     fileSys(cloneFileSys?((FileSys::FileSys *)(parent.fileSys)):(new FileSys::FileSys(*(parent.fileSys),newNameSpace))),

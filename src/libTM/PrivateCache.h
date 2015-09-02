@@ -10,12 +10,6 @@ enum EvictCause {
     EvictSetConflict,
 };
 
-struct MemOpStatus {
-    bool wasHit;
-    bool setConflict;
-    MemOpStatus(): wasHit(false), setConflict(false) {}
-};
-
 class TMLine : public StateGeneric<> {
 private:
     bool            dirty;

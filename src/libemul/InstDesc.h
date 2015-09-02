@@ -15,6 +15,7 @@ enum {
 typedef uint16_t Opcode;
 
 class ThreadContext;
+class InstContext;
 class InstDesc;
 enum FuncName {
     FUNC_NONE = 0,

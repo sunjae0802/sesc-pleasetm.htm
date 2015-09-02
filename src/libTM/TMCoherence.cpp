@@ -200,7 +200,7 @@ TMBCStatus TMCoherence::completeAbort(Pid_t pid) {
 
 ///
 // Entry point for TM read operation. Checks transaction state and then calls the real read.
-TMRWStatus TMCoherence::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMCoherence::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
@@ -215,7 +215,7 @@ TMRWStatus TMCoherence::read(InstDesc* inst, const ThreadContext* context, VAddr
 
 ///
 // Entry point for TM write operation. Checks transaction state and then calls the real write.
-TMRWStatus TMCoherence::write(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMCoherence::write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
 	if(getState(pid) == TM_MARKABORT) {
@@ -383,7 +383,7 @@ void TMIdealLECoherence::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*
 
 ///
 // Do a transactional read.
-TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -417,7 +417,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, const ThreadContext* conte
 
 ///
 // Do a transactional write.
-TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -449,7 +449,7 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, const ThreadContext* cont
 
 ///
 // Do a non-transactional read, i.e. when a thread not inside a transaction.
-void TMIdealLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMIdealLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -470,7 +470,7 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context,
 
 ///
 // Do a non-transactional write, i.e. when a thread not inside a transaction.
-void TMIdealLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMIdealLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -572,7 +572,7 @@ TMLECoherence::~TMLECoherence() {
 
 ///
 // Do a transactional read.
-TMRWStatus TMLECoherence::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMLECoherence::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -611,7 +611,7 @@ TMRWStatus TMLECoherence::TMRead(InstDesc* inst, const ThreadContext* context, V
 
 ///
 // Do a transactional write.
-TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -652,7 +652,7 @@ TMRWStatus TMLECoherence::TMWrite(InstDesc* inst, const ThreadContext* context, 
 
 ///
 // Do a non-transactional read, i.e. when a thread not inside a transaction.
-void TMLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);
@@ -673,7 +673,7 @@ void TMLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context, VAdd
 
 ///
 // Do a non-transactional write, i.e. when a thread not inside a transaction.
-void TMLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, MemOpStatus* p_opStatus) {
+void TMLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
     Cache* cache= getCache(pid);

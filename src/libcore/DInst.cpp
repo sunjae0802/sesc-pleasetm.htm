@@ -228,7 +228,6 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->cId        = cId;
     i->wakeUpTime = 0;
     i->vaddr      = va;
-    i->l1Hit      = context->getL1Hit();
     i->first      = 0;
 #ifdef DEBUG
     i->ID = currentID++;
@@ -265,6 +264,9 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->pend[0].preg = 0;
     i->pend[1].preg = 0;
 #endif
+    i->instContext = context->getInstContext();
+    context->clearInstContext();
+
     i->funcData.clear();
     i->funcData     = context->funcData;
     context->funcData.clear();

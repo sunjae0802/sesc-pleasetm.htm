@@ -201,7 +201,7 @@ private:
 
     const Instruction *inst;
     VAddr vaddr;
-    bool  l1Hit;
+    InstContext  instContext;
     Resource    *resource;
     DInst      **RATEntry;
     FetchEngine *fetch;
@@ -441,7 +441,7 @@ public:
     }
 
     bool wasL1Hit() const {
-        return l1Hit;
+        return instContext.wasHit;
     }
 
     int32_t getContextId() const {
