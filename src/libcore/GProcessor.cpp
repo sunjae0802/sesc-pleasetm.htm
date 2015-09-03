@@ -482,15 +482,10 @@ void GProcessor::retire()
             return;
         }
 
-        // Issue PleaseTM refetches if needed
-        ThreadContext* context = dinst->context;
-        if(context) {
-            uint32_t refetchAt = 1;
-            for(VAddr refAddr: context->getRefetchAddrs()) {
-                CBMemRequest::create(refetchAt, memorySystem->getDataSource(), MemRead, refAddr, 0);
-                refetchAt++;
-            }
-            context->clearRefetchAddrs();
+        uint32_t refetchAt = 1;
+        for(VAddr refAddr: dinst->getRefetchAddrs()) {
+            CBMemRequest::create(refetchAt, memorySystem->getDataSource(), MemRead, refAddr, 0);
+            refetchAt++;
         }
 
         // save it now because retire can destroy DInst

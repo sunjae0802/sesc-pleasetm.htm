@@ -266,6 +266,8 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
 #endif
     i->instContext = context->getInstContext();
     context->clearInstContext();
+    i->refetchAddrs= context->getRefetchAddrs();
+    context->clearRefetchAddrs();
 
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);

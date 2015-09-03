@@ -1328,6 +1328,7 @@ TMBCStatus IdealLogTM::myBegin(InstDesc* inst, const ThreadContext* context, Ins
     if(startTime.find(pid) == startTime.end()) {
         startTime[pid] = globalClock;
     }
+    p_opStatus->tmBeginSubtype=TM_BEGIN_REGULAR;
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
@@ -1338,6 +1339,9 @@ TMBCStatus IdealLogTM::myCommit(InstDesc* inst, const ThreadContext* context, In
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
 
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
+
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
     cache->collectLines(lines, tmCmp);
@@ -1347,6 +1351,7 @@ TMBCStatus IdealLogTM::myCommit(InstDesc* inst, const ThreadContext* context, In
     }
 
     startTime.erase(pid);
+
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
@@ -1713,6 +1718,9 @@ TMBCStatus FasTMAbort::myCommit(InstDesc* inst, const ThreadContext* context, In
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
 
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
+
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
     cache->collectLines(lines, tmCmp);
@@ -1781,6 +1789,7 @@ TMBCStatus FasTMAbortOlderWins::myBegin(InstDesc* inst, const ThreadContext* con
     if(startTime.find(pid) == startTime.end()) {
         startTime[pid] = globalClock;
     }
+    p_opStatus->tmBeginSubtype=TM_BEGIN_REGULAR;
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
@@ -1790,6 +1799,7 @@ TMBCStatus FasTMAbortOlderWins::myBegin(InstDesc* inst, const ThreadContext* con
 TMBCStatus FasTMAbortOlderWins::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     startTime.erase(pid);
+
     return FasTMAbort::myCommit(inst, context, p_opStatus);
 }
 ///
@@ -2019,6 +2029,7 @@ TMBCStatus TMEECoherence::myBegin(InstDesc* inst, const ThreadContext* context, 
     if(startTime.find(pid) == startTime.end()) {
         startTime[pid] = globalClock;
     }
+    p_opStatus->tmBeginSubtype=TM_BEGIN_REGULAR;
     beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
@@ -2029,6 +2040,9 @@ TMBCStatus TMEECoherence::myCommit(InstDesc* inst, const ThreadContext* context,
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
 
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
+
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
     cache->collectLines(lines, tmCmp);
@@ -2038,6 +2052,7 @@ TMBCStatus TMEECoherence::myCommit(InstDesc* inst, const ThreadContext* context,
     }
 
     startTime.erase(pid);
+
     commitTrans(pid);
     return TMBC_SUCCESS;
 }
@@ -2394,6 +2409,9 @@ TMBCStatus IdealPleaseTM::myCommit(InstDesc* inst, const ThreadContext* context,
     // On commit, we clear all transactional bits, but otherwise leave lines alone
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
+
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     LineTMComparator tmCmp;
     std::vector<Line*> lines;
@@ -2776,6 +2794,9 @@ TMBCStatus PleaseTM::myCommit(InstDesc* inst, const ThreadContext* context, Inst
     // On commit, we clear all transactional bits, but otherwise leave lines alone
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
+
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     LineTMComparator tmCmp;
     std::vector<Line*> lines;

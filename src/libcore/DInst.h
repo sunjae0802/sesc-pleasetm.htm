@@ -199,6 +199,7 @@ private:
     const Instruction *inst;
     VAddr vaddr;
     InstContext  instContext;
+    std::set<VAddr> refetchAddrs;
     Resource    *resource;
     DInst      **RATEntry;
     FetchEngine *fetch;
@@ -415,6 +416,10 @@ public:
 
     const InstContext& getInstContext() const {
         return instContext;
+    }
+
+    const std::set<VAddr>& getRefetchAddrs() const {
+        return refetchAddrs;
     }
 
     TMBeginSubtype getTMBeginSubtype() const {
