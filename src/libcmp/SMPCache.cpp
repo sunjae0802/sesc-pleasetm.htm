@@ -442,6 +442,11 @@ void SMPCache::access(MemRequest *mreq)
     case MemPush:
         I(0);
         break; // assumed write-through upperlevel
+    case MemReadN:
+    case MemWriteN:
+        // A NACKed memory operation, so just return without touching anything
+        mreq->goUp(16);
+        break;
     default:
         specialOp(mreq);
         break;

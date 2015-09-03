@@ -31,6 +31,8 @@ const char* MemOperationStr[] = {
     stringify(MemWrite),
     stringify(MemPush),
     stringify(MemReadW)
+    stringify(MemReadN),
+    stringify(MemWriteN),
 };
 
 const char* DirStatusStr[] = {

@@ -297,8 +297,11 @@ void FULoad::cacheDispatched(DInst *dinst)
         // infinite loop
         cacheDispatchedCB::scheduleAbs(when+1, this, dinst);
     } else {
-
-        DMemRequest::create(dinst, memorySystem, MemRead);
+        if(dinst->getInstContext().wasNacked) {
+            DMemRequest::create(dinst, memorySystem, MemReadN);
+        } else {
+            DMemRequest::create(dinst, memorySystem, MemRead);
+        }
     }
 }
 
@@ -445,7 +448,11 @@ RetOutcome FUStore::retire(DInst *dinst)
         storeSent();
 
     dinst->context->markRetire(dinst);
-    DMemRequest::create(dinst, memorySystem, MemWrite);
+    if(dinst->getInstContext().wasNacked) {
+        DMemRequest::create(dinst, memorySystem, MemWriteN);
+    } else {
+        DMemRequest::create(dinst, memorySystem, MemWrite);
+    }
 
     doRetire(dinst);
 

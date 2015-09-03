@@ -1596,6 +1596,7 @@ TMRWStatus FasTMAbort::TMRead(InstDesc* inst, const ThreadContext* context, VAdd
     TMRWStatus status = abortTMWriters(pid, caddr, true, except);
 
     if(status != TMRW_SUCCESS) {
+        p_opStatus->wasNacked = true;
         cleanDirtyLines(pid, caddr, except);
         return status;
     }
@@ -1636,6 +1637,7 @@ TMRWStatus FasTMAbort::TMWrite(InstDesc* inst, const ThreadContext* context, VAd
     TMRWStatus status = abortTMSharers(pid, caddr, true, except);
 
     if(status != TMRW_SUCCESS) {
+        p_opStatus->wasNacked = true;
         invalidateLines(pid, caddr, except);
         return status;
     }

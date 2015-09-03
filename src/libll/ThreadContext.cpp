@@ -39,6 +39,7 @@ size_t ThreadContext::numThreads = 0;
 void InstContext::clear() {
     wasHit      = false;
     setConflict = false;
+    wasNacked   = false;
     tmLat       = 0;
     funcData.clear();
     needRefetch.clear();

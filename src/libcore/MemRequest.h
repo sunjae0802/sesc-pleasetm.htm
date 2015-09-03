@@ -49,6 +49,8 @@ enum MemOperation {
     MemReadW,                  // store that misses and needs data,
     // never comes from the processor, it is
     // always converted by a cache from a MemWrite
+    MemReadN,
+    MemWriteN,
     MemLastOp // just to get the size of the enumeration
 };
 

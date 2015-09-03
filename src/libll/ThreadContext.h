@@ -147,6 +147,7 @@ public:
     // Whether the memory operation hit in the emul'd private cache
     bool wasHit;
     bool setConflict;
+    bool wasNacked;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
     // If this instruction is a function boundary, this contains info about that function

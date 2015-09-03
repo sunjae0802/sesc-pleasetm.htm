@@ -94,14 +94,14 @@ void DMemRequest::dinstAck(DInst *dinst, MemOperation memOp, TimeDelta_t lat)
     I(dinst);
 
     I(!dinst->isLoadForwarded());
-    if (memOp == MemWrite) {
+    if (memOp == MemWrite || memOp == MemWriteN) {
         Cluster* c = dinst->getResource()->getCluster();
         FUStore* r = (FUStore*) c->getResource(iStore);
         r->storeCompleted();
         I(dinst->isExecuted());
         dinst->destroy();
     } else {
-        I(memOp == MemRead);
+        I(memOp == MemRead || memOp == MemReadN);
         I(dinst->getResource());
 
         dinst->doAtExecutedCB.schedule(lat);
