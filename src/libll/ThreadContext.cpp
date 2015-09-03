@@ -97,6 +97,9 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
         fail("Transaction nesting not complete\n");
     }
     TMBCStatus status = tmCohManager->begin(inst, this, &instContext);
+    if(instContext.tmBeginSubtype == TM_BEGIN_INVALID) {
+        fail("tmBeginSubtype invalid\n");
+    }
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
@@ -127,6 +130,9 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     size_t numWrites = tmCohManager->getNumWrites(pid);
 
     TMBCStatus status = tmCohManager->commit(inst, this, &instContext);
+    if(instContext.tmCommitSubtype == TM_COMMIT_INVALID) {
+        fail("tmCommitSubtype invalid\n");
+    }
     switch(status) {
         case TMBC_ABORT: {
             // In the case of a Lazy model where we are forced to Abort

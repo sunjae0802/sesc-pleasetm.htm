@@ -165,6 +165,7 @@ TMBCStatus TMCoherence::begin(InstDesc* inst, const ThreadContext* context, Inst
 TMBCStatus TMCoherence::commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	if(getState(pid) == TM_MARKABORT) {
+        p_opStatus->tmCommitSubtype=TM_COMMIT_ABORTED;
 		return TMBC_ABORT;
 	} else {
 		return myCommit(inst, context, p_opStatus);
@@ -253,7 +254,9 @@ TMBCStatus TMCoherence::myAbort(InstDesc* inst, const ThreadContext* context, In
 // A basic type of TM commit if child does not override
 TMBCStatus TMCoherence::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-    p_opStatus->tmCommitSubtype=TM_COMMIT_REGULAR;
+
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     commitTrans(pid);
     return TMBC_SUCCESS;
@@ -504,7 +507,9 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context
 
 TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-    p_opStatus->tmLat = 4 + getNumWrites(pid);
+
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
@@ -869,7 +874,9 @@ void TMLECoherence::cleanWriters(Pid_t pid, VAddr raddr, bool isTM) {
 
 TMBCStatus TMLECoherence::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-    p_opStatus->tmLat = 4 + getNumWrites(pid);
+
+    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     // On commit, we clear all transactional bits, but otherwise leave lines alone
     Cache* cache = getCache(pid);
