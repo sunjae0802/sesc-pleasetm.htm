@@ -338,60 +338,6 @@ private:
     std::map<Pid_t, Time_t>             startTime;
 };
 
-class TMEECoherence: public TMCoherence {
-public:
-    TMEECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
-    virtual ~TMEECoherence();
-    virtual uint32_t getNackRetryStallCycles(ThreadContext* context);
-
-    typedef CacheAssocTM    Cache;
-    typedef TMLine          Line;
-protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       removeTransaction(Pid_t pid);
-    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
-    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
-    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
-    virtual void completeFallback(Pid_t pid);
-
-    Cache* getCache(Pid_t pid) { return caches.at(pid); }
-    TMRWStatus handleConflict(Pid_t pid, std::set<Pid_t>& conflicting, VAddr caddr);
-    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
-    Time_t getStartTime(Pid_t pid)   const { return startTime.at(pid); }
-
-    Line* lookupLine(Pid_t pid, VAddr raddr, InstContext* p_opStatus);
-
-    // Configurable member variables
-    int             totalSize;
-    int             assoc;
-    uint32_t        nackBase;
-    uint32_t        nackCap;
-
-    // RNG-related data
-    struct random_data randBuf;
-    static const int   RBUF_SIZE = 32;
-    char               rbuf[RBUF_SIZE];
-
-    // State member variables
-    std::vector<Cache*>         caches;
-
-    std::map<Pid_t, bool>               cycleFlags;
-    std::map<Pid_t, Time_t>             startTime;
-    std::map<Pid_t, size_t>             nackCount;
-    std::map<Pid_t, Pid_t>              nackedBy;
-};
-class TMEENumReadsCoherence: public TMEECoherence {
-public:
-    TMEENumReadsCoherence(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMEECoherence(tmStyle, nProcs, line) {}
-    virtual ~TMEENumReadsCoherence() {}
-protected:
-    virtual bool isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid);
-};
-
 class IdealPleaseTM: public TMCoherence {
 public:
     IdealPleaseTM(const char tmStyle[], int32_t nProcs, int32_t line);
@@ -500,57 +446,6 @@ public:
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     std::map<Pid_t, Time_t>             startTime;
-};
-
-class PleaseTM: public TMCoherence {
-public:
-    PleaseTM(const char tmStyle[], int32_t nProcs, int32_t line);
-    virtual ~PleaseTM();
-
-    typedef CacheAssocTM    Cache;
-    typedef TMLine          Line;
-protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       removeTransaction(Pid_t pid);
-    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
-    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
-    Line* replaceLine(Pid_t pid, VAddr raddr);
-    Line* replaceLineTM(Pid_t pid, VAddr raddr);
-
-    Cache* getCache(Pid_t pid) { return caches.at(pid); }
-    void abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbortType_e abortType);
-    void updateOverflow(Pid_t pid, VAddr newCaddr);
-    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) = 0;
-    void sendGetM(Pid_t pid, VAddr raddr, bool isTM);
-    void sendGetS(Pid_t pid, VAddr raddr, bool isTM);
-
-    // Configurable member variables
-    int             totalSize;
-    int             assoc;
-    size_t          maxOverflowSize;
-
-    // State member variables
-    std::vector<Cache*>         caches;
-    std::map<Pid_t, std::set<VAddr> >   overflow;
-};
-
-class TMRequesterLoses: public PleaseTM {
-public:
-    TMRequesterLoses(const char tmStyle[], int32_t nProcs, int32_t line);
-    virtual ~TMRequesterLoses() { }
-private:
-    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
-};
-
-class TMMoreReadsWinsCoherence: public PleaseTM {
-public:
-    TMMoreReadsWinsCoherence(const char tmStyle[], int32_t nProcs, int32_t line);
-    virtual ~TMMoreReadsWinsCoherence() { }
-private:
-    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
 extern TMCoherence *tmCohManager;
