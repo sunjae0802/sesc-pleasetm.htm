@@ -27,6 +27,16 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
         newCohManager = new TMIdealRequesterLoses("Ideal Requester Loses", nProcs, lineSize);
     } else if(method == "IdealMoreReadsWins") {
         newCohManager = new TMIdealMoreReadsWins("Ideal More Reads Wins", nProcs, lineSize);
+    } else if(method == "IdealOlderWins") {
+        newCohManager = new TMIdealOlderWins("Ideal Older Wins", nProcs, lineSize);
+    } else if(method == "IdealOlderAllWins") {
+        newCohManager = new TMIdealOlderAllWins("Ideal Older All Wins", nProcs, lineSize);
+    } else if(method == "IdealMoreAbortsWins") {
+        newCohManager = new TMIdealMoreAbortsWins("Ideal MoreAborts Wins", nProcs, lineSize);
+    } else if(method == "Log2MoreReadsWins") {
+        newCohManager = new TMLog2MoreCoherence("Ideal MoreReads Wins (log2)", nProcs, lineSize);
+    } else if(method == "CappedMoreReadsWins") {
+        newCohManager = new TMCappedMoreCoherence("Ideal MoreReads Wins (capped)", nProcs, lineSize);
     } else if(method == "RequesterLoses") {
         newCohManager = new TMRequesterLoses("Requester Loses", nProcs, lineSize);
     } else if(method == "MoreReadsWins") {
@@ -2470,6 +2480,104 @@ bool TMIdealMoreReadsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     return linesRead[other].size() < linesRead[pid].size();
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////
+// IdealPleaseTM coherence with more reads wins; reads in log2
+/////////////////////////////////////////////////////////////////////////////////////////
+TMLog2MoreCoherence::TMLog2MoreCoherence(const char tmStyle[], int32_t nProcs, int32_t line):
+        IdealPleaseTM(tmStyle, nProcs, line) {
+}
+
+bool TMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    uint32_t log2Num = log2(linesRead[pid].size());
+    uint32_t log2OtherNum = log2(linesRead[other].size());
+    return log2OtherNum < log2Num;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// IdealPleaseTM coherence with more reads wins; reads capped
+/////////////////////////////////////////////////////////////////////////////////////////
+TMCappedMoreCoherence::TMCappedMoreCoherence(const char tmStyle[], int32_t nProcs, int32_t line):
+        IdealPleaseTM(tmStyle, nProcs, line), m_cap(128) {
+    MSG("Using cap of %d", m_cap);
+}
+
+bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    uint32_t cappedMyNum = linesRead[pid].size();
+    uint32_t cappedOtherNum = linesRead[other].size();
+    if(cappedMyNum > m_cap) {
+        cappedMyNum = m_cap;
+    }
+    if(cappedOtherNum > m_cap) {
+        cappedOtherNum = m_cap;
+    }
+    return cappedOtherNum < cappedMyNum;
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+// IdealPleaseTM with older wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMIdealOlderWins::TMIdealOlderWins(const char tmStyle[], int32_t nProcs, int32_t line):
+        IdealPleaseTM(tmStyle, nProcs, line) {
+}
+
+bool TMIdealOlderWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    if(startTime.find(pid) == startTime.end()) { fail("%d has not started?\n", pid); }
+    if(startTime.find(other) == startTime.end()) { fail("%d has not started?\n", other); }
+    return startTime[pid] < startTime[other];
+}
+TMBCStatus TMIdealOlderWins::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+    Pid_t pid = context->getPid();
+    startTime[pid] = globalClock;
+    return IdealPleaseTM::myBegin(inst, context, p_opStatus);
+}
+TMBCStatus TMIdealOlderWins::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+    Pid_t pid = context->getPid();
+    startTime.erase(pid);
+    return IdealPleaseTM::myCommit(inst, context, p_opStatus);
+}
+void TMIdealOlderWins::completeFallback(Pid_t pid) {
+    startTime.erase(pid);
+    return IdealPleaseTM::completeFallback(pid);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// IdealPleaseTM with older all wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMIdealOlderAllWins::TMIdealOlderAllWins(const char tmStyle[], int32_t nProcs, int32_t line):
+        IdealPleaseTM(tmStyle, nProcs, line) {
+}
+
+bool TMIdealOlderAllWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    if(startTime.find(pid) == startTime.end()) { fail("%d has not started?\n", pid); }
+    if(startTime.find(other) == startTime.end()) { fail("%d has not started?\n", other); }
+    return startTime[pid] < startTime[other];
+}
+TMBCStatus TMIdealOlderAllWins::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+    Pid_t pid = context->getPid();
+    if(startTime.find(pid) == startTime.end()) {
+        startTime[pid] = globalClock;
+    }
+    return IdealPleaseTM::myBegin(inst, context, p_opStatus);
+}
+TMBCStatus TMIdealOlderAllWins::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+    Pid_t pid = context->getPid();
+    startTime.erase(pid);
+    return IdealPleaseTM::myCommit(inst, context, p_opStatus);
+}
+void TMIdealOlderAllWins::completeFallback(Pid_t pid) {
+    startTime.erase(pid);
+    return IdealPleaseTM::completeFallback(pid);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// IdealPleaseTM with more aborts wins
+/////////////////////////////////////////////////////////////////////////////////////////
+TMIdealMoreAbortsWins::TMIdealMoreAbortsWins(const char tmStyle[], int32_t nProcs, int32_t line):
+        IdealPleaseTM(tmStyle, nProcs, line) {
+}
+
+bool TMIdealMoreAbortsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+    return abortsSoFar[other] < abortsSoFar[pid];
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // PleaseTM with conflict resolution done with plea bits
 /////////////////////////////////////////////////////////////////////////////////////////

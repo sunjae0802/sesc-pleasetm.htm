@@ -451,6 +451,57 @@ private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
+class TMIdealOlderWins: public IdealPleaseTM {
+public:
+    TMIdealOlderWins(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMIdealOlderWins() { }
+
+    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual void completeFallback(Pid_t pid);
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    std::map<Pid_t, Time_t>             startTime;
+};
+
+class TMIdealMoreAbortsWins: public IdealPleaseTM {
+public:
+    TMIdealMoreAbortsWins(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMIdealMoreAbortsWins() { }
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
+class TMLog2MoreCoherence: public IdealPleaseTM {
+public:
+    TMLog2MoreCoherence(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMLog2MoreCoherence() { }
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+};
+
+class TMCappedMoreCoherence: public IdealPleaseTM {
+public:
+    TMCappedMoreCoherence(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMCappedMoreCoherence() { }
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    const size_t m_cap;
+};
+
+class TMIdealOlderAllWins: public IdealPleaseTM {
+public:
+    TMIdealOlderAllWins(const char tmStyle[], int32_t nProcs, int32_t line);
+    virtual ~TMIdealOlderAllWins() { }
+
+    virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual void completeFallback(Pid_t pid);
+private:
+    virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
+    std::map<Pid_t, Time_t>             startTime;
+};
+
 class PleaseTM: public TMCoherence {
 public:
     PleaseTM(const char tmStyle[], int32_t nProcs, int32_t line);
