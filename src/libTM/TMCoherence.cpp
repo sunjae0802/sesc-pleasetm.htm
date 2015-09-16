@@ -361,10 +361,10 @@ void TMIdealLECoherence::cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*
         Cache* cache = caches.at(cid);
         Line* line = cache->findLine(caddr);
         if(line && line->isValid() && line->isDirty()) {
-            if(except.find(cache) == except.end()) {
-                line->makeClean();
-            } else if(cache == myCache) {
+            if(cache == myCache) {
                 // Requester's cache should be left alone
+            } else if(except.find(cache) == except.end()) {
+                line->makeClean();
             } else {
                 // In except set so don't do anything
             }
@@ -380,10 +380,10 @@ void TMIdealLECoherence::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*
         Cache* cache = caches.at(cid);
         Line* line = cache->findLine(caddr);
         if(line && line->isValid()) {
-            if(except.find(cache) == except.end()) {
-                line->invalidate();
-            } else if(cache == myCache) {
+            if(cache == myCache) {
                 // Requester's cache should be left alone
+            } else if(except.find(cache) == except.end()) {
+                line->invalidate();
             } else {
                 // In except set so don't do anything
             }
