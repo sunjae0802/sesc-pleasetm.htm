@@ -279,6 +279,12 @@ TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+    if(SescConf->checkInt("TransactionalMemory","overflowSize")) {
+        maxOverflowSize = SescConf->getInt("TransactionalMemory","overflowSize");
+    } else {
+        maxOverflowSize = 4;
+        MSG("Using default overflow size of %ld\n", maxOverflowSize);
+    }
 
     for(Pid_t pid = 0; pid < nProcs; pid++) {
         caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
@@ -304,6 +310,23 @@ TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr
     if(replaced == nullptr) {
         fail("Replacement policy failed");
     }
+
+    // If replaced is transactional, check for capacity aborts
+    if(replaced->isTransactional()) {
+        if(replaced->isDirty()) {
+            // Dirty transactional lines always trigger set conflict
+            markTransAborted(replaced->getWriter(), pid, replaced->getCaddr(), TM_ATYPE_SETCONFLICT);
+        } else {
+            // Clean lines only do so on overflow set overflows
+            for(Pid_t reader: replaced->getReaders()) {
+                if(overflow[reader].size() < maxOverflowSize) {
+                    overflow[reader].insert(replaced->getCaddr());
+                } else {
+                    markTransAborted(reader, pid, replaced->getCaddr(), TM_ATYPE_SETCONFLICT);
+                }
+            }
+        }
+    } // end if(replaced->isTransactional())
 
     // Replace the line
     VAddr caddr = addrToCacheLine(raddr);
@@ -418,9 +441,16 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, const ThreadContext* conte
         fail("got wrong line");
     }
 
+    if(getState(pid) == TM_MARKABORT) {
+        return TMRW_ABORT;
+    }
+
     // Update line
     line->markTransactional();
     line->addReader(pid);
+    if(overflow[pid].find(caddr) != overflow[pid].end()) {
+        overflow[pid].erase(caddr);
+    }
 
     // Do the read
     readTrans(pid, raddr, caddr);
@@ -454,10 +484,16 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, const ThreadContext* cont
     if(line->isValid() == false || line->getCaddr() != caddr) {
         fail("got wrong line");
     }
+    if(getState(pid) == TM_MARKABORT) {
+        return TMRW_ABORT;
+    }
 
     // Update line
     line->markTransactional();
     line->makeTransactionalDirty(pid);
+    if(overflow[pid].find(caddr) != overflow[pid].end()) {
+        overflow[pid].erase(caddr);
+    }
 
     // Do the write
     writeTrans(pid, raddr, caddr);
@@ -537,6 +573,7 @@ TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* con
     for(Line* line: lines) {
         line->clearTransactional();
     }
+    overflow[pid].clear();
 
     commitTrans(pid);
     return TMBC_SUCCESS;
@@ -558,6 +595,7 @@ TMBCStatus TMIdealLECoherence::myAbort(InstDesc* inst, const ThreadContext* cont
             line->clearTransactional();
         }
     }
+    overflow[pid].clear();
 
     abortTrans(pid);
     return TMBC_SUCCESS;

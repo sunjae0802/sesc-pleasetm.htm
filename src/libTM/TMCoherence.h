@@ -150,9 +150,11 @@ protected:
     // Configurable member variables
     int             totalSize;
     int             assoc;
+    size_t          maxOverflowSize;
 
     // State member variables
     std::vector<Cache*>         caches;
+    std::map<Pid_t, std::set<VAddr> >   overflow;
 };
 
 class TMLECoherence: public TMCoherence {
