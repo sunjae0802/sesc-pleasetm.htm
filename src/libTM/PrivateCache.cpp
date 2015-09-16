@@ -402,7 +402,7 @@ CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 // Collect all transactional lines in the core.
 void CacheAssocTM::collectLines(std::vector<TMLine*>& lines, const LineComparator& comp) {
     for(uint32_t i = 0; i < numLines; i++) {
-        TMLine* line = mem + i;
+        TMLine* line = content[i];
         if (comp(line)) {
             lines.push_back(line);
         }

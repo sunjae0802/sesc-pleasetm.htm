@@ -54,7 +54,7 @@ public:
     }
     void clearTransactional();
     void clearTransactional(Pid_t p);
-    void invalidate();
+    virtual void invalidate();
 };
 
 struct LineComparator {
