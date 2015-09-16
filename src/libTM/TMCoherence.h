@@ -157,49 +157,6 @@ protected:
     std::map<Pid_t, std::set<VAddr> >   overflow;
 };
 
-class TMLECoherence: public TMCoherence {
-public:
-    TMLECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
-    virtual ~TMLECoherence();
-
-    typedef CacheAssocTM    Cache;
-    typedef TMLine          Line;
-protected:
-    virtual TMRWStatus TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
-    virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
-    Line* replaceLine(Pid_t pid, VAddr raddr);
-    Line* replaceLineTM(Pid_t pid, VAddr raddr);
-
-    // Helper functions for handling Cache lines
-    Cache* getCache(Pid_t pid) { return caches.at(pid); }
-    Line* lookupLine(Pid_t pid, bool isInTM, VAddr raddr, InstContext* p_opStatus);
-    void abortReplaced(Line* replaced, Pid_t byPid, VAddr byCaddr, TMAbortType_e abortType);
-    void invalidateSharers(Pid_t pid, VAddr raddr, bool isTM);
-    void cleanWriters(Pid_t pid, VAddr raddr, bool isTM);
-
-    // Configurable member variables
-    int             totalSize;
-    int             assoc;
-    size_t          maxOverflowSize;
-
-    // Statistics
-    GStatsCntr      getSMsg;
-    GStatsCntr      fwdGetSMsg;
-    GStatsCntr      getMMsg;
-    GStatsCntr      invMsg;
-    GStatsCntr      flushMsg;
-    GStatsCntr      fwdGetSConflictMsg;
-    GStatsCntr      invConflictMsg;
-
-    // State member variables
-    std::vector<Cache*>         caches;
-    std::map<Pid_t, std::set<VAddr> >   overflow;
-};
-
 extern TMCoherence *tmCohManager;
 
 #endif
