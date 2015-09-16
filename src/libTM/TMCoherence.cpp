@@ -299,19 +299,19 @@ TMIdealLECoherence::~TMIdealLECoherence() {
 // Helper function that replaces a line in the Cache
 TMIdealLECoherence::Line* TMIdealLECoherence::replaceLine(Pid_t pid, VAddr raddr) {
     Cache* cache= getCache(pid);
-	VAddr caddr = addrToCacheLine(raddr);
-    VAddr myTag = cache->calcTag(raddr);
 
-    Line* line = cache->findLine2Replace(raddr);
-    if(line == nullptr) {
+    Line* replaced = cache->findLine2Replace(raddr);
+    if(replaced == nullptr) {
         fail("Replacement policy failed");
     }
 
     // Replace the line
-    line->invalidate();
-    line->validate(myTag, caddr);
+    VAddr caddr = addrToCacheLine(raddr);
+    VAddr myTag = cache->calcTag(raddr);
+    replaced->invalidate();
+    replaced->validate(myTag, caddr);
 
-    return line;
+    return replaced;
 }
 
 ///
@@ -414,6 +414,10 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, const ThreadContext* conte
             line->makeClean();
         }
     }
+    if(line->isValid() == false || line->getCaddr() != caddr) {
+        fail("got wrong line");
+    }
+
     // Update line
     line->markTransactional();
     line->addReader(pid);
@@ -447,6 +451,10 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, const ThreadContext* cont
     } else {
         p_opStatus->wasHit = true;
     }
+    if(line->isValid() == false || line->getCaddr() != caddr) {
+        fail("got wrong line");
+    }
+
     // Update line
     line->markTransactional();
     line->makeTransactionalDirty(pid);
@@ -476,6 +484,10 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context,
     } else {
         p_opStatus->wasHit = true;
     }
+    if(line->isValid() == false || line->getCaddr() != caddr) {
+        fail("got wrong line");
+    }
+
 }
 
 ///
@@ -500,6 +512,10 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context
     } else {
         p_opStatus->wasHit = true;
     }
+    if(line->isValid() == false || line->getCaddr() != caddr) {
+        fail("got wrong line");
+    }
+
 
     // Update line
     line->makeDirty();
