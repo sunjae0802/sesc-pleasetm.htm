@@ -11,6 +11,9 @@ using namespace std;
  *  TMLine
  *********************************************************/
 void TMLine::addReader(Pid_t reader) {
+    if(isValid() == false) {
+        fail("trying to add reader to invalid line\n");
+    }
     if(!transactional) {
         fail("A non-TM line should not add reader\n");
     }
@@ -26,6 +29,9 @@ void TMLine::makeDirty() {
     dirty = true;
 }
 void TMLine::makeTransactionalDirty(Pid_t writer) {
+    if(isValid() == false) {
+        fail("trying to mark TMDirty to invalid line\n");
+    }
     if(!transactional) {
         fail("A non-TM line should use dirty\n");
     }
@@ -65,10 +71,23 @@ void TMLine::getAccessors(std::set<Pid_t>& accessors) const {
     }
     accessors.insert(tmReaders.begin(), tmReaders.end());
 }
+void TMLine::validate(VAddr t, VAddr c) {
+    if(isValid()) {
+        fail("Line should be invalidated before validating: 0x%lx", caddr);
+    }
+    if(t == 0) {
+        fail("New tag should not be null\n");
+    }
+    if(c == 0) {
+        fail("New caddr should not be null\n");
+    }
+    setTag(t);
+    caddr = c;
+}
 void TMLine::invalidate() {
     dirty           = false;
     transactional   = false;
-    caddr           = 0;
+    caddr           = INVALID_CADDR;
     tmWriter        = INVALID_PID;
     tmReaders.clear();
     StateGeneric::invalidate();
@@ -108,6 +127,10 @@ TMLine *CacheAssocTM::lookupLine(VAddr addr)
     VAddr tag = this->calcTag(addr);
     TMLine **theSet = &content[this->calcIndex4Tag(tag)];
 
+    if(tag == 0) {
+        fail("Cannot lookup null: 0x%lx\n", addr);
+    }
+
     // Check most typical case
     if ((*theSet)->getTag() == tag) {
         return *theSet;
@@ -144,6 +167,10 @@ TMLine *CacheAssocTM::findLine(VAddr addr)
 {
     VAddr tag = this->calcTag(addr);
     TMLine **theSet = &content[this->calcIndex4Tag(tag)];
+
+    if(tag == 0) {
+        fail("Cannot find null: 0x%lx\n", addr);
+    }
 
     // Check most typical case
     if ((*theSet)->getTag() == tag) {

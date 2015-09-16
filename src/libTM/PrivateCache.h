@@ -17,6 +17,7 @@ private:
     std::set<Pid_t> tmReaders;
     Pid_t           tmWriter;
     VAddr           caddr;
+    static const VAddr INVALID_CADDR = 0xDEADCADD;
 public:
     TMLine() {
         invalidate();
@@ -35,10 +36,7 @@ public:
         return tmWriter;
     }
     void getAccessors(std::set<Pid_t>& accessors) const;
-    void validate(VAddr t, VAddr c) {
-        setTag(t);
-        caddr = c;
-    }
+    void validate(VAddr t, VAddr c);
     VAddr getCaddr() const {
         return caddr;
     }
