@@ -192,7 +192,7 @@ void SMPCache::access(MemRequest *mreq)
 
     I(addr >= 1024);
 
-    if(mreq->getDInst()->wasL1Hit()) {
+    if(mreq->isDataReq() && mreq->getDInst() && mreq->getDInst()->wasL1Hit()) {
         hitL1CacheCB::scheduleAbs(nextSlot(), this, mreq);
         return;
     }
