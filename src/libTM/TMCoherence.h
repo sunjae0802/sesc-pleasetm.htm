@@ -24,7 +24,7 @@ enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABOR
 class TMCoherence {
 public:
     virtual ~TMCoherence() { }
-    static TMCoherence *create(int32_t nProcs);
+    static TMCoherence *create(int32_t nCores);
 
     // Entry point functions for TM operations
     TMRWStatus read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
@@ -107,7 +107,9 @@ protected:
     virtual void       removeTransaction(Pid_t pid);
 
     // Common member variables
-    int             nProcs;
+    int             nCores;
+    size_t          nSMTWays;
+    size_t          nThreads;
     int             lineSize;
 
     std::vector<struct TransState>  transStates;
@@ -126,7 +128,7 @@ protected:
 
 class TMIdealLECoherence: public TMCoherence {
 public:
-    TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line);
+    TMIdealLECoherence(const char tmStyle[], int32_t nCores, int32_t line);
     virtual ~TMIdealLECoherence();
 
     typedef CacheAssocTM    Cache;
@@ -140,7 +142,9 @@ protected:
     virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Helper functions
-    Cache* getCache(Pid_t pid) { return caches.at(pid); }
+    Cache* getCache(Pid_t pid) { return caches.at(pid/nSMTWays); }
+    void getPeers(Pid_t pid, std::set<Pid_t>& peers);
+    void updateOverflow(Pid_t pid, VAddr newCaddr);
     Line* replaceLine(Pid_t pid, VAddr raddr);
     void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
     void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);

@@ -13,17 +13,17 @@ TMCoherence *tmCohManager = 0;
 // Factory function for all TM Coherence objects. Use different concrete classes
 // depending on SescConf
 /////////////////////////////////////////////////////////////////////////////////////////
-TMCoherence *TMCoherence::create(int32_t nProcs) {
+TMCoherence *TMCoherence::create(int32_t nCores) {
     TMCoherence* newCohManager;
 
     string method = SescConf->getCharPtr("TransactionalMemory","method");
     int lineSize = SescConf->getInt("TransactionalMemory","lineSize");
 
     if(method == "IdealLE") {
-        newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nProcs, lineSize);
+        newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nCores, lineSize);
     } else {
         MSG("unknown TM method, using LE");
-        newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nProcs, lineSize);
+        newCohManager = new TMIdealLECoherence("Ideal Lazy/Eager", nCores, lineSize);
     }
 
     return newCohManager;
@@ -34,15 +34,23 @@ TMCoherence *TMCoherence::create(int32_t nProcs) {
 // implementations
 /////////////////////////////////////////////////////////////////////////////////////////
 TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
-        nProcs(procs),
+        nCores(procs),
         lineSize(line),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
         abortTypes("tm:abortTypes") {
 
-    MSG("Using %s TM", tmStyle);
+    if(SescConf->checkInt("TransactionalMemory","smtContexts")) {
+        nSMTWays = SescConf->getInt("TransactionalMemory","smtContexts");
+        MSG("Using %s TM (%d core %lu-way)", tmStyle, nCores, nSMTWays);
+    } else {
+        nSMTWays = 1;
+        MSG("Using %s TM (%d cores)", tmStyle, nCores);
+    }
 
-    for(Pid_t pid = 0; pid < nProcs; ++pid) {
+    nThreads = nCores * nSMTWays;
+
+    for(Pid_t pid = 0; pid < (Pid_t)nThreads; ++pid) {
         transStates.push_back(TransState(pid));
         abortStates.push_back(TMAbortState(pid));
         // Initialize maps to enable at() use
@@ -272,8 +280,8 @@ void TMCoherence::removeTransaction(Pid_t pid) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Lazy-eager coherence. This is the most simple style of TM, and used in TSX
 /////////////////////////////////////////////////////////////////////////////////////////
-TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int32_t line):
-        TMCoherence(tmStyle, nProcs, line) {
+TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nCores, int32_t line):
+        TMCoherence(tmStyle, nCores, line) {
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
@@ -284,7 +292,7 @@ TMIdealLECoherence::TMIdealLECoherence(const char tmStyle[], int32_t nProcs, int
         MSG("Using default overflow size of %ld\n", maxOverflowSize);
     }
 
-    for(Pid_t pid = 0; pid < nProcs; pid++) {
+    for(int coreId = 0; coreId < nCores; coreId++) {
         caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
     }
 }
@@ -296,6 +304,33 @@ TMIdealLECoherence::~TMIdealLECoherence() {
         Cache* cache = caches.back();
         caches.pop_back();
         delete cache;
+    }
+}
+
+///
+// If this line had been sent to the overflow set, bring it back.
+void TMIdealLECoherence::updateOverflow(Pid_t pid, VAddr newCaddr) {
+    set<Pid_t> peers;
+    getPeers(pid, peers);
+
+    for(Pid_t peer: peers) {
+        if(overflow[peer].find(newCaddr) != overflow[peer].end()) {
+            overflow[peer].erase(newCaddr);
+        }
+    }
+}
+
+///
+// Return the set of co-located Pids for SMT
+void TMIdealLECoherence::getPeers(Pid_t pid, std::set<Pid_t>& peers) {
+    peers.insert(pid);
+
+    if(nSMTWays == 2) {
+        Pid_t peer = pid + 1;
+        if(pid % 2 == 1) {
+            peer = pid - 1;
+        }
+        peers.insert(peer);
     }
 }
 
@@ -349,6 +384,15 @@ void TMIdealLECoherence::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::
 
     if(aborted.size() > 0) {
         // Do the abort
+        for(Pid_t a: aborted) {
+            Cache* cache = getCache(a);
+            Line* line = cache->findLine(caddr);
+            if(line) {
+                line->clearTransactional(a);
+            } else if(getState(a) == TM_RUNNING) {
+                fail("[%d] Aborting non-writer %d?: 0x%lx", pid, a, caddr);
+            }
+        }
         markTransAborted(aborted, pid, caddr, abortType);
     }
 }
@@ -371,6 +415,15 @@ void TMIdealLECoherence::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::
     if(aborted.size() > 0) {
         // Do the abort
         markTransAborted(aborted, pid, caddr, abortType);
+        for(Pid_t a: aborted) {
+            Cache* cache = getCache(a);
+            Line* line = cache->findLine(caddr);
+            if(line) {
+                line->clearTransactional(a);
+            } else if(overflow[a].find(caddr) == overflow[a].end() && getState(a) == TM_RUNNING) {
+                fail("[%d] Aborting non-sharer %d?: 0x%lx", pid, a, caddr);
+            }
+        }
     }
 }
 
@@ -446,9 +499,7 @@ TMRWStatus TMIdealLECoherence::TMRead(InstDesc* inst, const ThreadContext* conte
     // Update line
     line->markTransactional();
     line->addReader(pid);
-    if(overflow[pid].find(caddr) != overflow[pid].end()) {
-        overflow[pid].erase(caddr);
-    }
+    updateOverflow(pid, caddr);
 
     // Do the read
     readTrans(pid, raddr, caddr);
@@ -489,9 +540,7 @@ TMRWStatus TMIdealLECoherence::TMWrite(InstDesc* inst, const ThreadContext* cont
     // Update line
     line->markTransactional();
     line->makeTransactionalDirty(pid);
-    if(overflow[pid].find(caddr) != overflow[pid].end()) {
-        overflow[pid].erase(caddr);
-    }
+    updateOverflow(pid, caddr);
 
     // Do the write
     writeTrans(pid, raddr, caddr);
@@ -522,6 +571,7 @@ void TMIdealLECoherence::nonTMRead(InstDesc* inst, const ThreadContext* context,
         fail("got wrong line");
     }
 
+    updateOverflow(pid, caddr);
 }
 
 ///
@@ -553,6 +603,7 @@ void TMIdealLECoherence::nonTMWrite(InstDesc* inst, const ThreadContext* context
 
     // Update line
     line->makeDirty();
+    updateOverflow(pid, caddr);
 }
 
 TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
@@ -569,7 +620,7 @@ TMBCStatus TMIdealLECoherence::myCommit(InstDesc* inst, const ThreadContext* con
     cache->collectLines(lines, tmCmp);
 
     for(Line* line: lines) {
-        line->clearTransactional();
+        line->clearTransactional(pid);
     }
     overflow[pid].clear();
 
@@ -587,10 +638,10 @@ TMBCStatus TMIdealLECoherence::myAbort(InstDesc* inst, const ThreadContext* cont
     cache->collectLines(lines, tmCmp);
 
     for(Line* line: lines) {
-        if(line->isDirty()) {
+        if(line->isDirty() && line->getWriter() == pid) {
             line->invalidate();
         } else {
-            line->clearTransactional();
+            line->clearTransactional(pid);
         }
     }
     overflow[pid].clear();
