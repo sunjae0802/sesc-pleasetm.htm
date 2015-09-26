@@ -206,6 +206,7 @@ void SMTProcessor::advanceClock()
 #if (defined CHECK_STALL)
     if((globalClock-lastFin)>100000000 && !ThreadContext::ff) {
         printf("[%d] Cache access stalled at %lld (last %lld)\n", flow[0]->IFID.getPid(), globalClock, lastFin);
+        ThreadContext::printPCs();
         fflush(stdout);
         lastFin = globalClock;
     }

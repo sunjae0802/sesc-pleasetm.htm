@@ -268,6 +268,13 @@ ThreadContext *ThreadContext::getContext(Pid_t pid)
     return pid2context[pid];
 }
 
+void ThreadContext::printPCs(void)
+{
+    for(ThreadContext* c: ThreadContext::pid2context) {
+        printf("[%d]: 0x%lx\n", c->getPid(), c->getIAddr());
+    }
+}
+
 void ThreadContext::setMode(ExecMode mode) {
     execMode=mode;
     if(mySystem)

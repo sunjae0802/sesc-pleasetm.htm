@@ -357,6 +357,7 @@ public:
     static ThreadContext *getMainThreadContext(void) {
         return &(*(pid2context[0]));
     }
+    static void printPCs(void);
 
     // BEGIN Memory Mapping
     bool isValidDataVAddr(VAddr vaddr) const {
