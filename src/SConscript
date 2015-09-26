@@ -365,7 +365,7 @@ if 'all' in needed_envs:
 env.Append(CPPDEFINES = ['LINUX', 'POSIX_MEMALIGN', 'MIPS_EMUL']) 
 
 if env['SYSTEM'] == 'SMP':
-    env.Append(CPPDEFINES = ['SESC_SMP']) 
+    env.Append(CPPDEFINES = ['SESC_SMP', 'CHECK_STALL']) 
 
 if env['NETWORK'] == 'BOOKSIM':
     env.Append(CPPDEFINES = ['SESC_CMP', 'CHECK_STALL']) 
