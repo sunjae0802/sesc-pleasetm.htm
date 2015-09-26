@@ -29,6 +29,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "FetchEngine.h"
 #include "libll/ExecutionFlow.h"
 
+#if (defined CHECK_STALL)
+extern unsigned long long lastFin;
+#endif
+
 SMTProcessor::Fetch::Fetch(GMemorySystem *gm, CPU_t cpuID, int32_t cid, GProcessor *gproc, FetchEngine *fe)
     : IFID(cpuID, cid, gm, gproc, fe)
     ,pipeQ(cpuID)
@@ -199,6 +203,13 @@ void SMTProcessor::selectIssueFlow()
 
 void SMTProcessor::advanceClock()
 {
+#if (defined CHECK_STALL)
+    if((globalClock-lastFin)>100000000 && !ThreadContext::ff) {
+        printf("[%d] Cache access stalled at %lld (last %lld)\n", flow[0]->IFID.getPid(), globalClock, lastFin);
+        fflush(stdout);
+        lastFin = globalClock;
+    }
+#endif
     clockTicks++;
 
     // Fetch Stage
