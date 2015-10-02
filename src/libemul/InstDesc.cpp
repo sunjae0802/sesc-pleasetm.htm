@@ -593,7 +593,7 @@ InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
     }
     context->userAbortTM(inst, arg);
 
-    context->updIAddr(inst->aupdate,1);
+    // iAddr is updated in context->abortTransaction
     return inst;
 }
 
@@ -601,7 +601,7 @@ InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context) {
     uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
 
     TMBCStatus status = context->userCommitTM(inst, arg);
-    if(status != TMBC_ABORT || status != TMBC_NACK) {
+    if(status != TMBC_ABORT && status != TMBC_NACK) {
         context->updIAddr(inst->aupdate,1);
     }
     return inst;
