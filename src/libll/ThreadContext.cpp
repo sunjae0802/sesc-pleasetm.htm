@@ -54,6 +54,7 @@ void ThreadContext::initialize(bool child) {
     }
 
     nRetiredInsts = 0;
+    nExedInsts = 0;
     spinning    = false;
 
 #if (defined TM)
@@ -271,7 +272,7 @@ ThreadContext *ThreadContext::getContext(Pid_t pid)
 void ThreadContext::printPCs(void)
 {
     for(ThreadContext* c: ThreadContext::pid2context) {
-        printf("[%d]: 0x%lx\n", c->getPid(), c->getIAddr());
+        printf("[%d]: 0x%lx (%ld/%ld)\n", c->getPid(), c->getIAddr(), c->getNExedInsts(), c->getNRetiredInsts());
     }
 }
 

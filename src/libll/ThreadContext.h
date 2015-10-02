@@ -221,6 +221,8 @@ private:
     size_t    nDInsts;
     // Number of retired DInsts during this thread's lifetime
     size_t    nRetiredInsts;
+    // Number of executed DInsts during this thread's lifetime
+    size_t    nExedInsts;
 
     // HACK to balance calls/returns
     typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
@@ -453,6 +455,12 @@ public:
     }
     inline size_t getNRetiredInsts(void) {
         return nRetiredInsts;
+    }
+    inline void incNExedInsts(void) {
+        nExedInsts++;
+    }
+    inline size_t getNExedInsts(void) {
+        return nExedInsts;
     }
     static inline int32_t nextReady(int32_t startPid) {
         int32_t foundPid=startPid;
