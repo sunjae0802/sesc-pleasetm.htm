@@ -584,16 +584,28 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     return inst;
 }
 
-InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context) {
+InstDesc *emulTMMeta(InstDesc *inst, ThreadContext *context) {
     Pid_t pid = context->getPid();
     uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
 
-    if(context->isInTM() == false) {
-        fail("Calling tm.abort(0x%x) outside of transaction!", arg);
-    }
-    context->userAbortTM(inst, arg);
+    if(arg == 0) {
+        // tm.test checks if we are inside a transaction and returns true if we are
+        uint32_t isInTM = (uint32_t)context->isInTM();
+        ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, isInTM);
+        context->updIAddr(inst->aupdate,1);
+    } else if(arg >> 8 != 0) {
+        // tm.abort explicitly aborts a transaction
+        uint32_t abortArg = (0xFFFF & arg) >> 8;
+        if(context->isInTM() == false) {
+            fail("Calling tm.abort(0x%x) outside of transaction!", abortArg);
+        }
+        context->userAbortTM(inst, abortArg);
 
-    // iAddr is updated in context->abortTransaction
+        // iAddr is updated in context->abortTransaction
+        // No need to set return value v0
+    } else {
+        fail("Unhandled tm.meta(0x%x)\n", arg);
+    }
     return inst;
 }
 
@@ -607,13 +619,6 @@ InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context) {
     return inst;
 }
 
-InstDesc *emulTMTest(InstDesc *inst, ThreadContext *context) {
-    uint32_t isInTM = (uint32_t)context->isInTM();
-    ArchDefs<ExecModeMips32>::setReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegV0, isInTM);
-    context->updIAddr(inst->aupdate,1);
-
-    return inst;
-}
 #endif
 
 template<class _V, class _Ts, class _Td>
@@ -2116,9 +2121,8 @@ DecodeInst<mode>::OpMap::OpMap(void) {
     ops[OpKey(0xFC00F83F,0x00000000)]<<OpData("nop"       , CtlNorm , TypNop   , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulNop);
 #if (defined TM)
     ops[OpKey(0xFC000000,0x70000000)]<<OpData( "tm.begin"     , CtlNorm , TMOpBegin   , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMBegin);
-    ops[OpKey(0xFC000000,0x74000000)]<<OpData( "tm.abort"     , CtlNorm , TMOpAbort   , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMAbort);
+    ops[OpKey(0xFC000000,0x74000000)]<<OpData( "tm.meta"      , CtlNorm , TMOpAbort   , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMMeta);
     ops[OpKey(0xFC000000,0x78000000)]<<OpData( "tm.commit"    , CtlNorm , TMOpCommit  , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMCommit);
-    ops[OpKey(0xFC000000,0x7C000000)]<<OpData( "tm.test"      , CtlNorm , TMOpTest    , ArgNo  , ArgNo  , ArgNo  , ImmNo  , emulTMTest);
 #endif
 
     build(ops,OpKey(0,0));
@@ -2346,7 +2350,7 @@ void handleHTMCommitCall(InstDesc *inst, ThreadContext *context) {
         context->setTMCallsite(ra);
     }
 }
-void handleHTMAbortCall(InstDesc *inst, ThreadContext *context) {
+void handleHTMMetaCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
         context->setTMCallsite(ra);
@@ -2437,7 +2441,7 @@ void decodeTrace(ThreadContext *context, VAddr addr, size_t len) {
         // HTM call/return
         AddressSpace::addCallHandler("htm_start",WrapHandler<handleHTMStartCall>);
         AddressSpace::addCallHandler("htm_commit",WrapHandler<handleHTMCommitCall>);
-        AddressSpace::addCallHandler("htm_abort",WrapHandler<handleHTMAbortCall>);
+        AddressSpace::addCallHandler("htm_meta",WrapHandler<handleHTMMetaCall>);
 
         didThis=true;
     }
