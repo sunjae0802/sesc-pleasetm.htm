@@ -193,8 +193,7 @@ void TMCoherence::markAbort(InstDesc* inst, const ThreadContext* context, TMAbor
         fail("AbortType %d cannot be set manually\n", abortType);
     }
 
-    transStates.at(pid).markAbort();
-    abortStates.at(pid).markAbort(pid, getUtid(pid), 0, abortType);
+    markTransAborted(pid, pid, 0, abortType);
 }
 
 ///
