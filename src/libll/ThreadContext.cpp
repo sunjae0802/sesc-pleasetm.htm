@@ -876,7 +876,6 @@ void AtomicRegionStats::markRetireTM(DInst* dinst) {
             default:
                 fail("Unhandled tmBeginSubtype: %d\n", dinst->getTMBeginSubtype());
         }
-        newAREvent(AR_EVENT_HTM_BEGIN);
     } else if(dinst->tmCommitOp()) {
         switch(dinst->getTMCommitSubtype()) {
             case TM_COMMIT_REGULAR:
