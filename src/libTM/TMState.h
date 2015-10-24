@@ -14,6 +14,21 @@ enum TMAbortType_e {
     TM_ATYPE_INVALID            = 0xDEAD
 };
 
+// The states in which a TMBegin instruction can be in after being executed
+enum TMBeginSubtype {
+    TM_BEGIN_INVALID            = 0, // Unitialized
+    TM_BEGIN_REGULAR            = 1, // If the transaction started without problems
+
+    TM_COMPLETE_ABORT           = 9, // Aborted transaction 're-executes' TMBegin with this state
+};
+
+// The states in which a TMCommit instruction can be in after being executed
+enum TMCommitSubtype {
+    TM_COMMIT_INVALID           = 0, // Unitialized
+    TM_COMMIT_REGULAR           = 1, // If the transaction has committed
+    TM_COMMIT_ABORTED           = 2, // The transaction failed to commit
+};
+
 static const uint64_t INVALID_UTID = -1;
 
 class TMAbortState {

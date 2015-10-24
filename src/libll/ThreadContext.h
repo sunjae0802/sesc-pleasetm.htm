@@ -16,19 +16,6 @@
 #include "libTM/TMContext.h"
 #endif
 
-enum TMBeginSubtype {
-    TM_BEGIN_INVALID,
-    TM_BEGIN_REGULAR,
-    TM_BEGIN_IGNORE,
-    TM_BEGIN_NACKED,
-    TM_COMPLETE_ABORT
-};
-enum TMCommitSubtype {
-    TM_COMMIT_INVALID,
-    TM_COMMIT_REGULAR,
-    TM_COMMIT_ABORTED,
-};
-
 // Contains information for instructions that are at function boundaries about
 // the function itself. Entry point instructions (calls) contain arguments and
 // the return address, exit point instructions (returns) contain the return value.
