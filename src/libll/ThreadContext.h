@@ -53,85 +53,71 @@ struct FuncBoundaryData {
     uint32_t arg1;
 };
 
+// Struct that contains overall statistics about subsections within an atomic region.
 struct TimeTrackerStats {
     TimeTrackerStats(): totalLengths(0), totalCommitted(0), totalAborted(0),
-        totalWait(0), totalMutexWait(0), totalMutex(0)
+        totalLockWait(0), totalBackoffWait(0), totalMutexWait(0), totalMutex(0)
     {}
     void print() const;
     void sum(const TimeTrackerStats& other);
     uint64_t totalLengths;
     uint64_t totalCommitted;
     uint64_t totalAborted;
-    uint64_t totalWait;
+    uint64_t totalLockWait;
+    uint64_t totalBackoffWait;
     uint64_t totalMutexWait;
     uint64_t totalMutex;
 };
 
-// Represents a subregion within an AtomicRegion
-class AtomicSubregion {
-public:
-    enum SubregionType {
-        SR_INVALID,
-        SR_WAIT,
-        SR_TRANSACTION,
-        SR_CRITICAL_SECTION
-    };
-    AtomicSubregion(enum SubregionType t, Time_t s):
-            type(t), startAt(s), endAt(0) {}
-    virtual ~AtomicSubregion() {}
+// Enum of various atomic region events
+enum AREventType {
+    AR_EVENT_INVALID            = 0, // Invalid, uninitialized event
+    AR_EVENT_HTM_BEGIN          = 1, // HTM begin event
+    AR_EVENT_HTM_ABORT          = 2, // HTM abort event
+    AR_EVENT_HTM_COMMIT         = 3, // HTM commit event
 
-    void markEnd(Time_t e) {
-        endAt = e;
-    }
-    enum SubregionType type;
-    Time_t      startAt;
-    Time_t      endAt;
+    AR_EVENT_LOCK_REQUEST       = 10, // Lock request event (calling lock)
+    AR_EVENT_LOCK_ACQUIRE       = 11, // Lock acquire event (returning from lock)
+    AR_EVENT_LOCK_RELEASE       = 12, // Lock release event (calling  unlock)
+
+    AR_EVENT_LOCK_WAIT_BEGIN    = 90, // Wait for active lock (calling wait(0))
+    AR_EVENT_BACKOFF_BEGIN      = 91, // Random backoff       (calling wait(1))
+    AR_EVENT_WAIT_END           = 92, // Wait end             (returning from wait)
+
+    AR_EVENT_NUM_TYPES
 };
 
-class TMSubregion: public AtomicSubregion {
+// Pair of values that indicate an event within an atomic region
+class AtomicRegionEvents {
 public:
-    TMSubregion(Time_t s):
-            AtomicSubregion(SR_TRANSACTION, s), aborted(false) {}
-    void markAborted(Time_t at) {
-        aborted = true;
-        markEnd(at);
-    }
-    bool        aborted;
-};
-
-class CSSubregion: public AtomicSubregion {
-public:
-    CSSubregion(Time_t s):
-            AtomicSubregion(SR_CRITICAL_SECTION, s), acquiredAt(0) {}
-    void markAcquired(Time_t at) {
-        acquiredAt = at;
-    }
-    Time_t      acquiredAt;
+    AtomicRegionEvents(enum AREventType t, Time_t at): type(t), timestamp(at) {}
+    enum AREventType getType() const { return type; }
+    Time_t getTimestamp() const { return timestamp; }
+private:
+    enum AREventType type;
+    Time_t timestamp;
 };
 
 // Used to track timing statistics of atomic regions (between tm_begin and tm_end).
 // All timing is done at retire-time of DInsts.
 struct AtomicRegionStats {
     AtomicRegionStats() { clear(); }
-    void init(VAddr pc, Time_t at) {
-        clear();
-        startPC = pc;
-        startAt = at;
-    }
+    void clear();
+    void init(Pid_t p, VAddr pc, Time_t at);
     void markEnd(Time_t at) {
         endAt = at;
     }
-    void clear();
+    void printEvents(const AtomicRegionEvents& current) const;
     void markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData);
     void markRetireTM(DInst* dinst);
     void calculate(TimeTrackerStats* p_stats);
-    typedef std::vector<AtomicSubregion*> Subregions;
+    void newAREvent(enum AREventType type);
 
+    Pid_t               pid;
     VAddr               startPC;
     Time_t              startAt;
     Time_t              endAt;
-    AtomicSubregion*    p_current;
-    Subregions          subregions;
+    std::vector<AtomicRegionEvents> events;
 };
 
 // Holds state that is the result of a single instruction result. This data

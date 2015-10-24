@@ -772,7 +772,7 @@ void ThreadContext::markRetire(DInst* dinst) {
 
         switch(i_funcData->funcName) {
             case FUNC_TM_BEGIN:
-                currentRegion.init(dinst->getInst()->getAddr(), globalClock);
+                currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
                 break;
             case FUNC_TM_END:
                 currentRegion.markEnd(globalClock);
@@ -788,13 +788,14 @@ void ThreadContext::markRetire(DInst* dinst) {
 
 void TimeTrackerStats::print() const {
     uint64_t totalOther = totalLengths -
-        (totalCommitted + totalAborted + totalWait
+        (totalCommitted + totalAborted + totalLockWait + totalBackoffWait
             + totalMutexWait + totalMutex);
     std::cout << "Committed: " << totalCommitted << "\n";
     std::cout << "Aborted: " << totalAborted << "\n";
     std::cout << "WaitForMutex: " << totalMutexWait << "\n";
     std::cout << "InMutex: " << totalMutex << "\n";
-    std::cout << "Wait: " << totalWait << "\n";
+    std::cout << "LockWait: " << totalLockWait << "\n";
+    std::cout << "BackoffWait: " << totalBackoffWait << "\n";
     std::cout << "Other: " << totalOther << "\n";
 }
 
@@ -803,9 +804,29 @@ void TimeTrackerStats::sum(const TimeTrackerStats& other) {
     totalLengths    += other.totalLengths;
     totalCommitted  += other.totalCommitted;
     totalAborted    += other.totalAborted;
-    totalWait       += other.totalWait;
+    totalLockWait   += other.totalLockWait;
+    totalBackoffWait+= other.totalBackoffWait;
     totalMutexWait  += other.totalMutexWait;
     totalMutex      += other.totalMutex;
+}
+
+// Uninitialize stats structure
+void AtomicRegionStats::clear() {
+    pid = INVALID_PID;
+    startPC = startAt = endAt = 0;
+    events.clear();
+}
+// Initalize status structure
+void AtomicRegionStats::init(Pid_t p, VAddr pc, Time_t at) {
+    clear();
+    pid     = p;
+    startPC = pc;
+    startAt = at;
+}
+// Create new AtomicRegion event
+void AtomicRegionStats::newAREvent(enum AREventType type) {
+    AtomicRegionEvents newEvent(type, globalClock);
+    events.push_back(newEvent);
 }
 
 /// If the DInst is at a function boundary, update statistics
@@ -813,26 +834,26 @@ void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryD
     switch(funcData.funcName) {
         case FUNC_TM_BEGIN_FALLBACK:
             if(funcData.isCall) {
-                p_current = new CSSubregion(globalClock);
+                newAREvent(AR_EVENT_LOCK_REQUEST);
             } else {
-                CSSubregion* p_cs = dynamic_cast<CSSubregion*>(p_current);
-                p_cs->markAcquired(globalClock);
+                newAREvent(AR_EVENT_LOCK_ACQUIRE);
             }
             break;
         case FUNC_TM_END_FALLBACK:
             if(funcData.isCall) {
-                p_current->markEnd(globalClock);
-                subregions.push_back(p_current);
-                p_current = NULL;
+                newAREvent(AR_EVENT_LOCK_RELEASE);
             }
             break;
         case FUNC_TM_WAIT:
             if(funcData.isCall) {
-                p_current = new AtomicSubregion(AtomicSubregion::SR_WAIT, globalClock);
+                if(funcData.arg0 == 0) {
+                    newAREvent(AR_EVENT_LOCK_WAIT_BEGIN);
+                } else if(funcData.arg0 == 1) {
+                    newAREvent(AR_EVENT_BACKOFF_BEGIN);
+                } else {
+                }
             } else {
-                p_current->markEnd(globalClock);
-                subregions.push_back(p_current);
-                p_current = NULL;
+                newAREvent(AR_EVENT_WAIT_END);
             }
             break;
         default:
@@ -846,70 +867,126 @@ void AtomicRegionStats::markRetireTM(DInst* dinst) {
     Pid_t pid = dinst->context->getPid();
 
     if(dinst->tmAbortCompleteOp()) {
-        TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_current);
-        p_tm->markAborted(globalClock);
-        subregions.push_back(p_current);
-        p_current = NULL;
+        newAREvent(AR_EVENT_HTM_ABORT);
     } else if(dinst->tmBeginOp()) {
-        p_current = new TMSubregion(globalClock);
-    } else if(dinst->tmCommitOp()) {
-        if(p_current == NULL) {
-            fail("%d current is NULL when committing\n", pid);
+        switch(dinst->getTMBeginSubtype()) {
+            case TM_BEGIN_REGULAR:
+                newAREvent(AR_EVENT_HTM_BEGIN);
+                break;
+            default:
+                fail("Unhandled tmBeginSubtype: %d\n", dinst->getTMBeginSubtype());
         }
-        p_current->markEnd(globalClock);
-        subregions.push_back(p_current);
-        p_current = NULL;
+        newAREvent(AR_EVENT_HTM_BEGIN);
+    } else if(dinst->tmCommitOp()) {
+        switch(dinst->getTMCommitSubtype()) {
+            case TM_COMMIT_REGULAR:
+                newAREvent(AR_EVENT_HTM_COMMIT);
+                break;
+            case TM_COMMIT_ABORTED:
+                newAREvent(AR_EVENT_HTM_ABORT);
+                break;
+            default:
+                fail("Unhandled tmCommitSubtype: %d\n", dinst->getTMCommitSubtype());
+        }
     }
+}
+
+// Print all the events stored in an AtomicRegion, with ``current'' marked
+void AtomicRegionStats::printEvents(const AtomicRegionEvents& current) const {
+    std::cout << pid << ": [B 0], ";
+    for(size_t eid = 0; eid < events.size(); eid++) {
+        const AtomicRegionEvents& event = events.at(eid);
+        if(current.getTimestamp() == event.getTimestamp()) {
+            std::cout << "{" << event.getType() << " " << (event.getTimestamp() - startAt) << "}, ";
+        } else {
+            std::cout << "[" << event.getType() << " " << (event.getTimestamp() - startAt) << "], ";
+        }
+    }
+    std::cout << "[E " << (endAt - startAt) << "]";
+    std::cout << std::endl;
 }
 
 /// Add this region's statistics to p_stats.
 void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
     // Make sure the stats are valid
     if(startPC == 0) {
-        fail("Un-initialized region");
+        fail("Un-initialized region\n");
     }
     if(startAt == 0 || endAt == 0) {
-        fail("Unclosed region");
+        fail("Unclosed region\n");
+    }
+
+    // Handle subregions events
+    size_t eid = 0;
+    while(eid < events.size()) {
+        const AtomicRegionEvents& event = events.at(eid);
+        switch(event.getType()) {
+            case AR_EVENT_HTM_BEGIN: {
+                // HTM Begin/Commit/Abort
+                if(eid + 1 >= events.size()) {
+                    fail("HTM end event is not found\n");
+                }
+                const AtomicRegionEvents& endEvent = events.at(eid + 1);
+                if(endEvent.getType() == AR_EVENT_HTM_ABORT) {
+                    p_stats->totalAborted   += endEvent.getTimestamp() - event.getTimestamp();
+                } else if(endEvent.getType() == AR_EVENT_HTM_COMMIT) {
+                    p_stats->totalCommitted += endEvent.getTimestamp() - event.getTimestamp();
+                } else {
+                    fail("Unknown event after begin: %d\n", endEvent.getType());
+                }
+                eid += 2;
+                break;
+            }
+            case AR_EVENT_LOCK_REQUEST: {
+                // Lock Request/Acquire/Release
+                if(eid + 2 >= events.size()) {
+                    fail("Lock end event is not found\n");
+                }
+                const AtomicRegionEvents& lockAcqEvent = events.at(eid + 1);
+                const AtomicRegionEvents& lockRelEvent = events.at(eid + 2);
+                if(lockAcqEvent.getType() != AR_EVENT_LOCK_ACQUIRE) {
+                    fail("Unknown event after lock request: %d\n", lockAcqEvent.getType());
+                }
+                if(lockRelEvent.getType() != AR_EVENT_LOCK_RELEASE) {
+                    fail("Unknown event after lock release: %d\n", lockRelEvent.getType());
+                }
+
+                p_stats->totalMutexWait += lockAcqEvent.getTimestamp() - event.getTimestamp();
+                p_stats->totalMutex     += lockRelEvent.getTimestamp() - lockAcqEvent.getTimestamp();
+                eid += 3;
+                break;
+            }
+            case AR_EVENT_LOCK_WAIT_BEGIN: {
+                // Wait Events
+                if(eid + 1 >= events.size()) {
+                    fail("wait end event is not found\n");
+                }
+                const AtomicRegionEvents& endEvent = events.at(eid + 1);
+                if(endEvent.getType() != AR_EVENT_WAIT_END) {
+                    fail("Unknown event after wait begin: %d\n", endEvent.getType());
+                }
+                p_stats->totalLockWait +=  endEvent.getTimestamp() - event.getTimestamp();
+                eid += 2;
+                break;
+            }
+            case AR_EVENT_BACKOFF_BEGIN: {
+                // Wait Events
+                if(eid + 1 >= events.size()) {
+                    fail("wait end event is not found\n");
+                }
+                const AtomicRegionEvents& endEvent = events.at(eid + 1);
+                if(endEvent.getType() != AR_EVENT_WAIT_END) {
+                    fail("Unknown event after backoff begin: %d\n", endEvent.getType());
+                }
+                p_stats->totalBackoffWait +=  endEvent.getTimestamp() - event.getTimestamp();
+                eid += 2;
+                break;
+            }
+            default:
+                fail("Unknown event: %d\n", event.getType());
+        }
     }
 
     // Compute total length
     p_stats->totalLengths += endAt - startAt;
-
-    // Compute subregions
-    Subregions::iterator i_subregion;
-    for(i_subregion = subregions.begin(); i_subregion != subregions.end(); ++i_subregion) {
-        AtomicSubregion* p_subregion = *i_subregion;
-        switch(p_subregion->type) {
-            case AtomicSubregion::SR_TRANSACTION: {
-                TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_subregion);
-                if(p_tm->aborted) {
-                    p_stats->totalAborted   += p_tm->endAt - p_tm->startAt;
-                } else {
-                    p_stats->totalCommitted += p_tm->endAt - p_tm->startAt;
-                }
-                break;
-            }
-            case AtomicSubregion::SR_WAIT: {
-                p_stats->totalWait +=  p_subregion->endAt - p_subregion->startAt;
-                break;
-            }
-            case AtomicSubregion::SR_CRITICAL_SECTION: {
-                CSSubregion* p_cs = dynamic_cast<CSSubregion*>(p_subregion);
-                p_stats->totalMutexWait += p_cs->acquiredAt - p_cs->startAt;
-                p_stats->totalMutex     += p_cs->endAt - p_cs->acquiredAt;
-                break;
-            }
-            default:
-                fail("Unhandled Subregion type\n");
-        }
-    } // end foreach subregion
-}
-void AtomicRegionStats::clear() {
-    startPC = startAt = endAt = 0;
-    p_current = NULL;
-    while(subregions.size() > 0) {
-        AtomicSubregion* p_subregion = subregions.back();
-        subregions.pop_back();
-        delete p_subregion;
-    }
 }
