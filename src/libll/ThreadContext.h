@@ -45,8 +45,10 @@ struct TimeTrackerStats {
     TimeTrackerStats(): totalLengths(0), totalCommitted(0), totalAborted(0),
         totalLockWait(0), totalBackoffWait(0), totalMutexWait(0), totalMutex(0)
     {}
+    uint64_t totalAccounted() const;
     void print() const;
     void sum(const TimeTrackerStats& other);
+
     uint64_t totalLengths;
     uint64_t totalCommitted;
     uint64_t totalAborted;

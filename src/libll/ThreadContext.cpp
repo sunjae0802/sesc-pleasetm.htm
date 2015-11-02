@@ -786,10 +786,18 @@ void ThreadContext::markRetire(DInst* dinst) {
     } // end foreach funcBoundaryData
 }
 
+uint64_t TimeTrackerStats::totalAccounted() const {
+    return totalCommitted + totalAborted + totalLockWait + totalBackoffWait
+        + totalMutexWait + totalMutex;
+}
+
 void TimeTrackerStats::print() const {
-    uint64_t totalOther = totalLengths -
-        (totalCommitted + totalAborted + totalLockWait + totalBackoffWait
-            + totalMutexWait + totalMutex);
+    if(totalAccounted() > totalLengths) {
+        fail("Accounted cycles is too high");
+    }
+
+    uint64_t totalOther = totalLengths - totalAccounted();
+
     std::cout << "Committed: " << totalCommitted << "\n";
     std::cout << "Aborted: " << totalAborted << "\n";
     std::cout << "WaitForMutex: " << totalMutexWait << "\n";
@@ -988,4 +996,9 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
 
     // Compute total length
     p_stats->totalLengths += endAt - startAt;
+
+    if(p_stats->totalAccounted() > p_stats->totalLengths) {
+        printEvents(events.at(0));
+        fail("[%d] Accounted cycles is too high", pid);
+    }
 }
