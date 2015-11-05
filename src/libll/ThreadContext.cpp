@@ -40,6 +40,7 @@ void InstContext::clear() {
     wasHit      = false;
     setConflict = false;
     tmLat       = 0;
+    tmArg       = 0;
     funcData.clear();
 
     tmBeginSubtype=TM_BEGIN_INVALID;
@@ -58,7 +59,7 @@ void ThreadContext::initialize(bool child) {
     spinning    = false;
 
 #if (defined TM)
-    tmArg       = 0;
+    tmAbortArg  = 0;
     tmContext   = NULL;
     tmDepth     = 0;
     tmCallsite  = 0;
@@ -104,6 +105,7 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     switch(status) {
         case TMBC_SUCCESS: {
             const TransState& transState = tmCohManager->getTransState(pid);
+            tmAbortArg  = 0;
 
             uint64_t utid = transState.getUtid();
             tmContext   = new TMContext(this, inst, utid);
@@ -220,7 +222,7 @@ uint32_t ThreadContext::getAbortRV() {
     uint32_t abortRV = 1;
 
     // bottom 8 bits are reserved
-    abortRV |= tmArg << 8;
+    abortRV |= tmAbortArg << 8;
     // Set aborter Pid in upper bits
     abortRV |= (abortState.getAborterPid()) << 12;
 

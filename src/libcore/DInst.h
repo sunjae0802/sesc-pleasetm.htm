@@ -122,7 +122,6 @@ private:
 public:
     VAddr       tmCallsite;
     TransState  tmState;
-    uint32_t    tmArg;
 private:
 
 #ifdef SESC_MISPATH

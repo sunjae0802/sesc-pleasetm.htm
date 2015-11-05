@@ -121,6 +121,8 @@ public:
     bool setConflict;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
+    // User-passed HTM command arg
+    uint32_t    tmArg;
     // If this instruction is a function boundary, this contains info about that function
     std::vector<FuncBoundaryData> funcData;
 
@@ -162,10 +164,10 @@ private:
     TMContext *tmContext;
     // Depth of nested transactions
     size_t      tmDepth;
+    // User-passed HTM abort argument (valid from abort-begin)
+    uint32_t    tmAbortArg;
     // Where user had called HTM "instructions"
     VAddr tmCallsite;
-    // User-passed HTM command arg
-    uint32_t tmArg;
     // Common set of fallback mutex addresses to check if the abort is caused by a fallback
     static std::set<uint32_t> tmFallbackMutexCAddrs;
 #endif
@@ -241,15 +243,13 @@ public:
     size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
     TMState_e getTMState()  const { return tmCohManager ? tmCohManager->getState(pid) : TM_INVALID; }
+    uint32_t getTMAbortArg() const { return tmAbortArg; }
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
 
     void setTMCallsite(VAddr ra) { tmCallsite = ra; }
     VAddr getTMCallsite() const { return tmCallsite; }
-
-    // TM getters
-    uint32_t getTMArg()       const { return tmArg; }
 
     // Transactional Methods
     void setTMlibUserTid(uint32_t arg);
@@ -259,17 +259,18 @@ public:
     TMBCStatus abortTransaction(InstDesc* inst);
 
     TMBCStatus userBeginTM(InstDesc* inst, uint32_t arg) {
-        tmArg = arg;
+        instContext.tmArg = arg;
         TMBCStatus status = beginTransaction(inst);
         return status;
     }
     TMBCStatus userCommitTM(InstDesc* inst, uint32_t arg) {
-        tmArg = arg;
+        instContext.tmArg = arg;
         TMBCStatus status = commitTransaction(inst);
         return status;
     }
     void userAbortTM(InstDesc* inst, uint32_t arg) {
-        tmArg       = arg;
+        instContext.tmArg = arg;
+        tmAbortArg        = arg;
         abortTransaction(inst, TM_ATYPE_USER);
     }
     void completeAbort(InstDesc* inst);

@@ -270,13 +270,11 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);
     i->tmCallsite   = 0;
-    i->tmArg        = 0;
     i->tmState      = TransState(INVALID_PID);
 
     if(inst->isTM()) {
         i->tmState = tmCohManager->getTransState(context->getPid());
         i->tmCallsite   = context->getTMCallsite();
-        i->tmArg        = context->getTMArg();
     }
 
     return i;
@@ -482,7 +480,7 @@ void DInst::traceTM() {
         } else {
             uint32_t abortArg = 0;
             if(abortType == TM_ATYPE_USER) {
-                abortArg = tmArg;
+                abortArg = context->getTMAbortArg();
             } else {
                 abortArg = abortByAddr;
             }
@@ -498,7 +496,7 @@ void DInst::traceTM() {
             ThreadContext::getTracefile()<<pid<<" T"
                         <<" 0x"<<std::hex<<tmCallsite<<std::dec
                         <<" "<<tmState.getUtid()
-                        <<" "<<tmArg
+                        <<" "<<instContext.tmArg
                         <<" "<< context->getNRetiredInsts()
                         <<" "<< globalClock << std::endl;
         }
@@ -507,7 +505,7 @@ void DInst::traceTM() {
             ThreadContext::getTracefile()<<pid<<" C"
                         <<" 0x"<<std::hex<<tmCallsite<<std::dec
                         <<" "<<(100-getTMLat())
-                        <<" "<<tmArg
+                        <<" "<<instContext.tmArg
                         <<" "<< context->getNRetiredInsts()
                         <<" "<< globalClock << std::endl;
         }
