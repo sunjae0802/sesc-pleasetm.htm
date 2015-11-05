@@ -139,8 +139,6 @@ public:
         delete [] mem;
     }
 
-    TMLine *findOldestLine2Replace(VAddr addr);
-    TMLine *findOldestLine2Replace(VAddr addr, const LineComparator& comp);
     TMLine *findLine2Replace(VAddr addr);
     TMLine *lookupLine(VAddr addr);
     TMLine *findLine(VAddr addr);
