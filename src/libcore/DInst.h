@@ -556,8 +556,6 @@ public:
     Time_t getWakeUpTime() const {
         return wakeUpTime;
     }
-    void traceTM();
-    void traceFunction(const FuncBoundaryData& funcData);
 
 #ifdef SESC_BAAD
     void setFetch1Time();

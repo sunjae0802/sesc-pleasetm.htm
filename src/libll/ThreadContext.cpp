@@ -771,15 +771,12 @@ void ThreadContext::markRetire(DInst* dinst) {
     const Instruction* inst = dinst->getInst();
 
     if(inst->isTM()) {
-        dinst->traceTM();
         currentRegion.markRetireTM(dinst);
     }
 
     // Track function boundaries, by for example initializing and ending atomic regions.
     for(std::vector<FuncBoundaryData>::const_iterator i_funcData = dinst->getInstContext().funcData.begin();
             i_funcData != dinst->getInstContext().funcData.end(); ++i_funcData) {
-        dinst->traceFunction(*i_funcData);
-
         switch(i_funcData->funcName) {
             case FUNC_TM_BEGIN:
                 currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
