@@ -33,7 +33,8 @@ public:
     TMBCStatus commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     TMBCStatus begin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
-    void markAbort(InstDesc* inst, const ThreadContext* context, TMAbortType_e abortType);
+    void markSyscallAbort(InstDesc* inst, const ThreadContext* context);
+    void markUserAbort(InstDesc* inst, const ThreadContext* context, uint32_t abortArg);
     TMBCStatus completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Functions about the fallback path for statistics that run across multiple retries
@@ -119,6 +120,7 @@ protected:
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
+    GStatsHist      userAbortArgs;
 
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;

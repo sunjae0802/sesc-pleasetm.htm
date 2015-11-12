@@ -651,7 +651,7 @@ InstDesc *emulBreak(InstDesc *inst, ThreadContext *context) {
 InstDesc *emulSyscl(InstDesc *inst, ThreadContext *context) {
 #if (defined TM)
 	if(context->isInTM()) {
-        context->abortTransaction(inst, TM_ATYPE_SYSCALL);
+        context->syscallAbortTM(inst);
 		return inst;
     }
 #endif

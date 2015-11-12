@@ -268,11 +268,9 @@ public:
         TMBCStatus status = commitTransaction(inst);
         return status;
     }
-    void userAbortTM(InstDesc* inst, uint32_t arg) {
-        instContext.tmArg = arg;
-        tmAbortArg        = arg;
-        abortTransaction(inst, TM_ATYPE_USER);
-    }
+    void userAbortTM(InstDesc* inst, uint32_t arg);
+    void syscallAbortTM(InstDesc* inst);
+
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
     uint32_t getAbortRV();

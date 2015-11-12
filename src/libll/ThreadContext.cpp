@@ -96,7 +96,7 @@ void ThreadContext::setTMlibUserTid(uint32_t arg) {
 }
 TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     if(tmDepth > 0) {
-        fail("Transaction nesting not complete\n");
+        fail("[%d] Transaction nesting not complete\n", pid);
     }
     TMBCStatus status = tmCohManager->begin(inst, this, &instContext);
     if(instContext.tmBeginSubtype == TM_BEGIN_INVALID) {
@@ -162,11 +162,19 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     }
     return status;
 }
-TMBCStatus ThreadContext::abortTransaction(InstDesc* inst, TMAbortType_e abortType) {
-    tmCohManager->markAbort(inst, this, abortType);
+void ThreadContext::userAbortTM(InstDesc* inst, uint32_t arg) {
+    instContext.tmArg = arg;
+    tmAbortArg        = arg;
+    tmCohManager->markUserAbort(inst, this, arg);
 
-    return abortTransaction(inst);
+    abortTransaction(inst);
 }
+void ThreadContext::syscallAbortTM(InstDesc* inst) {
+    tmCohManager->markSyscallAbort(inst, this);
+
+    abortTransaction(inst);
+}
+
 TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     if(tmContext == NULL) {
         fail("Abort fail: tmContext is NULL\n");

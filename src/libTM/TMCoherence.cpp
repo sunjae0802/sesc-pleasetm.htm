@@ -38,7 +38,8 @@ TMCoherence::TMCoherence(const char tmStyle[], int32_t procs, int32_t line):
         lineSize(line),
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
-        abortTypes("tm:abortTypes") {
+        abortTypes("tm:abortTypes"),
+        userAbortArgs("tm:userAbortArgs") {
 
     if(SescConf->checkInt("TransactionalMemory","smtContexts")) {
         nSMTWays = SescConf->getInt("TransactionalMemory","smtContexts");
@@ -185,15 +186,24 @@ TMBCStatus TMCoherence::abort(InstDesc* inst, const ThreadContext* context, Inst
 }
 
 ///
-// If the abort type is driven externally (syscall/user), then mark the transaction as aborted.
+// If the abort type is driven externally by a syscall, then mark the transaction as aborted.
 // Acutal abort needs to be called later.
-void TMCoherence::markAbort(InstDesc* inst, const ThreadContext* context, TMAbortType_e abortType) {
+void TMCoherence::markSyscallAbort(InstDesc* inst, const ThreadContext* context) {
     Pid_t pid   = context->getPid();
-    if(abortType != TM_ATYPE_SYSCALL && abortType != TM_ATYPE_USER) {
-        fail("AbortType %d cannot be set manually\n", abortType);
+    if(getState(pid) != TM_ABORTING && getState(pid) != TM_MARKABORT) {
+        markTransAborted(pid, pid, 0, TM_ATYPE_SYSCALL);
     }
+}
 
-    markTransAborted(pid, pid, 0, abortType);
+///
+// If the abort type is driven externally by the user, then mark the transaction as aborted.
+// Acutal abort needs to be called later.
+void TMCoherence::markUserAbort(InstDesc* inst, const ThreadContext* context, uint32_t abortArg) {
+    Pid_t pid   = context->getPid();
+    if(getState(pid) != TM_ABORTING && getState(pid) != TM_MARKABORT) {
+        markTransAborted(pid, pid, 0, TM_ATYPE_USER);
+        userAbortArgs.sample(abortArg);
+    }
 }
 
 ///
