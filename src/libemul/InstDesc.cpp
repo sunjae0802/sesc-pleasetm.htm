@@ -597,7 +597,7 @@ InstDesc *emulTMMeta(InstDesc *inst, ThreadContext *context) {
         // tm.abort explicitly aborts a transaction
         uint32_t abortArg = (0xFFFF & arg) >> 8;
         if(context->isInTM() == false) {
-            fail("Calling tm.abort(0x%x) outside of transaction!", abortArg);
+            fail("[%d] Calling tm.abort(0x%x) outside of transaction!\n", pid, abortArg);
         }
         context->userAbortTM(inst, abortArg);
 
