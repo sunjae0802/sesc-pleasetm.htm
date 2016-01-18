@@ -69,7 +69,7 @@ SMTProcessor::SMTProcessor(GMemorySystem *gm, CPU_t i)
 
     cFetchId =0;
     cDecodeId=0;
-    cIssueId =0;
+    issueBegin =0;
 
     spaceInInstQueue = InstQueueSize;
 }
@@ -195,12 +195,6 @@ void SMTProcessor::selectDecodeFlow()
     cDecodeId = (cDecodeId+1) % smtContexts;
 }
 
-void SMTProcessor::selectIssueFlow()
-{
-    // ROUND-ROBIN POLICY
-    cIssueId = (cIssueId+1) % smtContexts;
-}
-
 void SMTProcessor::advanceClock()
 {
 #if (defined CHECK_STALL)
@@ -208,6 +202,7 @@ void SMTProcessor::advanceClock()
         printf("[%d] Cache access stalled at %lld (last %lld)\n", flow[0]->IFID.getPid(), globalClock, lastFin);
         ThreadContext::printPCs();
         fflush(stdout);
+        exit(1);
         lastFin = globalClock;
     }
 #endif
@@ -257,16 +252,19 @@ void SMTProcessor::advanceClock()
 
     // RENAME Stage
     int32_t totalIssuedInsts=0;
-    for(int32_t i = 0; i < smtContexts && totalIssuedInsts < IssueWidth; i++) {
-        selectIssueFlow();
+    int32_t issueId = issueBegin;
+    for(int32_t i = 0; i < smtContexts && totalIssuedInsts < IssueWidth; i++, issueId++) {
+        issueId = (issueId) % smtContexts;
 
-        if( flow[cIssueId]->pipeQ.instQueue.empty() )
+        if( flow[issueId]->pipeQ.instQueue.empty() )
             continue;
 
-        int32_t issuedInsts = issue(flow[cIssueId]->pipeQ);
+        int32_t issuedInsts = issue(flow[issueId]->pipeQ);
 
         totalIssuedInsts += issuedInsts;
     }
+    // ROUND-ROBIN POLICY
+    issueBegin = (issueBegin+1) % smtContexts;
     spaceInInstQueue += totalIssuedInsts;
 
     retire();
