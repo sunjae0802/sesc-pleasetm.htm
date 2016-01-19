@@ -248,14 +248,6 @@ TMLine
         fail("Replacing line is NULL!\n");
     }
 
-    // Do various checks to see if replaced line is correctly chosen
-    LineTMDirtyComparator tmDirtyComparator;
-    if(replaced->isValid() && replaced->isTransactional() && replaced->isDirty()) {
-        if(countLines(theSet, tmDirtyComparator) < assoc) {
-            fail("Evicted transactional line too early: %d\n", countLines(theSet, tmDirtyComparator));
-        }
-    }
-
     VAddr replTag = replaced->getTag();
     if(replTag == tag) {
         fail("Replaced line matches tag!\n");
@@ -274,16 +266,6 @@ TMLine
     LineInvalidComparator invalCmp;
     line2Replace = findOldestLine(theSet, invalCmp);
 
-    if (line2Replace == nullptr) {
-        // Or nonTM line
-        LineNonTMComparator nonTMCmp;
-        line2Replace = findOldestLine(theSet, nonTMCmp);
-    }
-    if(line2Replace == nullptr) {
-        // Or TM clean
-        LineNonTMOrCleanComparator nonTMCleanCmp;
-        line2Replace = findOldestLine(theSet, nonTMCleanCmp);
-    }
     if(line2Replace == nullptr) {
         // Or give up and return the oldest line
         line2Replace = setEnd-1;
