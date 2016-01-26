@@ -242,7 +242,7 @@ public:
     // Transactional Helper Methods
     size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
-    TMState_e getTMState()  const { return tmCohManager ? tmCohManager->getState(pid) : TM_INVALID; }
+    TMState_e getTMState()  const { return htmManager ? htmManager->getState(pid) : TM_INVALID; }
     uint32_t getTMAbortArg() const { return tmAbortArg; }
 
     TMContext* getTMContext() const { return tmContext; }
@@ -279,7 +279,7 @@ public:
 
     // memop NACK handling methods
     void startRetryTimer() {
-        startStalling(tmCohManager->getNackRetryStallCycles());
+        startStalling(htmManager->getNackRetryStallCycles());
     }
     static bool isFallbackMutexAddr(VAddr cAddr) {
         return tmFallbackMutexCAddrs.find(cAddr) != tmFallbackMutexCAddrs.end();

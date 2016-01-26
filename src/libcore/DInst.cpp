@@ -273,7 +273,7 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
     i->tmState      = TransState(INVALID_PID);
 
     if(inst->isTM()) {
-        i->tmState = tmCohManager->getTransState(context->getPid());
+        i->tmState      = htmManager->getTransState(context->getPid());
         i->tmCallsite   = context->getTMCallsite();
     }
 

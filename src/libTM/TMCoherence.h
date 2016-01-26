@@ -21,10 +21,10 @@ typedef unsigned long long INSTCOUNT;
 enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT };
 enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
-class TMCoherence {
+class HTMManager {
 public:
-    virtual ~TMCoherence() { }
-    static TMCoherence *create(int32_t nCores);
+    virtual ~HTMManager() { }
+    static HTMManager *create(int32_t nCores);
 
     // Entry point functions for TM operations
     TMRWStatus read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
@@ -83,9 +83,9 @@ public:
     }
 
 protected:
-    TMCoherence(const char* tmStyle, int procs, int line);
+    HTMManager(const char* tmStyle, int procs, int line);
 
-    // Common functionality that all TMCoherence styles would use
+    // Common functionality that all HTMManager styles would use
     void beginTrans(Pid_t pid, InstDesc* inst);
     void commitTrans(Pid_t pid);
     void abortTrans(Pid_t pid);
@@ -128,10 +128,10 @@ protected:
     std::map<VAddr, std::set<Pid_t> >   readers;
 };
 
-class TMIdealLECoherence: public TMCoherence {
+class TSXManager: public HTMManager {
 public:
-    TMIdealLECoherence(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMIdealLECoherence();
+    TSXManager(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~TSXManager();
 
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
@@ -163,6 +163,6 @@ protected:
     std::map<Pid_t, std::set<VAddr> >   overflow;
 };
 
-extern TMCoherence *tmCohManager;
+extern HTMManager *htmManager;
 
 #endif

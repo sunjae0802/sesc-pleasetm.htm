@@ -1526,8 +1526,8 @@ public:
                 addr       = addr - offs;
                 MemT   mval=readMem<MemT>(context,addr);
 #if (defined TM)
-                if(tmCohManager) {
-                    tmRWStatus = tmCohManager->read(inst, context, addr, &context->getInstContext());
+                if(htmManager) {
+                    tmRWStatus = htmManager->read(inst, context, addr, &context->getInstContext());
                     if(tmRWStatus == TMRW_SUCCESS) {
                         mval = readMemTM<MemT>(context, addr);
                     }
@@ -1553,8 +1553,8 @@ public:
             } else {
                 MemT  val=readMem<MemT>(context,addr);
 #if (defined TM)
-                if(tmCohManager) {
-                    tmRWStatus = tmCohManager->read(inst, context, addr, &context->getInstContext());
+                if(htmManager) {
+                    tmRWStatus = htmManager->read(inst, context, addr, &context->getInstContext());
                     if(tmRWStatus == TMRW_SUCCESS) {
                         val = readMemTM<MemT>(context, addr);
                     }
@@ -1605,8 +1605,8 @@ public:
                     size_t tsiz=sizeof(MemT);
                     size_t offs=(addr%tsiz);
                     EndianDefs<mode>::cvtEndian(val);
-                    if(tmCohManager) {
-                        tmRWStatus = tmCohManager->write(inst, context, addr, &context->getInstContext());
+                    if(htmManager) {
+                        tmRWStatus = htmManager->write(inst, context, addr, &context->getInstContext());
                         if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush
@@ -1619,8 +1619,8 @@ public:
                         }
                     }
                 } else {
-                    if(tmCohManager) {
-                        tmRWStatus = tmCohManager->write(inst, context, addr, &context->getInstContext());
+                    if(htmManager) {
+                        tmRWStatus = htmManager->write(inst, context, addr, &context->getInstContext());
                         if(tmRWStatus == TMRW_SUCCESS) {
                             writeMemTM<MemT>(context, addr, val);
                             // Actual write done in cache flush

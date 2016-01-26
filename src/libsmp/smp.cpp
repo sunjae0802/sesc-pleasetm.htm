@@ -57,7 +57,7 @@ int32_t main(int32_t argc, char**argv, char **envp)
     GLOG(SMPDBG_CONSTR, "Number of Processors: %d", nProcs);
 
 #if (defined TM)
-    tmCohManager = TMCoherence::create(nProcs);
+    htmManager = HTMManager::create(nProcs);
 #endif
 
     // processor and memory build

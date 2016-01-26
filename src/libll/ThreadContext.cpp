@@ -98,13 +98,13 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     if(tmDepth > 0) {
         fail("[%d] Transaction nesting not complete\n", pid);
     }
-    TMBCStatus status = tmCohManager->begin(inst, this, &instContext);
+    TMBCStatus status = htmManager->begin(inst, this, &instContext);
     if(instContext.tmBeginSubtype == TM_BEGIN_INVALID) {
         fail("tmBeginSubtype invalid\n");
     }
     switch(status) {
         case TMBC_SUCCESS: {
-            const TransState& transState = tmCohManager->getTransState(pid);
+            const TransState& transState = htmManager->getTransState(pid);
             tmAbortArg  = 0;
 
             uint64_t utid = transState.getUtid();
@@ -129,10 +129,10 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     }
 
     // Save UTID before committing
-    uint64_t utid = tmCohManager->getUtid(pid);
-    size_t numWrites = tmCohManager->getNumWrites(pid);
+    uint64_t utid = htmManager->getUtid(pid);
+    size_t numWrites = htmManager->getNumWrites(pid);
 
-    TMBCStatus status = tmCohManager->commit(inst, this, &instContext);
+    TMBCStatus status = htmManager->commit(inst, this, &instContext);
     if(instContext.tmCommitSubtype == TM_COMMIT_INVALID) {
         fail("tmCommitSubtype invalid\n");
     }
@@ -165,12 +165,12 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
 void ThreadContext::userAbortTM(InstDesc* inst, uint32_t arg) {
     instContext.tmArg = arg;
     tmAbortArg        = arg;
-    tmCohManager->markUserAbort(inst, this, arg);
+    htmManager->markUserAbort(inst, this, arg);
 
     abortTransaction(inst);
 }
 void ThreadContext::syscallAbortTM(InstDesc* inst) {
-    tmCohManager->markSyscallAbort(inst, this);
+    htmManager->markSyscallAbort(inst, this);
 
     abortTransaction(inst);
 }
@@ -181,12 +181,12 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     }
 
     // Save UTID before aborting
-    uint64_t utid = tmCohManager->getUtid(pid);
+    uint64_t utid = htmManager->getUtid(pid);
 
-    TMBCStatus status = tmCohManager->abort(inst, this, &instContext);
+    TMBCStatus status = htmManager->abort(inst, this, &instContext);
     switch(status) {
         case TMBC_SUCCESS: {
-            const TransState& transState = tmCohManager->getTransState(pid);
+            const TransState& transState = htmManager->getTransState(pid);
 
             // Since we jump to the outer-most context, find it first
             TMContext* rootTMContext = tmContext;
@@ -218,13 +218,13 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
 }
 
 void ThreadContext::completeAbort(InstDesc* inst) {
-    tmCohManager->completeAbort(inst, this, &instContext);
+    htmManager->completeAbort(inst, this, &instContext);
 }
 
 uint32_t ThreadContext::getAbortRV() {
     // Get abort state
-    const TransState &transState = tmCohManager->getTransState(pid);
-    const TMAbortState& abortState = tmCohManager->getAbortState(pid);
+    const TransState &transState = htmManager->getTransState(pid);
+    const TMAbortState& abortState = htmManager->getAbortState(pid);
 
     // LSB is 1 to show that this is an abort
     uint32_t abortRV = 1;
@@ -261,13 +261,13 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
     }
 }
 void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
-    VAddr mutexCAddr = tmCohManager->addrToCacheLine(pFallbackMutex);
+    VAddr mutexCAddr = htmManager->addrToCacheLine(pFallbackMutex);
     ThreadContext::tmFallbackMutexCAddrs.insert(mutexCAddr);
-    tmCohManager->beginFallback(pid);
+    htmManager->beginFallback(pid);
 }
 
 void ThreadContext::completeFallback() {
-    tmCohManager->completeFallback(pid);
+    htmManager->completeFallback(pid);
 }
 
 #endif
