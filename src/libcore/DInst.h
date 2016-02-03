@@ -120,7 +120,6 @@ private:
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
 public:
-    VAddr       tmCallsite;
     TransState  tmState;
 private:
 

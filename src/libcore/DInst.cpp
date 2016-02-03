@@ -269,12 +269,10 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
 
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);
-    i->tmCallsite   = 0;
     i->tmState      = TransState(INVALID_PID);
 
     if(inst->isTM()) {
         i->tmState      = htmManager->getTransState(context->getPid());
-        i->tmCallsite   = context->getTMCallsite();
     }
 
     return i;

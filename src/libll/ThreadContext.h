@@ -166,8 +166,6 @@ private:
     size_t      tmDepth;
     // User-passed HTM abort argument (valid from abort-begin)
     uint32_t    tmAbortArg;
-    // Where user had called HTM "instructions"
-    VAddr tmCallsite;
     // Common set of fallback mutex addresses to check if the abort is caused by a fallback
     static std::set<uint32_t> tmFallbackMutexCAddrs;
 #endif
@@ -247,9 +245,6 @@ public:
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
-
-    void setTMCallsite(VAddr ra) { tmCallsite = ra; }
-    VAddr getTMCallsite() const { return tmCallsite; }
 
     // Transactional Methods
     void setTMlibUserTid(uint32_t arg);

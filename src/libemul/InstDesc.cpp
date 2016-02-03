@@ -2340,20 +2340,17 @@ void handleTMEndRet(InstDesc *inst, ThreadContext *context) {
 void handleHTMStartCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-        context->setTMCallsite(ra);
     }
 }
 
 void handleHTMCommitCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-        context->setTMCallsite(ra);
     }
 }
 void handleHTMMetaCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         uint32_t ra = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegRA);
-        context->setTMCallsite(ra);
     }
 }
 template<ExecMode mode>

@@ -62,7 +62,6 @@ void ThreadContext::initialize(bool child) {
     tmAbortArg  = 0;
     tmContext   = NULL;
     tmDepth     = 0;
-    tmCallsite  = 0;
     tmlibUserTid= INVALID_USER_TID;
 #endif
 
