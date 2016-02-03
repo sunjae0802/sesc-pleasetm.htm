@@ -29,7 +29,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
-TimeTrackerStats ThreadContext::timeTrackerStats;
+TimeTrackerStats ThreadContext::allTimerStats;
 std::set<uint32_t> ThreadContext::tmFallbackMutexCAddrs;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
@@ -66,20 +66,16 @@ void ThreadContext::initialize(bool child) {
     tmlibUserTid= INVALID_USER_TID;
 #endif
 
-    getTracefile() << ThreadContext::numThreads << " 0 "
-            << nRetiredInsts << ' ' << globalClock << std::endl;
     ThreadContext::numThreads++;
 }
 
 void ThreadContext::cleanup() {
     ThreadContext::numThreads--;
-    getTracefile() << ThreadContext::numThreads << " 1 "
-                << nRetiredInsts << ' ' << globalClock << std::endl;
 
-    ThreadContext::timeTrackerStats.sum(myTimeStats);
+    ThreadContext::allTimerStats.sum(timeStats);
 
 	if(pid == getMainThreadContext()->getPid()) {
-        ThreadContext::timeTrackerStats.print();
+        ThreadContext::allTimerStats.print();
         if(tracefile.is_open()) {
             tracefile.close();
         }
@@ -781,11 +777,15 @@ void ThreadContext::markRetire(DInst* dinst) {
             case FUNC_TM_BEGIN:
                 currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
                 break;
-            case FUNC_TM_END:
+            case FUNC_TM_END: {
+                TimeTrackerStats myTimeStats;
                 currentRegion.markEnd(globalClock);
                 currentRegion.calculate(&myTimeStats);
                 currentRegion.clear();
+
+                timeStats.sum(myTimeStats);
                 break;
+            }
             default:
                 currentRegion.markRetireFuncBoundary(dinst, *i_funcData);
                 break;

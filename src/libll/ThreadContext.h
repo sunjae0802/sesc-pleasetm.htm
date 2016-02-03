@@ -143,8 +143,8 @@ public:
     static Time_t resetTS;
 
     AtomicRegionStats       currentRegion;
-    static TimeTrackerStats timeTrackerStats;
-    TimeTrackerStats        myTimeStats;
+    static TimeTrackerStats allTimerStats;
+    TimeTrackerStats        timeStats;
 private:
     void initialize(bool child);
 	void cleanup();
