@@ -143,7 +143,6 @@ public:
     static Time_t resetTS;
 
     AtomicRegionStats       currentRegion;
-    static TimeTrackerStats allTimerStats;
     TimeTrackerStats        timeStats;
 private:
     void initialize(bool child);
@@ -721,10 +720,12 @@ public:
     static bool inMain;
     static size_t numThreads;
 
-    std::ofstream tracefile;
+    static std::ofstream tracefile;
     static std::ofstream& getTracefile() {
-        return getMainThreadContext()->tracefile;
+        return tracefile;
     }
+    static void openTraceFile();
+    static void closeTraceFile();
 };
 
 #endif // THREADCONTEXT_H

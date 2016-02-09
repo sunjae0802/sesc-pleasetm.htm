@@ -135,6 +135,8 @@ void print_stat(int param) {
 int32_t main(int32_t argc, char**argv, char **envp)
 {
     srand(1);
+    ThreadContext::openTraceFile();
+
 #if (defined SIGDEBUG)
     void (*prev_fn)(int);
     prev_fn = signal (SIGINT,print_stat);
@@ -176,6 +178,8 @@ int32_t main(int32_t argc, char**argv, char **envp)
     GLOG(SMPDBG_CONSTR, "I am booting now");
     osSim->boot();
     GLOG(SMPDBG_CONSTR, "Terminating simulation");
+
+    ThreadContext::closeTraceFile();
 
     for(int32_t i = 0; i < nProcs; i++) {
         delete pr[i];

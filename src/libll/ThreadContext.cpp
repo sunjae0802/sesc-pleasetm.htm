@@ -29,11 +29,11 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
-TimeTrackerStats ThreadContext::allTimerStats;
 std::set<uint32_t> ThreadContext::tmFallbackMutexCAddrs;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
+std::ofstream ThreadContext::tracefile;
 size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
@@ -48,12 +48,6 @@ void InstContext::clear() {
 }
 
 void ThreadContext::initialize(bool child) {
-    if(pid == getMainThreadContext()->getPid()) {
-        char filename[256];
-        sprintf(filename, "datafile.out");
-        tracefile.open(filename);
-    }
-
     nRetiredInsts = 0;
     nExedInsts = 0;
     spinning    = false;
@@ -70,14 +64,26 @@ void ThreadContext::initialize(bool child) {
 
 void ThreadContext::cleanup() {
     ThreadContext::numThreads--;
+}
 
-    ThreadContext::allTimerStats.sum(timeStats);
+void ThreadContext::openTraceFile() {
+    char filename[256];
+    sprintf(filename, "datafile.out");
+    tracefile.open(filename);
+    MSG("OPening tracefile datafile.out");
+}
 
-	if(pid == getMainThreadContext()->getPid()) {
-        ThreadContext::allTimerStats.print();
-        if(tracefile.is_open()) {
-            tracefile.close();
-        }
+void ThreadContext::closeTraceFile() {
+    MSG("Closing tracefile datafile.out");
+    TimeTrackerStats allTimerStats;
+
+    for(ThreadContext* c: ThreadContext::pid2context) {
+        allTimerStats.sum(c->timeStats);
+    }
+
+    allTimerStats.print();
+    if(getTracefile().is_open()) {
+        getTracefile().close();
     }
 }
 
@@ -810,7 +816,7 @@ void TimeTrackerStats::print() const {
     std::cout << "InMutex: " << totalMutex << "\n";
     std::cout << "LockWait: " << totalLockWait << "\n";
     std::cout << "BackoffWait: " << totalBackoffWait << "\n";
-    std::cout << "Other: " << totalOther << "\n";
+    std::cout << "Other: " << totalOther << std::endl;
 }
 
 /// Add other to this statistics structure
@@ -931,23 +937,40 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
 
     // Handle subregions events
     size_t eid = 0;
+    size_t INVALID_EID = events.size() + 1;
+    size_t htm_begin_eid = INVALID_EID;
     while(eid < events.size()) {
         const AtomicRegionEvents& event = events.at(eid);
         switch(event.getType()) {
             case AR_EVENT_HTM_BEGIN: {
-                // HTM Begin/Commit/Abort
-                if(eid + 1 >= events.size()) {
-                    fail("HTM end event is not found\n");
+                htm_begin_eid = eid;
+                eid += 1;
+                break;
+            }
+            case AR_EVENT_HTM_ABORT: {
+                if(htm_begin_eid == INVALID_EID) {
+                    printEvents(event);
+                    fail("[%d] abort should be proceeded by begin\n", pid);
                 }
-                const AtomicRegionEvents& endEvent = events.at(eid + 1);
-                if(endEvent.getType() == AR_EVENT_HTM_ABORT) {
-                    p_stats->totalAborted   += endEvent.getTimestamp() - event.getTimestamp();
-                } else if(endEvent.getType() == AR_EVENT_HTM_COMMIT) {
-                    p_stats->totalCommitted += endEvent.getTimestamp() - event.getTimestamp();
-                } else {
-                    fail("Unknown event after begin: %d\n", endEvent.getType());
+                const AtomicRegionEvents& beginEvent = events.at(htm_begin_eid);
+
+                p_stats->totalAborted   += event.getTimestamp() - beginEvent.getTimestamp();
+
+                htm_begin_eid = INVALID_EID;
+                eid += 1;
+                break;
+            }
+            case AR_EVENT_HTM_COMMIT: {
+                if(htm_begin_eid == INVALID_EID) {
+                    printEvents(event);
+                    fail("[%d] commit should be proceeded by begin\n", pid);
                 }
-                eid += 2;
+                const AtomicRegionEvents& beginEvent = events.at(htm_begin_eid);
+
+                p_stats->totalCommitted += event.getTimestamp() - beginEvent.getTimestamp();
+
+                htm_begin_eid = INVALID_EID;
+                eid += 1;
                 break;
             }
             case AR_EVENT_LOCK_REQUEST: {
