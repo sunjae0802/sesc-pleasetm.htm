@@ -42,20 +42,18 @@ struct FuncBoundaryData {
 
 // Struct that contains overall statistics about subsections within an atomic region.
 struct TimeTrackerStats {
-    TimeTrackerStats(): totalLengths(0), totalCommitted(0), totalAborted(0),
-        totalLockWait(0), totalBackoffWait(0), totalMutexWait(0), totalMutex(0)
-    {}
+    TimeTrackerStats();
     uint64_t totalAccounted() const;
     void print() const;
     void sum(const TimeTrackerStats& other);
 
-    uint64_t totalLengths;
-    uint64_t totalCommitted;
-    uint64_t totalAborted;
-    uint64_t totalLockWait;
-    uint64_t totalBackoffWait;
-    uint64_t totalMutexWait;
-    uint64_t totalMutex;
+    uint64_t duration;
+    uint64_t inMutex;
+    uint64_t mutexQueue;
+    uint64_t committed;
+    uint64_t aborted;
+    uint64_t activeFBWait;
+    uint64_t backoffWait;
 };
 
 // Enum of various atomic region events
@@ -69,7 +67,7 @@ enum AREventType {
     AR_EVENT_LOCK_ACQUIRE       = 11, // Lock acquire event (returning from lock)
     AR_EVENT_LOCK_RELEASE       = 12, // Lock release event (calling  unlock)
 
-    AR_EVENT_LOCK_WAIT_BEGIN    = 90, // Wait for active lock (calling wait(0))
+    AR_EVENT_ACTIVEFB_WAIT_BEGIN= 90, // Wait for active lock (calling wait(0))
     AR_EVENT_BACKOFF_BEGIN      = 91, // Random backoff       (calling wait(1))
     AR_EVENT_WAIT_END           = 92, // Wait end             (returning from wait)
 

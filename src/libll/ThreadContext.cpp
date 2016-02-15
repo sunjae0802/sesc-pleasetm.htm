@@ -70,11 +70,9 @@ void ThreadContext::openTraceFile() {
     char filename[256];
     sprintf(filename, "datafile.out");
     tracefile.open(filename);
-    MSG("OPening tracefile datafile.out");
 }
 
 void ThreadContext::closeTraceFile() {
-    MSG("Closing tracefile datafile.out");
     TimeTrackerStats allTimerStats;
 
     for(ThreadContext* c: ThreadContext::pid2context) {
@@ -798,36 +796,50 @@ void ThreadContext::markRetire(DInst* dinst) {
     } // end foreach funcBoundaryData
 }
 
+TimeTrackerStats::TimeTrackerStats():
+    duration(0),
+    inMutex(0),
+    mutexQueue(0),
+    committed(0),
+    aborted(0),
+    activeFBWait(0),
+    backoffWait(0) {
+}
 uint64_t TimeTrackerStats::totalAccounted() const {
-    return totalCommitted + totalAborted + totalLockWait + totalBackoffWait
-        + totalMutexWait + totalMutex;
+    return inMutex
+        + mutexQueue
+        + committed
+        + aborted
+        + activeFBWait
+        + backoffWait
+    ;
 }
 
 void TimeTrackerStats::print() const {
-    if(totalAccounted() > totalLengths) {
+    if(totalAccounted() > duration) {
         fail("Accounted cycles is too high");
     }
 
-    uint64_t totalOther = totalLengths - totalAccounted();
+    uint64_t totalOther = duration - totalAccounted();
 
-    std::cout << "Committed: " << totalCommitted << "\n";
-    std::cout << "Aborted: " << totalAborted << "\n";
-    std::cout << "WaitForMutex: " << totalMutexWait << "\n";
-    std::cout << "InMutex: " << totalMutex << "\n";
-    std::cout << "LockWait: " << totalLockWait << "\n";
-    std::cout << "BackoffWait: " << totalBackoffWait << "\n";
-    std::cout << "Other: " << totalOther << std::endl;
+    std::cout << "InMutex: "        << inMutex      << "\n";
+    std::cout << "MutexQueue: "     << mutexQueue   << "\n";
+    std::cout << "Committed: "      << committed    << "\n";
+    std::cout << "Aborted: "        << aborted      << "\n";
+    std::cout << "ActiveFBWait: "   << activeFBWait << "\n";
+    std::cout << "BackoffWait: "    << backoffWait  << "\n";
+    std::cout << "Other: "          << totalOther   << std::endl;
 }
 
 /// Add other to this statistics structure
 void TimeTrackerStats::sum(const TimeTrackerStats& other) {
-    totalLengths    += other.totalLengths;
-    totalCommitted  += other.totalCommitted;
-    totalAborted    += other.totalAborted;
-    totalLockWait   += other.totalLockWait;
-    totalBackoffWait+= other.totalBackoffWait;
-    totalMutexWait  += other.totalMutexWait;
-    totalMutex      += other.totalMutex;
+    duration        += other.duration;
+    inMutex         += other.inMutex;
+    mutexQueue      += other.mutexQueue;
+    committed       += other.committed;
+    aborted         += other.aborted;
+    activeFBWait    += other.activeFBWait;
+    backoffWait     += other.backoffWait;
 }
 
 // Uninitialize stats structure
@@ -867,7 +879,7 @@ void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryD
         case FUNC_TM_WAIT:
             if(funcData.isCall) {
                 if(funcData.arg0 == 0) {
-                    newAREvent(AR_EVENT_LOCK_WAIT_BEGIN);
+                    newAREvent(AR_EVENT_ACTIVEFB_WAIT_BEGIN);
                 } else if(funcData.arg0 == 1) {
                     newAREvent(AR_EVENT_BACKOFF_BEGIN);
                 } else {
@@ -954,7 +966,7 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
                 }
                 const AtomicRegionEvents& beginEvent = events.at(htm_begin_eid);
 
-                p_stats->totalAborted   += event.getTimestamp() - beginEvent.getTimestamp();
+                p_stats->aborted   += event.getTimestamp() - beginEvent.getTimestamp();
 
                 htm_begin_eid = INVALID_EID;
                 eid += 1;
@@ -967,7 +979,7 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
                 }
                 const AtomicRegionEvents& beginEvent = events.at(htm_begin_eid);
 
-                p_stats->totalCommitted += event.getTimestamp() - beginEvent.getTimestamp();
+                p_stats->committed += event.getTimestamp() - beginEvent.getTimestamp();
 
                 htm_begin_eid = INVALID_EID;
                 eid += 1;
@@ -987,12 +999,12 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
                     fail("Unknown event after lock release: %d\n", lockRelEvent.getType());
                 }
 
-                p_stats->totalMutexWait += lockAcqEvent.getTimestamp() - event.getTimestamp();
-                p_stats->totalMutex     += lockRelEvent.getTimestamp() - lockAcqEvent.getTimestamp();
+                p_stats->mutexQueue += lockAcqEvent.getTimestamp() - event.getTimestamp();
+                p_stats->inMutex    += lockRelEvent.getTimestamp() - lockAcqEvent.getTimestamp();
                 eid += 3;
                 break;
             }
-            case AR_EVENT_LOCK_WAIT_BEGIN: {
+            case AR_EVENT_ACTIVEFB_WAIT_BEGIN: {
                 // Wait Events
                 if(eid + 1 >= events.size()) {
                     fail("wait end event is not found\n");
@@ -1001,7 +1013,7 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
                 if(endEvent.getType() != AR_EVENT_WAIT_END) {
                     fail("Unknown event after wait begin: %d\n", endEvent.getType());
                 }
-                p_stats->totalLockWait +=  endEvent.getTimestamp() - event.getTimestamp();
+                p_stats->activeFBWait   +=  endEvent.getTimestamp() - event.getTimestamp();
                 eid += 2;
                 break;
             }
@@ -1014,7 +1026,7 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
                 if(endEvent.getType() != AR_EVENT_WAIT_END) {
                     fail("Unknown event after backoff begin: %d\n", endEvent.getType());
                 }
-                p_stats->totalBackoffWait +=  endEvent.getTimestamp() - event.getTimestamp();
+                p_stats->backoffWait +=  endEvent.getTimestamp() - event.getTimestamp();
                 eid += 2;
                 break;
             }
@@ -1024,9 +1036,9 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
     }
 
     // Compute total length
-    p_stats->totalLengths += endAt - startAt;
+    p_stats->duration += endAt - startAt;
 
-    if(p_stats->totalAccounted() > p_stats->totalLengths) {
+    if(p_stats->totalAccounted() > p_stats->duration) {
         printEvents(events.at(0));
         fail("[%d] Accounted cycles is too high", pid);
     }
