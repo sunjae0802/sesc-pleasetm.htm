@@ -39,6 +39,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 // debugging defines
 #include "SMPDebug.h"
 
+#if (defined CHECK_STALL) 
+unsigned long long lastFin = 0;
+#endif
+
 int32_t main(int32_t argc, char**argv, char **envp)
 {
     osSim = new OSSim(argc, argv, envp);
