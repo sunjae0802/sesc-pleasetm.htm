@@ -48,4 +48,4 @@ set(core_HEADERS
 )
 
 ADD_LIBRARY(core ${core_SOURCES} ${core_HEADERS})
-TARGET_LINK_LIBRARIES(core suc ll)
+TARGET_LINK_LIBRARIES(core suc TM ll)

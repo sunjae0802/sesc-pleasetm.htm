@@ -7,6 +7,7 @@ FIND_PACKAGE(BISON)
 # Handle options
 OPTION(SMP "Bus-backed SMP Processor" ON)
 OPTION(CMP "Booksim-backed NoC Processor" OFF)
+OPTION(TM "Enable Hardware Transactional Memory" ON)
 # Either SMP or CMP
 IF(CMP)
     SET(SMP OFF)
@@ -25,12 +26,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 # Specify option-specific #defines
 IF(SMP)
     ADD_DEFINITIONS(-DSESC_SMP)
+    IF(TM)
+        ADD_DEFINITIONS(-DTM)
+    ENDIF(TM)
     INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/libsuc)
 
     ADD_SUBDIRECTORY(libsmp)
 ELSEIF(CMP)
     # XXX: Need to add both
     ADD_DEFINITIONS(-DSESC_SMP -DSESC_CMP)
+    IF(TM)
+        ADD_DEFINITIONS(-DTM)
+    ENDIF(TM)
     INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/libsuc)
 
     ADD_SUBDIRECTORY(libbooksim)
@@ -44,3 +51,6 @@ ADD_SUBDIRECTORY(libsuc)
 ADD_SUBDIRECTORY(libcore)
 ADD_SUBDIRECTORY(libmem)
 ADD_SUBDIRECTORY(libemul)
+IF(TM)
+    ADD_SUBDIRECTORY(libTM)
+ENDIF(TM)

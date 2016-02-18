@@ -30,4 +30,4 @@ SET(cmp_HEADERS
 )
 
 ADD_EXECUTABLE(sesc.cmp ${cmp_SOURCES} ${cmp_HEADERS})
-TARGET_LINK_LIBRARIES(sesc.cmp ll booksim core emul suc mem)
+TARGET_LINK_LIBRARIES(sesc.cmp ll TM booksim core emul suc mem)

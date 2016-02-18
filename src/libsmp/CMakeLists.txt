@@ -21,4 +21,4 @@ SET(smp_HEADERS
 )
 
 ADD_EXECUTABLE(sesc.smp ${smp_SOURCES} ${smp_HEADERS})
-TARGET_LINK_LIBRARIES(sesc.smp ll core emul suc mem)
+TARGET_LINK_LIBRARIES(sesc.smp ll TM core emul suc mem)
