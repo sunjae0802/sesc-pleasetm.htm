@@ -22,7 +22,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "SescConf.h"
 #include "MemorySystem.h"
 #include "AlwaysPrefetch.h"
-#include "ThreadContext.h"
+#include "libll/ThreadContext.h"
 
 static pool < std::queue<MemRequest *> > activeMemReqPool(32,"AlwaysPrefetcher");
 
