@@ -8,6 +8,7 @@
 
 using namespace std;
 
+uint64_t HTMManager::nextUtid = 0;
 HTMManager *htmManager = 0;
 /////////////////////////////////////////////////////////////////////////////////////////
 // Factory function for all TM Coherence objects. Use different concrete classes
@@ -56,6 +57,7 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
     for(Pid_t pid = 0; pid < (Pid_t)nThreads; ++pid) {
         transStates.push_back(TransState(pid));
         abortStates.push_back(TMAbortState(pid));
+        utids.push_back(INVALID_UTID);
         // Initialize maps to enable at() use
         linesRead[pid].clear();
         linesWritten[pid].clear();
@@ -64,6 +66,9 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
 
 void HTMManager::beginTrans(Pid_t pid, InstDesc* inst) {
     // Do the begin
+    utids.at(pid) = HTMManager::nextUtid;
+    HTMManager::nextUtid += 1;
+
 	transStates[pid].begin();
     abortStates.at(pid).clear();
 }
@@ -128,6 +133,7 @@ void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
 }
 void HTMManager::removeTrans(Pid_t pid) {
     transStates.at(pid).clear();
+    utids.at(pid) = INVALID_UTID;
 
     std::map<VAddr, std::set<Pid_t> >::iterator i_line;
     for(VAddr caddr:  linesWritten[pid]) {

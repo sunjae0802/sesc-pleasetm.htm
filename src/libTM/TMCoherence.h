@@ -51,7 +51,7 @@ public:
     const TransState& getTransState(Pid_t pid) const { return transStates.at(pid); }
     const TMAbortState& getAbortState(Pid_t pid) const { return abortStates.at(pid); }
     TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
-    uint64_t getUtid(Pid_t pid)     const { return transStates.at(pid).getUtid(); }
+    uint64_t getUtid(Pid_t pid)     const { return utids.at(pid); }
 
     virtual uint32_t getNackRetryStallCycles() const { return 0; }
     size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
@@ -115,6 +115,10 @@ protected:
 
     std::vector<struct TransState>  transStates;
     std::vector<TMAbortState>       abortStates;
+    // The unique identifier for each tnx instance
+    std::vector<uint64_t>           utids;
+    // Mono-increasing UTID
+    static uint64_t nextUtid;
 
     // Statistics
     GStatsCntr      numCommits;

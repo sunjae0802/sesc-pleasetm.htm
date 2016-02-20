@@ -4,6 +4,7 @@
 #include "Snippets.h"
 #include "libemul/Addressing.h"
 
+static const uint64_t INVALID_UTID = -1;
 enum TMState_e { TM_INVALID, TM_RUNNING, TM_ABORTING, TM_MARKABORT };
 enum TMAbortType_e {
     TM_ATYPE_DEFAULT            = 0,    // Aborts due to data conflict
@@ -28,8 +29,6 @@ enum TMCommitSubtype {
     TM_COMMIT_REGULAR           = 1, // If the transaction has committed
     TM_COMMIT_ABORTED           = 2, // The transaction failed to commit
 };
-
-static const uint64_t INVALID_UTID = -1;
 
 class TMAbortState {
 public:
@@ -80,21 +79,18 @@ public:
     void startAborting();
     void completeAbort();
     void markAbort();
+    void triggerFail(TMState_e next);
     void print() const;
 
     // Getters
     TMState_e   getState()      const { return state; }
-    uint64_t    getUtid()       const { return utid; }
+    static const char* getStateStr(TMState_e);
 
 private:
     // The PID of the owner
     Pid_t           myPid;
     // Current state of the transaction
     TMState_e       state;
-    // The unique identifier for each ``begin''
-    uint64_t        utid;
-    // Mono-increasing UTID
-    static uint64_t nextUtid;
 };
 
 #endif

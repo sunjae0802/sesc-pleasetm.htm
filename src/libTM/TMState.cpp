@@ -8,36 +8,66 @@
 
 using namespace std;
 
-uint64_t TransState::nextUtid = 0;
-
 TransState::TransState(Pid_t pid): myPid(pid) {
-    clear();
-}
-void TransState::clear() {
-    utid        = INVALID_UTID;
     state       = TM_INVALID;
 }
-void TransState::begin() {
-    utid        = TransState::nextUtid;
-    TransState::nextUtid += 1;
-
-    state       = TM_RUNNING;
-}
-void TransState::startAborting() {
-    state       = TM_ABORTING;
-}
-void TransState::markAbort() {
-    state       = TM_MARKABORT;
+const char* TransState::getStateStr(TMState_e st) {
+    const char* str = "??????";
+    switch(st) {
+        case TM_INVALID:    str = "INVALID";    break;
+        case TM_RUNNING:    str = "RUNNING";    break;
+        case TM_ABORTING:   str = "ABORING";    break;
+        case TM_MARKABORT:  str = "MARK_ABORT"; break;
+        default:                                break;
+    };
+    return str;
 }
 void TransState::print() const {
-    std::cout << myPid << " ";
+    std::cout << myPid << " " << getStateStr(state) << " \n";
+}
+void TransState::triggerFail(TMState_e next) {
+    fail("[%d] Invalid state transition(%s->%s)\n",
+        myPid, getStateStr(state), getStateStr(next));
+}
+void TransState::begin() {
+    TMState_e next = TM_RUNNING;
     switch(state) {
-        case TM_INVALID:    cout << "INVALID";  break;
-        case TM_RUNNING:    cout << "RUNNING";  break;
-        case TM_ABORTING:   cout << "ABORING";  break;
-        case TM_MARKABORT:  cout << "MARK_ABORT"; break;
-        default:            cout << "??????";   break;
-    };
-    std::cout << " \n";
+        case TM_INVALID:
+            state = next;
+            break;
+        default:
+            triggerFail(next);
+    }
+}
+void TransState::markAbort() {
+    TMState_e next = TM_MARKABORT;
+    switch(state) {
+        case TM_RUNNING:
+            state = next;
+            break;
+        default:
+            triggerFail(next);
+    }
+}
+void TransState::startAborting() {
+    TMState_e next = TM_ABORTING;
+    switch(state) {
+        case TM_MARKABORT:
+            state = next;
+            break;
+        default:
+            triggerFail(next);
+    }
+}
+void TransState::clear() {
+    TMState_e next = TM_INVALID;
+    switch(state) {
+        case TM_RUNNING:
+        case TM_ABORTING:
+            state = next;
+            break;
+        default:
+            triggerFail(next);
+    }
 }
 

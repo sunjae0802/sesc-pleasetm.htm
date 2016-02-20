@@ -106,7 +106,7 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
             const TransState& transState = htmManager->getTransState(pid);
             tmAbortArg  = 0;
 
-            uint64_t utid = transState.getUtid();
+            uint64_t utid = htmManager->getUtid(pid);
             tmContext   = new TMContext(this, inst, utid);
             tmContext->saveContext();
             saveCallRetStack();
