@@ -126,4 +126,3 @@ SET(booksim_HEADERS
 INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/header-deps.cmake)
 
 ADD_LIBRARY(booksim ${booksim_SOURCES} ${booksim_HEADERS} ${BISON_config_tab_OUTPUTS} ${FLEX_configlex_OUTPUTS})
-TARGET_LINK_LIBRARIES(booksim suc core ll)

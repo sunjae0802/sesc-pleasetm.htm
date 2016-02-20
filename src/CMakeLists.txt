@@ -15,7 +15,7 @@ ENDIF(CMP)
 
 # Specify some global settings
 ADD_COMPILE_OPTIONS(-Wall -pipe -Wno-unused)
-ADD_COMPILE_OPTIONS(-fno-strict-aliasing -momit-leaf-frame-pointer -funroll-loops -fsched-interblock -ffast-math -freg-struct-return)
+ADD_COMPILE_OPTIONS(-fno-strict-aliasing -ffast-math)
 ADD_DEFINITIONS(-DLINUX -DPOSIX_MEMALIGN -DMIPS_EMUL -DCHECK_STALL)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})

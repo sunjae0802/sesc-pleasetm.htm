@@ -16,4 +16,3 @@ SET(ll_HEADERS
 )
 
 ADD_LIBRARY(ll ${ll_SOURCES} ${ll_HEADERS})
-TARGET_LINK_LIBRARIES(ll core emul)
