@@ -6,6 +6,8 @@ SET(TM_SOURCES
     TMContext.cpp
     TMState.cpp
     TMStorage.cpp
+    TSXManager.cpp
+    IdealTSXManager.cpp
 )
 SET(TM_HEADERS
     PrivateCache.h
@@ -13,6 +15,8 @@ SET(TM_HEADERS
     TMContext.h
     TMState.h
     TMStorage.h
+    TSXManager.h
+    IdealTSXManager.h
 )
 
 ADD_LIBRARY(TM ${TM_SOURCES} ${TM_HEADERS})
