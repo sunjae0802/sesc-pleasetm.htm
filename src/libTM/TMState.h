@@ -5,7 +5,6 @@
 #include "libemul/Addressing.h"
 
 static const uint64_t INVALID_UTID = -1;
-enum TMState_e { TM_INVALID, TM_RUNNING, TM_ABORTING, TM_MARKABORT };
 enum TMAbortType_e {
     TM_ATYPE_DEFAULT            = 0,    // Aborts due to data conflict
     TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
@@ -70,27 +69,29 @@ private:
     // The IAddr when we found out TM has aborted
     VAddr           abortIAddr;
 };
-class TransState {
+class TMStateEngine {
 public:
-    TransState(Pid_t pid);
+    enum State_e { TM_INVALID, TM_RUNNING, TM_ABORTING, TM_MARKABORT };
+    TMStateEngine(Pid_t pid);
 
     void begin();
     void clear();
     void startAborting();
     void completeAbort();
     void markAbort();
-    void triggerFail(TMState_e next);
     void print() const;
 
     // Getters
-    TMState_e   getState()      const { return state; }
-    static const char* getStateStr(TMState_e);
+    State_e   getState()      const { return state; }
+    static const char* getStateStr(State_e);
 
 private:
+    void triggerFail(State_e next);
+
     // The PID of the owner
     Pid_t           myPid;
     // Current state of the transaction
-    TMState_e       state;
+    State_e       state;
 };
 
 #endif

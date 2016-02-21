@@ -81,8 +81,7 @@ GStatsHist *DInst::brdistHist1 = 0;
 #endif
 
 DInst::DInst()
-    :tmState(INVALID_PID)
-    ,doAtSimTimeCB(this)
+    :doAtSimTimeCB(this)
     ,doAtSelectCB(this)
     ,doAtExecutedCB(this)
 {
@@ -269,10 +268,10 @@ DInst *DInst::createDInst(const Instruction *inst, VAddr va, int32_t cId, Thread
 
     i->hitIn        = NULL;
     i->localStackData= context->isLocalStackData(va);
-    i->tmState      = TransState(INVALID_PID);
+    i->tmState      = TMStateEngine::TM_INVALID;
 
     if(inst->isTM()) {
-        i->tmState      = htmManager->getTransState(context->getPid());
+        i->tmState      = htmManager->getTMState(context->getPid());
     }
 
     return i;

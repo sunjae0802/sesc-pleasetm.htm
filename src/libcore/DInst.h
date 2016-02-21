@@ -119,9 +119,7 @@ private:
 
     MemObj *hitIn; // For load/stores to check at which level we hit
     bool localStackData;
-public:
-    TransState  tmState;
-private:
+    TMStateEngine::State_e tmState; // TMState when the DInst was executed
 
 #ifdef SESC_MISPATH
     bool fake;
@@ -427,7 +425,7 @@ public:
     }
 
     bool tmCommitOp() const {
-        return inst->getSubCode() == TMCommit && tmState.getState() == TM_INVALID;
+        return inst->getSubCode() == TMCommit && tmState == TMStateEngine::TM_INVALID;
     }
 
     TMCommitSubtype getTMCommitSubtype() const {

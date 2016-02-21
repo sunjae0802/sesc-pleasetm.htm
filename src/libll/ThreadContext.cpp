@@ -103,7 +103,6 @@ TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     }
     switch(status) {
         case TMBC_SUCCESS: {
-            const TransState& transState = htmManager->getTransState(pid);
             tmAbortArg  = 0;
 
             uint64_t utid = htmManager->getUtid(pid);
@@ -185,8 +184,6 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     TMBCStatus status = htmManager->abort(inst, this, &instContext);
     switch(status) {
         case TMBC_SUCCESS: {
-            const TransState& transState = htmManager->getTransState(pid);
-
             // Since we jump to the outer-most context, find it first
             TMContext* rootTMContext = tmContext;
             while(rootTMContext->getParentContext()) {
@@ -222,7 +219,6 @@ void ThreadContext::completeAbort(InstDesc* inst) {
 
 uint32_t ThreadContext::getAbortRV() {
     // Get abort state
-    const TransState &transState = htmManager->getTransState(pid);
     const TMAbortState& abortState = htmManager->getAbortState(pid);
 
     // LSB is 1 to show that this is an abort

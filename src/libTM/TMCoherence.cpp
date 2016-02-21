@@ -55,7 +55,7 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
     nThreads = nCores * nSMTWays;
 
     for(Pid_t pid = 0; pid < (Pid_t)nThreads; ++pid) {
-        transStates.push_back(TransState(pid));
+        tmStates.push_back(TMStateEngine(pid));
         abortStates.push_back(TMAbortState(pid));
         utids.push_back(INVALID_UTID);
         // Initialize maps to enable at() use
@@ -69,7 +69,7 @@ void HTMManager::beginTrans(Pid_t pid, InstDesc* inst) {
     utids.at(pid) = HTMManager::nextUtid;
     HTMManager::nextUtid += 1;
 
-	transStates[pid].begin();
+	tmStates[pid].begin();
     abortStates.at(pid).clear();
 }
 
@@ -81,14 +81,14 @@ void HTMManager::commitTrans(Pid_t pid) {
     removeTransaction(pid);
 }
 void HTMManager::abortTrans(Pid_t pid) {
-    if(getState(pid) != TM_MARKABORT) {
-        fail("%d should be marked abort before starting abort: %d", pid, getState(pid));
+    if(getTMState(pid) != TMStateEngine::TM_MARKABORT) {
+        fail("%d should be marked abort before starting abort: %d", pid, getTMState(pid));
     }
-	transStates[pid].startAborting();
+	tmStates[pid].startAborting();
 }
 void HTMManager::completeAbortTrans(Pid_t pid) {
-    if(getState(pid) != TM_ABORTING) {
-        fail("%d should be doing aborting before completing it: %d", pid, getState(pid));
+    if(getTMState(pid) != TMStateEngine::TM_ABORTING) {
+        fail("%d should be doing aborting before completing it: %d", pid, getTMState(pid));
     }
 
     const TMAbortState& abortState = abortStates.at(pid);
@@ -102,8 +102,8 @@ void HTMManager::completeAbortTrans(Pid_t pid) {
 void HTMManager::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 
-    if(getState(victimPid) != TM_ABORTING && getState(victimPid) != TM_MARKABORT) {
-        transStates.at(victimPid).markAbort();
+    if(getTMState(victimPid) != TMStateEngine::TM_ABORTING && getTMState(victimPid) != TMStateEngine::TM_MARKABORT) {
+        tmStates.at(victimPid).markAbort();
         abortStates.at(victimPid).markAbort(aborterPid, aborterUtid, caddr, abortType);
     } // Else victim is already aborting, so leave it alone
 }
@@ -118,21 +118,21 @@ void HTMManager::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VA
 	}
 }
 void HTMManager::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    if(getState(pid) != TM_RUNNING) {
-        fail("%d in invalid state to do tm.load: %d", pid, getState(pid));
+    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
+        fail("%d in invalid state to do tm.load: %d", pid, getTMState(pid));
     }
     readers[caddr].insert(pid);
     linesRead[pid].insert(caddr);
 }
 void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    if(getState(pid) != TM_RUNNING) {
-        fail("%d in invalid state to do tm.store: %d", pid, getState(pid));
+    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
+        fail("%d in invalid state to do tm.store: %d", pid, getTMState(pid));
     }
     writers[caddr].insert(pid);
     linesWritten[pid].insert(caddr);
 }
 void HTMManager::removeTrans(Pid_t pid) {
-    transStates.at(pid).clear();
+    tmStates.at(pid).clear();
     utids.at(pid) = INVALID_UTID;
 
     std::map<VAddr, std::set<Pid_t> >::iterator i_line;
@@ -179,7 +179,7 @@ TMBCStatus HTMManager::begin(InstDesc* inst, const ThreadContext* context, InstC
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus HTMManager::commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-	if(getState(pid) == TM_MARKABORT) {
+	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
         p_opStatus->tmCommitSubtype=TM_COMMIT_ABORTED;
 		return TMBC_ABORT;
 	} else {
@@ -198,7 +198,7 @@ TMBCStatus HTMManager::abort(InstDesc* inst, const ThreadContext* context, InstC
 // Acutal abort needs to be called later.
 void HTMManager::markSyscallAbort(InstDesc* inst, const ThreadContext* context) {
     Pid_t pid   = context->getPid();
-    if(getState(pid) != TM_ABORTING && getState(pid) != TM_MARKABORT) {
+    if(getTMState(pid) != TMStateEngine::TM_ABORTING && getTMState(pid) != TMStateEngine::TM_MARKABORT) {
         markTransAborted(pid, pid, 0, TM_ATYPE_SYSCALL);
     }
 }
@@ -208,7 +208,7 @@ void HTMManager::markSyscallAbort(InstDesc* inst, const ThreadContext* context) 
 // Acutal abort needs to be called later.
 void HTMManager::markUserAbort(InstDesc* inst, const ThreadContext* context, uint32_t abortArg) {
     Pid_t pid   = context->getPid();
-    if(getState(pid) != TM_ABORTING && getState(pid) != TM_MARKABORT) {
+    if(getTMState(pid) != TMStateEngine::TM_ABORTING && getTMState(pid) != TMStateEngine::TM_MARKABORT) {
         markTransAborted(pid, pid, 0, TM_ATYPE_USER);
         userAbortArgs.sample(abortArg);
     }
@@ -230,9 +230,9 @@ TMBCStatus HTMManager::completeAbort(InstDesc* inst, const ThreadContext* contex
 TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-	if(getState(pid) == TM_MARKABORT) {
+	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
 		return TMRW_ABORT;
-	} else if(getState(pid) == TM_INVALID) {
+	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
         nonTMRead(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
 	} else {
@@ -245,9 +245,9 @@ TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr 
 TMRWStatus HTMManager::write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
-	if(getState(pid) == TM_MARKABORT) {
+	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
 		return TMRW_ABORT;
-	} else if(getState(pid) == TM_INVALID) {
+	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
         nonTMWrite(inst, context, raddr, p_opStatus);
         return TMRW_NONTM;
 	} else {
@@ -357,7 +357,7 @@ void IdealTSXManager::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set
             Line* line = cache->findLine(caddr);
             if(line) {
                 line->clearTransactional(a);
-            } else if(getState(a) == TM_RUNNING) {
+            } else if(getTMState(a) == TMStateEngine::TM_RUNNING) {
                 fail("[%d] Aborting non-writer %d?: 0x%lx", pid, a, caddr);
             }
         }
@@ -458,7 +458,7 @@ TMRWStatus IdealTSXManager::TMRead(InstDesc* inst, const ThreadContext* context,
         fail("got wrong line");
     }
 
-    if(getState(pid) == TM_MARKABORT) {
+    if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
         return TMRW_ABORT;
     }
 
@@ -498,7 +498,7 @@ TMRWStatus IdealTSXManager::TMWrite(InstDesc* inst, const ThreadContext* context
     if(line->isValid() == false || line->getCaddr() != caddr) {
         fail("got wrong line");
     }
-    if(getState(pid) == TM_MARKABORT) {
+    if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
         return TMRW_ABORT;
     }
 
@@ -722,7 +722,7 @@ void TSXManager::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cach
             Line* line = cache->findLine(caddr);
             if(line) {
                 line->clearTransactional(a);
-            } else if(getState(a) == TM_RUNNING) {
+            } else if(getTMState(a) == TMStateEngine::TM_RUNNING) {
                 fail("[%d] Aborting non-writer %d?: 0x%lx", pid, a, caddr);
             }
         }
@@ -753,7 +753,7 @@ void TSXManager::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cach
             Line* line = cache->findLine(caddr);
             if(line) {
                 line->clearTransactional(a);
-            } else if(overflow[a].find(caddr) == overflow[a].end() && getState(a) == TM_RUNNING) {
+            } else if(overflow[a].find(caddr) == overflow[a].end() && getTMState(a) == TMStateEngine::TM_RUNNING) {
                 fail("[%d] Aborting non-sharer %d?: 0x%lx", pid, a, caddr);
             }
         }
@@ -825,7 +825,7 @@ TMRWStatus TSXManager::TMRead(InstDesc* inst, const ThreadContext* context, VAdd
         fail("got wrong line");
     }
 
-    if(getState(pid) == TM_MARKABORT) {
+    if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
         return TMRW_ABORT;
     }
 
@@ -866,7 +866,7 @@ TMRWStatus TSXManager::TMWrite(InstDesc* inst, const ThreadContext* context, VAd
     if(line->isValid() == false || line->getCaddr() != caddr) {
         fail("got wrong line");
     }
-    if(getState(pid) == TM_MARKABORT) {
+    if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
         return TMRW_ABORT;
     }
 

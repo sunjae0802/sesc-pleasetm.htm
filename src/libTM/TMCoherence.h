@@ -48,9 +48,8 @@ public:
         }
         return raddr;
     }
-    const TransState& getTransState(Pid_t pid) const { return transStates.at(pid); }
     const TMAbortState& getAbortState(Pid_t pid) const { return abortStates.at(pid); }
-    TMState_e getState(Pid_t pid)   const { return transStates.at(pid).getState(); }
+    TMStateEngine::State_e getTMState(Pid_t pid)   const { return tmStates.at(pid).getState(); }
     uint64_t getUtid(Pid_t pid)     const { return utids.at(pid); }
 
     virtual uint32_t getNackRetryStallCycles() const { return 0; }
@@ -113,7 +112,7 @@ protected:
     size_t          nThreads;
     int             lineSize;
 
-    std::vector<struct TransState>  transStates;
+    std::vector<struct TMStateEngine> tmStates;
     std::vector<TMAbortState>       abortStates;
     // The unique identifier for each tnx instance
     std::vector<uint64_t>           utids;

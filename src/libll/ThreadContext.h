@@ -237,7 +237,7 @@ public:
     // Transactional Helper Methods
     size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
-    TMState_e getTMState()  const { return htmManager ? htmManager->getState(pid) : TM_INVALID; }
+    TMStateEngine::State_e getTMState() const { return htmManager ? htmManager->getTMState(pid) : TMStateEngine::TM_INVALID; }
     uint32_t getTMAbortArg() const { return tmAbortArg; }
 
     TMContext* getTMContext() const { return tmContext; }

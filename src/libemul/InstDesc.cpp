@@ -562,7 +562,7 @@ InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context) {
     uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
     uint32_t rv = 0;
 
-    if(context->getTMState() == TM_ABORTING) {
+    if(context->getTMState() == TMStateEngine::TM_ABORTING) {
         // This is a TM recovering from abort
         context->completeAbort(inst);
         rv = context->getAbortRV();
