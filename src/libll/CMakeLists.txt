@@ -5,6 +5,7 @@ SET(ll_SOURCES
     GFlow.cpp
     Instruction.cpp
     ThreadContext.cpp
+    ThreadStats.cpp
 )
 SET(ll_HEADERS
     Events.h
@@ -13,6 +14,7 @@ SET(ll_HEADERS
     Instruction.h
     InstType.h
     ThreadContext.h
+    ThreadStats.h
 )
 
 ADD_LIBRARY(ll ${ll_SOURCES} ${ll_HEADERS})
