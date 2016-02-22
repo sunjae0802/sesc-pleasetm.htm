@@ -37,7 +37,7 @@ class SMTProcessor:public GProcessor {
 private:
     int32_t cFetchId;
     int32_t cDecodeId;
-    int32_t cIssueId;
+    int32_t issueBegin;
 
     const int32_t smtContexts;
     const int32_t firstContext;
@@ -64,7 +64,6 @@ private:
 
     void selectFetchFlow();
     void selectDecodeFlow();
-    void selectIssueFlow();
 
 protected:
     // BEGIN VIRTUAL FUNCTIONS of GProcessor

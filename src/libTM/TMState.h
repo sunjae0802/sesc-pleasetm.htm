@@ -4,7 +4,7 @@
 #include "Snippets.h"
 #include "libemul/Addressing.h"
 
-enum TMState_e { TM_INVALID, TM_RUNNING, TM_ABORTING, TM_MARKABORT };
+static const uint64_t INVALID_UTID = -1;
 enum TMAbortType_e {
     TM_ATYPE_DEFAULT            = 0,    // Aborts due to data conflict
     TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
@@ -14,7 +14,20 @@ enum TMAbortType_e {
     TM_ATYPE_INVALID            = 0xDEAD
 };
 
-static const uint64_t INVALID_UTID = -1;
+// The states in which a TMBegin instruction can be in after being executed
+enum TMBeginSubtype {
+    TM_BEGIN_INVALID            = 0, // Unitialized
+    TM_BEGIN_REGULAR            = 1, // If the transaction started without problems
+
+    TM_COMPLETE_ABORT           = 9, // Aborted transaction 're-executes' TMBegin with this state
+};
+
+// The states in which a TMCommit instruction can be in after being executed
+enum TMCommitSubtype {
+    TM_COMMIT_INVALID           = 0, // Unitialized
+    TM_COMMIT_REGULAR           = 1, // If the transaction has committed
+    TM_COMMIT_ABORTED           = 2, // The transaction failed to commit
+};
 
 class TMAbortState {
 public:
@@ -56,9 +69,10 @@ private:
     // The IAddr when we found out TM has aborted
     VAddr           abortIAddr;
 };
-class TransState {
+class TMStateEngine {
 public:
-    TransState(Pid_t pid);
+    enum State_e { TM_INVALID, TM_RUNNING, TM_ABORTING, TM_MARKABORT };
+    TMStateEngine(Pid_t pid);
 
     void begin();
     void clear();
@@ -68,18 +82,16 @@ public:
     void print() const;
 
     // Getters
-    TMState_e   getState()      const { return state; }
-    uint64_t    getUtid()       const { return utid; }
+    State_e   getState()      const { return state; }
+    static const char* getStateStr(State_e);
 
 private:
+    void triggerFail(State_e next);
+
     // The PID of the owner
     Pid_t           myPid;
     // Current state of the transaction
-    TMState_e       state;
-    // The unique identifier for each ``begin''
-    uint64_t        utid;
-    // Mono-increasing UTID
-    static uint64_t nextUtid;
+    State_e       state;
 };
 
 #endif

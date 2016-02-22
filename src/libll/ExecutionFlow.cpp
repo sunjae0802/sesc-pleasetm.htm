@@ -101,6 +101,7 @@ DInst *ExecutionFlow::executePC()
         return 0;
     VAddr vaddr=thread->getDAddr();
     thread->setDAddr(0);
+    thread->incNExedInsts();
     return DInst::createDInst(iDesc->getSescInst(),vaddr,fid,thread);
 }
 

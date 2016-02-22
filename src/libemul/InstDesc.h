@@ -40,9 +40,8 @@ namespace Mips {
 	InstDesc *emulSyscl(InstDesc *inst, ThreadContext *context);
 #if (defined TM)
     InstDesc *emulTMBegin(InstDesc *inst, ThreadContext *context);
-    InstDesc *emulTMAbort(InstDesc *inst, ThreadContext *context);
+    InstDesc *emulTMMeta(InstDesc *inst, ThreadContext *context);
     InstDesc *emulTMCommit(InstDesc *inst, ThreadContext *context);
-    InstDesc *emulTMTest(InstDesc *inst, ThreadContext *context);
 #endif
 }
 
@@ -82,7 +81,7 @@ void handleTMSeqTermRet(InstDesc *inst, ThreadContext *context);
 // HTM call/return
 void handleHTMStartCall(InstDesc *inst, ThreadContext *context);
 void handleHTMCommitCall(InstDesc *inst, ThreadContext *context);
-void handleHTMAbortCall(InstDesc *inst, ThreadContext *context);
+void handleHTMMetaCall(InstDesc *inst, ThreadContext *context);
 
 enum InstTypInfoEnum {
     // Main instruction opcode

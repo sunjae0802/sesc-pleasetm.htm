@@ -11,23 +11,13 @@
 #include "libemul/FileSys.h"
 #include "libemul/InstDesc.h"
 #include "libemul/LinuxSys.h"
+#include "ThreadStats.h"
 
 #if (defined TM)
+#include "libTM/TMCoherence.h"
 #include "libTM/TMContext.h"
+#include "libTM/TMState.h"
 #endif
-
-enum TMBeginSubtype {
-    TM_BEGIN_INVALID,
-    TM_BEGIN_REGULAR,
-    TM_BEGIN_IGNORE,
-    TM_BEGIN_NACKED,
-    TM_COMPLETE_ABORT
-};
-enum TMCommitSubtype {
-    TM_COMMIT_INVALID,
-    TM_COMMIT_REGULAR,
-    TM_COMMIT_ABORTED,
-};
 
 // Contains information for instructions that are at function boundaries about
 // the function itself. Entry point instructions (calls) contain arguments and
@@ -53,90 +43,6 @@ struct FuncBoundaryData {
     uint32_t arg1;
 };
 
-struct TimeTrackerStats {
-    TimeTrackerStats(): totalLengths(0), totalCommitted(0), totalAborted(0),
-        totalWait(0), totalMutexWait(0), totalMutex(0), totalNackStalled(0)
-    {}
-    void print() const;
-    void sum(const TimeTrackerStats& other);
-    uint64_t totalLengths;
-    uint64_t totalCommitted;
-    uint64_t totalAborted;
-    uint64_t totalWait;
-    uint64_t totalMutexWait;
-    uint64_t totalMutex;
-    uint64_t totalNackStalled;
-};
-
-// Represents a subregion within an AtomicRegion
-class AtomicSubregion {
-public:
-    enum SubregionType {
-        SR_INVALID,
-        SR_WAIT,
-        SR_TRANSACTION,
-        SR_CRITICAL_SECTION
-    };
-    AtomicSubregion(enum SubregionType t, Time_t s):
-            type(t), startAt(s), endAt(0), totalNackStalled(0) {}
-    virtual ~AtomicSubregion() {}
-
-    void markEnd(Time_t e) {
-        endAt = e;
-    }
-    enum SubregionType type;
-    Time_t      startAt;
-    Time_t      endAt;
-    uint64_t    totalNackStalled;
-};
-
-class TMSubregion: public AtomicSubregion {
-public:
-    TMSubregion(Time_t s):
-            AtomicSubregion(SR_TRANSACTION, s), aborted(false) {}
-    void markAborted(Time_t at) {
-        aborted = true;
-        markEnd(at);
-    }
-    bool        aborted;
-};
-
-class CSSubregion: public AtomicSubregion {
-public:
-    CSSubregion(Time_t s):
-            AtomicSubregion(SR_CRITICAL_SECTION, s), acquiredAt(0) {}
-    void markAcquired(Time_t at) {
-        acquiredAt = at;
-    }
-    Time_t      acquiredAt;
-};
-
-// Used to track timing statistics of atomic regions (between tm_begin and tm_end).
-// All timing is done at retire-time of DInsts.
-struct AtomicRegionStats {
-    AtomicRegionStats() { clear(); }
-    void init(VAddr pc, Time_t at) {
-        clear();
-        startPC = pc;
-        startAt = at;
-    }
-    void markEnd(Time_t at) {
-        endAt = at;
-    }
-    void clear();
-    void markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData);
-    void markRetireTM(DInst* dinst);
-    void addNackStall(DInst* dinst, Time_t prevRetired);
-    void calculate(TimeTrackerStats* p_stats);
-    typedef std::vector<AtomicSubregion*> Subregions;
-
-    VAddr               startPC;
-    Time_t              startAt;
-    Time_t              endAt;
-    AtomicSubregion*    p_current;
-    Subregions          subregions;
-};
-
 // Holds state that is the result of a single instruction result. This data
 // generated at emul stage, and is later passed to the corresponding DInst.
 class InstContext {
@@ -150,6 +56,8 @@ public:
     bool wasNacked;
     // Cycles for stalling retire of a tm instruction
     uint32_t    tmLat;
+    // User-passed HTM command arg
+    uint32_t    tmArg;
     // If this instruction is a function boundary, this contains info about that function
     std::vector<FuncBoundaryData> funcData;
     std::set<Pid_t> needRefetch;
@@ -172,8 +80,7 @@ public:
 
     Time_t prevDInstRetired;
     AtomicRegionStats       currentRegion;
-    static TimeTrackerStats timeTrackerStats;
-    TimeTrackerStats        myTimeStats;
+    TimeTrackerStats        timeStats;
 private:
     void initialize(bool child);
 	void cleanup();
@@ -193,10 +100,8 @@ private:
     TMContext *tmContext;
     // Depth of nested transactions
     size_t      tmDepth;
-    // Where user had called HTM "instructions"
-    VAddr tmCallsite;
-    // User-passed HTM command arg
-    uint32_t tmArg;
+    // User-passed HTM abort argument (valid from abort-begin)
+    uint32_t    tmAbortArg;
     // Common set of fallback mutex addresses to check if the abort is caused by a fallback
     static std::set<uint32_t> tmFallbackMutexCAddrs;
     std::set<VAddr> refetchAddrs;
@@ -230,6 +135,8 @@ private:
     size_t    nDInsts;
     // Number of retired DInsts during this thread's lifetime
     size_t    nRetiredInsts;
+    // Number of executed DInsts during this thread's lifetime
+    size_t    nExedInsts;
 
     // HACK to balance calls/returns
     typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
@@ -272,19 +179,14 @@ public:
     // Transactional Helper Methods
     size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
-    TMState_e getTMState()  const { return tmCohManager ? tmCohManager->getState(pid) : TM_INVALID; }
+    TMStateEngine::State_e getTMState() const { return htmManager ? htmManager->getTMState(pid) : TMStateEngine::TM_INVALID; }
+    uint32_t getTMAbortArg() const { return tmAbortArg; }
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
 
-    void setTMCallsite(VAddr ra) { tmCallsite = ra; }
-    VAddr getTMCallsite() const { return tmCallsite; }
-
     bool getTMMemopHadStalled() const { return tmMemopHadStalled; }
     void clearTMMemopHadStalled() { tmMemopHadStalled = false; }
-
-    // TM getters
-    uint32_t getTMArg()       const { return tmArg; }
 
     // Transactional Methods
     void setTMlibUserTid(uint32_t arg);
@@ -294,19 +196,18 @@ public:
     TMBCStatus abortTransaction(InstDesc* inst);
 
     TMBCStatus userBeginTM(InstDesc* inst, uint32_t arg) {
-        tmArg = arg;
+        instContext.tmArg = arg;
         TMBCStatus status = beginTransaction(inst);
         return status;
     }
     TMBCStatus userCommitTM(InstDesc* inst, uint32_t arg) {
-        tmArg = arg;
+        instContext.tmArg = arg;
         TMBCStatus status = commitTransaction(inst);
         return status;
     }
-    void userAbortTM(InstDesc* inst, uint32_t arg) {
-        tmArg       = arg;
-        abortTransaction(inst, TM_ATYPE_USER);
-    }
+    void userAbortTM(InstDesc* inst, uint32_t arg);
+    void syscallAbortTM(InstDesc* inst);
+
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
     uint32_t getAbortRV();
@@ -316,7 +217,7 @@ public:
     // memop NACK handling methods
     void startRetryTimer() {
         tmMemopHadStalled = true;
-        startStalling(tmCohManager->getNackRetryStallCycles(this));
+        startStalling(htmManager->getNackRetryStallCycles(this));
     }
     static bool isFallbackMutexAddr(VAddr cAddr) {
         return tmFallbackMutexCAddrs.find(cAddr) != tmFallbackMutexCAddrs.end();
@@ -370,6 +271,7 @@ public:
     static ThreadContext *getMainThreadContext(void) {
         return &(*(pid2context[0]));
     }
+    static void printPCs(void);
 
     // BEGIN Memory Mapping
     bool isValidDataVAddr(VAddr vaddr) const {
@@ -476,6 +378,12 @@ public:
     }
     inline size_t getNRetiredInsts(void) {
         return nRetiredInsts;
+    }
+    inline void incNExedInsts(void) {
+        nExedInsts++;
+    }
+    inline size_t getNExedInsts(void) {
+        return nExedInsts;
     }
     static inline int32_t nextReady(int32_t startPid) {
         int32_t foundPid=startPid;
@@ -767,10 +675,12 @@ public:
     static bool inMain;
     static size_t numThreads;
 
-    std::ofstream tracefile;
+    static std::ofstream tracefile;
     static std::ofstream& getTracefile() {
-        return getMainThreadContext()->tracefile;
+        return tracefile;
     }
+    static void openTraceFile();
+    static void closeTraceFile();
 };
 
 #endif // THREADCONTEXT_H

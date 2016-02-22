@@ -29,11 +29,11 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 ThreadContext::ContextVector ThreadContext::pid2context;
 bool ThreadContext::ff;
 Time_t ThreadContext::resetTS = 0;
-TimeTrackerStats ThreadContext::timeTrackerStats;
 std::set<uint32_t> ThreadContext::tmFallbackMutexCAddrs;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
+std::ofstream ThreadContext::tracefile;
 size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
@@ -41,6 +41,7 @@ void InstContext::clear() {
     setConflict = false;
     wasNacked   = false;
     tmLat       = 0;
+    tmArg       = 0;
     funcData.clear();
     needRefetch.clear();
 
@@ -49,42 +50,42 @@ void InstContext::clear() {
 }
 
 void ThreadContext::initialize(bool child) {
-    if(pid == getMainThreadContext()->getPid()) {
-        char filename[256];
-        sprintf(filename, "datafile.out");
-        tracefile.open(filename);
-    }
-
     prevDInstRetired = 0;
     nRetiredInsts = 0;
+    nExedInsts = 0;
     spinning    = false;
 
 #if (defined TM)
-    tmArg       = 0;
+    tmAbortArg  = 0;
     tmContext   = NULL;
     tmDepth     = 0;
-    tmCallsite  = 0;
     tmlibUserTid= INVALID_USER_TID;
     tmMemopHadStalled = false;
 #endif
 
-    getTracefile() << ThreadContext::numThreads << " 0 "
-            << nRetiredInsts << ' ' << globalClock << std::endl;
     ThreadContext::numThreads++;
 }
 
 void ThreadContext::cleanup() {
     ThreadContext::numThreads--;
-    getTracefile() << ThreadContext::numThreads << " 1 "
-                << nRetiredInsts << ' ' << globalClock << std::endl;
+}
 
-    ThreadContext::timeTrackerStats.sum(myTimeStats);
+void ThreadContext::openTraceFile() {
+    char filename[256];
+    sprintf(filename, "datafile.out");
+    tracefile.open(filename);
+}
 
-	if(pid == getMainThreadContext()->getPid()) {
-        ThreadContext::timeTrackerStats.print();
-        if(tracefile.is_open()) {
-            tracefile.close();
-        }
+void ThreadContext::closeTraceFile() {
+    TimeTrackerStats allTimerStats;
+
+    for(ThreadContext* c: ThreadContext::pid2context) {
+        allTimerStats.sum(c->timeStats);
+    }
+
+    allTimerStats.print();
+    if(getTracefile().is_open()) {
+        getTracefile().close();
     }
 }
 
@@ -98,17 +99,17 @@ void ThreadContext::setTMlibUserTid(uint32_t arg) {
 }
 TMBCStatus ThreadContext::beginTransaction(InstDesc* inst) {
     if(tmDepth > 0) {
-        fail("Transaction nesting not complete\n");
+        fail("[%d] Transaction nesting not complete\n", pid);
     }
-    TMBCStatus status = tmCohManager->begin(inst, this, &instContext);
+    TMBCStatus status = htmManager->begin(inst, this, &instContext);
     if(instContext.tmBeginSubtype == TM_BEGIN_INVALID) {
         fail("tmBeginSubtype invalid\n");
     }
     switch(status) {
         case TMBC_SUCCESS: {
-            const TransState& transState = tmCohManager->getTransState(pid);
+            tmAbortArg  = 0;
 
-            uint64_t utid = transState.getUtid();
+            uint64_t utid = htmManager->getUtid(pid);
             tmContext   = new TMContext(this, inst, utid);
             tmContext->saveContext();
             saveCallRetStack();
@@ -130,10 +131,10 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     }
 
     // Save UTID before committing
-    uint64_t utid = tmCohManager->getUtid(pid);
-    size_t numWrites = tmCohManager->getNumWrites(pid);
+    uint64_t utid = htmManager->getUtid(pid);
+    size_t numWrites = htmManager->getNumWrites(pid);
 
-    TMBCStatus status = tmCohManager->commit(inst, this, &instContext);
+    TMBCStatus status = htmManager->commit(inst, this, &instContext);
     if(instContext.tmCommitSubtype == TM_COMMIT_INVALID) {
         fail("tmCommitSubtype invalid\n");
     }
@@ -163,24 +164,30 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
     }
     return status;
 }
-TMBCStatus ThreadContext::abortTransaction(InstDesc* inst, TMAbortType_e abortType) {
-    tmCohManager->markAbort(inst, this, abortType);
+void ThreadContext::userAbortTM(InstDesc* inst, uint32_t arg) {
+    instContext.tmArg = arg;
+    tmAbortArg        = arg;
+    htmManager->markUserAbort(inst, this, arg);
 
-    return abortTransaction(inst);
+    abortTransaction(inst);
 }
+void ThreadContext::syscallAbortTM(InstDesc* inst) {
+    htmManager->markSyscallAbort(inst, this);
+
+    abortTransaction(inst);
+}
+
 TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     if(tmContext == NULL) {
         fail("Abort fail: tmContext is NULL\n");
     }
 
     // Save UTID before aborting
-    uint64_t utid = tmCohManager->getUtid(pid);
+    uint64_t utid = htmManager->getUtid(pid);
 
-    TMBCStatus status = tmCohManager->abort(inst, this, &instContext);
+    TMBCStatus status = htmManager->abort(inst, this, &instContext);
     switch(status) {
         case TMBC_SUCCESS: {
-            const TransState& transState = tmCohManager->getTransState(pid);
-
             // Since we jump to the outer-most context, find it first
             TMContext* rootTMContext = tmContext;
             while(rootTMContext->getParentContext()) {
@@ -211,19 +218,18 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
 }
 
 void ThreadContext::completeAbort(InstDesc* inst) {
-    tmCohManager->completeAbort(inst, this, &instContext);
+    htmManager->completeAbort(inst, this, &instContext);
 }
 
 uint32_t ThreadContext::getAbortRV() {
     // Get abort state
-    const TransState &transState = tmCohManager->getTransState(pid);
-    const TMAbortState& abortState = tmCohManager->getAbortState(pid);
+    const TMAbortState& abortState = htmManager->getAbortState(pid);
 
     // LSB is 1 to show that this is an abort
     uint32_t abortRV = 1;
 
     // bottom 8 bits are reserved
-    abortRV |= tmArg << 8;
+    abortRV |= tmAbortArg << 8;
     // Set aborter Pid in upper bits
     abortRV |= (abortState.getAborterPid()) << 12;
 
@@ -254,13 +260,13 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
     }
 }
 void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
-    VAddr mutexCAddr = tmCohManager->addrToCacheLine(pFallbackMutex);
+    VAddr mutexCAddr = htmManager->addrToCacheLine(pFallbackMutex);
     ThreadContext::tmFallbackMutexCAddrs.insert(mutexCAddr);
-    tmCohManager->beginFallback(pid);
+    htmManager->beginFallback(pid);
 }
 
 void ThreadContext::completeFallback() {
-    tmCohManager->completeFallback(pid);
+    htmManager->completeFallback(pid);
 }
 
 #endif
@@ -270,6 +276,13 @@ ThreadContext *ThreadContext::getContext(Pid_t pid)
     I(pid>=0);
     I((size_t)pid<pid2context.size());
     return pid2context[pid];
+}
+
+void ThreadContext::printPCs(void)
+{
+    for(ThreadContext* c: ThreadContext::pid2context) {
+        printf("[%d]: 0x%lx (%ld/%ld)\n", c->getPid(), c->getIAddr(), c->getNExedInsts(), c->getNRetiredInsts());
+    }
 }
 
 void ThreadContext::setMode(ExecMode mode) {
@@ -757,28 +770,30 @@ void ThreadContext::markRetire(DInst* dinst) {
     const Instruction* inst = dinst->getInst();
 
     if(inst->isTM()) {
-        dinst->traceTM();
         currentRegion.markRetireTM(dinst);
     }
 
     if(dinst->getTMMemopHadStalled()) {
-        currentRegion.addNackStall(dinst, prevDInstRetired);
+        currentRegion.newAREvent(AR_EVENT_MEMNACK_START, prevDInstRetired);
+        currentRegion.newAREvent(AR_EVENT_MEMNACK_END);
     }
 
     // Track function boundaries, by for example initializing and ending atomic regions.
     for(std::vector<FuncBoundaryData>::const_iterator i_funcData = dinst->getInstContext().funcData.begin();
             i_funcData != dinst->getInstContext().funcData.end(); ++i_funcData) {
-        dinst->traceFunction(*i_funcData);
-
         switch(i_funcData->funcName) {
             case FUNC_TM_BEGIN:
-                currentRegion.init(dinst->getInst()->getAddr(), globalClock);
+                currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
                 break;
-            case FUNC_TM_END:
+            case FUNC_TM_END: {
+                TimeTrackerStats myTimeStats;
                 currentRegion.markEnd(globalClock);
                 currentRegion.calculate(&myTimeStats);
                 currentRegion.clear();
+
+                timeStats.sum(myTimeStats);
                 break;
+            }
             default:
                 currentRegion.markRetireFuncBoundary(dinst, *i_funcData);
                 break;
@@ -788,148 +803,3 @@ void ThreadContext::markRetire(DInst* dinst) {
     prevDInstRetired = globalClock;
 }
 
-void TimeTrackerStats::print() const {
-    uint64_t totalOther = totalLengths -
-        (totalCommitted + totalAborted + totalWait
-            + totalMutexWait + totalMutex + totalNackStalled);
-    std::cout << "Committed: " << totalCommitted << "\n";
-    std::cout << "Aborted: " << totalAborted << "\n";
-    std::cout << "WaitForMutex: " << totalMutexWait << "\n";
-    std::cout << "InMutex: " << totalMutex << "\n";
-    std::cout << "Wait: " << totalWait << "\n";
-    std::cout << "NACKStall: " << totalNackStalled << "\n";
-    std::cout << "Other: " << totalOther << "\n";
-}
-
-/// Add other to this statistics structure
-void TimeTrackerStats::sum(const TimeTrackerStats& other) {
-    totalLengths    += other.totalLengths;
-    totalCommitted  += other.totalCommitted;
-    totalAborted    += other.totalAborted;
-    totalWait       += other.totalWait;
-    totalMutexWait  += other.totalMutexWait;
-    totalMutex      += other.totalMutex;
-    totalNackStalled+= other.totalNackStalled;
-}
-
-/// If the DInst is at a function boundary, update statistics
-void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData) {
-    switch(funcData.funcName) {
-        case FUNC_TM_BEGIN_FALLBACK:
-            if(funcData.isCall) {
-                p_current = new CSSubregion(globalClock);
-            } else {
-                CSSubregion* p_cs = dynamic_cast<CSSubregion*>(p_current);
-                p_cs->markAcquired(globalClock);
-            }
-            break;
-        case FUNC_TM_END_FALLBACK:
-            if(funcData.isCall) {
-                p_current->markEnd(globalClock);
-                subregions.push_back(p_current);
-                p_current = NULL;
-            }
-            break;
-        case FUNC_TM_WAIT:
-            if(funcData.isCall) {
-                p_current = new AtomicSubregion(AtomicSubregion::SR_WAIT, globalClock);
-            } else {
-                p_current->markEnd(globalClock);
-                subregions.push_back(p_current);
-                p_current = NULL;
-            }
-            break;
-        default:
-            // Do nothing
-            break;
-    } // end switch(funcName)
-}
-
-/// If the DInst is a TM instruction, update statistics
-void AtomicRegionStats::markRetireTM(DInst* dinst) {
-    Pid_t pid = dinst->context->getPid();
-
-    if(dinst->tmAbortCompleteOp()) {
-        TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_current);
-        p_tm->markAborted(globalClock);
-        subregions.push_back(p_current);
-        p_current = NULL;
-    } else if(dinst->tmBeginOp()) {
-        p_current = new TMSubregion(globalClock);
-    } else if(dinst->tmCommitOp()) {
-        if(p_current == NULL) {
-            fail("%d current is NULL when committing\n", pid);
-        }
-        p_current->markEnd(globalClock);
-        subregions.push_back(p_current);
-        p_current = NULL;
-    }
-}
-
-void AtomicRegionStats::addNackStall(DInst* dinst, Time_t prevRetired) {
-    Pid_t pid = dinst->context->getPid();
-    if(p_current == NULL) {
-        fail("[%d] Nacked MemOP outside of a atomic subregion?\n", pid);
-    }
-    p_current->totalNackStalled += globalClock - prevRetired;
-}
-
-/// Add this region's statistics to p_stats.
-void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
-    // Make sure the stats are valid
-    if(startPC == 0) {
-        fail("Un-initialized region");
-    }
-    if(startAt == 0 || endAt == 0) {
-        fail("Unclosed region");
-    }
-
-    // Compute total length
-    p_stats->totalLengths += endAt - startAt;
-
-    // Compute subregions
-    Subregions::iterator i_subregion;
-    for(i_subregion = subregions.begin(); i_subregion != subregions.end(); ++i_subregion) {
-        AtomicSubregion* p_subregion = *i_subregion;
-        switch(p_subregion->type) {
-            case AtomicSubregion::SR_TRANSACTION: {
-                TMSubregion* p_tm = dynamic_cast<TMSubregion*>(p_subregion);
-                if(p_tm->aborted) {
-                    p_stats->totalAborted   += p_tm->endAt - p_tm->startAt - p_tm->totalNackStalled;
-                    p_stats->totalNackStalled += p_tm->totalNackStalled;
-                } else {
-                    p_stats->totalCommitted += p_tm->endAt - p_tm->startAt - p_tm->totalNackStalled;
-                    p_stats->totalNackStalled += p_tm->totalNackStalled;
-                }
-                break;
-            }
-            case AtomicSubregion::SR_WAIT: {
-                p_stats->totalWait +=  p_subregion->endAt - p_subregion->startAt;
-                if(p_subregion->totalNackStalled > 0) {
-                    fail("Wait region has NACK stall\n");
-                }
-                break;
-            }
-            case AtomicSubregion::SR_CRITICAL_SECTION: {
-                CSSubregion* p_cs = dynamic_cast<CSSubregion*>(p_subregion);
-                p_stats->totalMutexWait += p_cs->acquiredAt - p_cs->startAt;
-                p_stats->totalMutex     += p_cs->endAt - p_cs->acquiredAt;
-                if(p_subregion->totalNackStalled > 0) {
-                    fail("CS has NACK stall\n");
-                }
-                break;
-            }
-            default:
-                fail("Unhandled Subregion type\n");
-        }
-    } // end foreach subregion
-}
-void AtomicRegionStats::clear() {
-    startPC = startAt = endAt = 0;
-    p_current = NULL;
-    while(subregions.size() > 0) {
-        AtomicSubregion* p_subregion = subregions.back();
-        subregions.pop_back();
-        delete p_subregion;
-    }
-}

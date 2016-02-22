@@ -11,6 +11,9 @@ using namespace std;
  *  TMLine
  *********************************************************/
 void TMLine::addReader(Pid_t reader) {
+    if(isValid() == false) {
+        fail("trying to add reader to invalid line\n");
+    }
     if(!transactional) {
         fail("A non-TM line should not add reader\n");
     }
@@ -26,6 +29,9 @@ void TMLine::makeDirty() {
     dirty = true;
 }
 void TMLine::makeTransactionalDirty(Pid_t writer) {
+    if(isValid() == false) {
+        fail("trying to mark TMDirty to invalid line\n");
+    }
     if(!transactional) {
         fail("A non-TM line should use dirty\n");
     }
@@ -65,10 +71,23 @@ void TMLine::getAccessors(std::set<Pid_t>& accessors) const {
     }
     accessors.insert(tmReaders.begin(), tmReaders.end());
 }
+void TMLine::validate(VAddr t, VAddr c) {
+    if(isValid()) {
+        fail("Line should be invalidated before validating: 0x%lx", caddr);
+    }
+    if(t == 0) {
+        fail("New tag should not be null\n");
+    }
+    if(c == 0) {
+        fail("New caddr should not be null\n");
+    }
+    setTag(t);
+    caddr = c;
+}
 void TMLine::invalidate() {
     dirty           = false;
     transactional   = false;
-    caddr           = 0;
+    caddr           = INVALID_CADDR;
     tmWriter        = INVALID_PID;
     tmReaders.clear();
     StateGeneric::invalidate();
@@ -108,6 +127,10 @@ TMLine *CacheAssocTM::lookupLine(VAddr addr)
     VAddr tag = this->calcTag(addr);
     TMLine **theSet = &content[this->calcIndex4Tag(tag)];
 
+    if(tag == 0) {
+        fail("Cannot lookup null: 0x%lx\n", addr);
+    }
+
     // Check most typical case
     if ((*theSet)->getTag() == tag) {
         return *theSet;
@@ -144,6 +167,10 @@ TMLine *CacheAssocTM::findLine(VAddr addr)
 {
     VAddr tag = this->calcTag(addr);
     TMLine **theSet = &content[this->calcIndex4Tag(tag)];
+
+    if(tag == 0) {
+        fail("Cannot find null: 0x%lx\n", addr);
+    }
 
     // Check most typical case
     if ((*theSet)->getTag() == tag) {
@@ -210,73 +237,6 @@ TMLine
     return lineFree;
 }
 
-///
-// Search through the set indicated by addr, and return the oldest invalid line.
-// If all lines are valid, the return the LRU line instead. Either case the returned
-// line is now the MRU.
-TMLine
-*CacheAssocTM::findOldestLine2Replace(VAddr addr)
-{
-    VAddr tag    = this->calcTag(addr);
-    TMLine **theSet = &content[this->calcIndex4Tag(tag)];
-
-    TMLine **lineFree=0;
-    TMLine **setEnd = theSet + assoc;
-
-    // Always return invalid line if available
-    LineInvalidComparator invalCmp;
-    lineFree = findOldestLine(theSet, invalCmp);
-
-    if (lineFree == NULL) {
-        // Else return the oldest line
-        lineFree = setEnd-1;
-    }
-
-    // No matter what is the policy, move lineFree to the *theSet. This
-    // increases locality
-    if (lineFree == theSet) {
-        return *lineFree; // Hit in the first position
-    } else {
-        moveToMRU(theSet, lineFree);
-        return *theSet;
-    }
-}
-
-///
-// Search through the set indicated by addr, and return the oldest line that
-// satisfies comp. If there is any invalid line return that instead, however.
-// and if no line is found, return NULL. The returned line is moved to MRU.
-TMLine
-*CacheAssocTM::findOldestLine2Replace(VAddr addr, const LineComparator& comp)
-{
-    VAddr tag    = this->calcTag(addr);
-    TMLine **theSet = &content[this->calcIndex4Tag(tag)];
-
-    TMLine **lineFree=0;
-    TMLine **setEnd = theSet + assoc;
-
-    // Always return invalid line if available
-    LineInvalidComparator invalCmp;
-    lineFree = findOldestLine(theSet, invalCmp);
-
-    if (lineFree == NULL) {
-        // Return oldest line that satisfies comp
-        lineFree = findOldestLine(theSet, comp);
-        if (lineFree == NULL) {
-            return NULL;
-        }
-    }
-
-    // No matter what is the policy, move lineFree to the *theSet. This
-    // increases locality
-    if (lineFree == theSet) {
-        return *lineFree; // Hit in the first possition
-    } else {
-        moveToMRU(theSet, lineFree);
-        return *theSet;
-    }
-}
-
 TMLine
 *CacheAssocTM::findLine2Replace(VAddr addr)
 {
@@ -286,14 +246,6 @@ TMLine
     TMLine *replaced = findLine2Replace(theSet);
     if(replaced == NULL) {
         fail("Replacing line is NULL!\n");
-    }
-
-    // Do various checks to see if replaced line is correctly chosen
-    LineTMDirtyComparator tmDirtyComparator;
-    if(replaced->isValid() && replaced->isTransactional() && replaced->isDirty()) {
-        if(countLines(theSet, tmDirtyComparator) < assoc) {
-            fail("Evicted transactional line too early: %d\n", countLines(theSet, tmDirtyComparator));
-        }
     }
 
     VAddr replTag = replaced->getTag();
@@ -314,16 +266,6 @@ TMLine
     LineInvalidComparator invalCmp;
     line2Replace = findOldestLine(theSet, invalCmp);
 
-    if (line2Replace == nullptr) {
-        // Or nonTM line
-        LineNonTMComparator nonTMCmp;
-        line2Replace = findOldestLine(theSet, nonTMCmp);
-    }
-    if(line2Replace == nullptr) {
-        // Or TM clean
-        LineNonTMOrCleanComparator nonTMCleanCmp;
-        line2Replace = findOldestLine(theSet, nonTMCleanCmp);
-    }
     if(line2Replace == nullptr) {
         // Or give up and return the oldest line
         line2Replace = setEnd-1;
@@ -375,7 +317,7 @@ CacheAssocTM::countLines(TMLine **theSet, const LineComparator& comp) const
 // Collect all transactional lines in the core.
 void CacheAssocTM::collectLines(std::vector<TMLine*>& lines, const LineComparator& comp) {
     for(uint32_t i = 0; i < numLines; i++) {
-        TMLine* line = mem + i;
+        TMLine* line = content[i];
         if (comp(line)) {
             lines.push_back(line);
         }

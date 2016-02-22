@@ -1,0 +1,51 @@
+PROJECT(core)
+
+SET(core_SOURCES
+    BPred.cpp
+    Cluster.cpp
+    DepWindow.cpp
+    DInst.cpp
+    FetchEngine.cpp
+    GMemoryOS.cpp
+    GMemorySystem.cpp
+    GProcessor.cpp
+    LDSTBuffer.cpp
+    LDSTQ.cpp
+    MemObj.cpp
+    MemRequest.cpp
+    OSSim.cpp
+    Pipeline.cpp
+    ProcessId.cpp
+    Processor.cpp
+    Resource.cpp
+    RiskLoadProf.cpp
+    RunningProcs.cpp
+    SMTProcessor.cpp
+)
+set(core_HEADERS
+    BPred.h
+    CacheFlags.h
+    Cluster.h
+    DepWindow.h
+    DInst.h
+    EnergyMgr.h
+    FetchEngine.h
+    GMemoryOS.h
+    GMemorySystem.h
+    GProcessor.h
+    LDSTBuffer.h
+    LDSTQ.h
+    MemObj.h
+    MemRequest.h
+    OSSim.h
+    Pipeline.h
+    ProcessId.h
+    Processor.h
+    Resource.h
+    RiskLoadProf.h
+    RunningProcs.h
+    SMTProcessor.h
+)
+
+ADD_LIBRARY(core ${core_SOURCES} ${core_HEADERS})
+TARGET_LINK_LIBRARIES(core suc TM ll)

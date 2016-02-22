@@ -25,6 +25,10 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 #include "MESIProtocol.h"
 
+#if (defined CHECK_STALL)
+extern unsigned long long lastFin;
+#endif
+
 // This cache works under the assumption that caches above it in the memory
 // hierarchy are write-through caches
 
@@ -192,7 +196,7 @@ void SMPCache::access(MemRequest *mreq)
 
     I(addr >= 1024);
 
-    if(mreq->getDInst()->wasL1Hit()) {
+    if(mreq->isDataReq() && mreq->getDInst() && mreq->getDInst()->wasL1Hit()) {
         hitL1CacheCB::scheduleAbs(nextSlot(), this, mreq);
         return;
     }
@@ -549,6 +553,9 @@ void SMPCache::concludeAccess(MemRequest *mreq)
     outsReq->retire(addr);
     mutExclBuffer->retire(addr);
 
+#if (defined CHECK_STALL)
+    lastFin = globalClock;
+#endif
 }
 
 SMPCache::Line *SMPCache::allocateLine(PAddr addr, CallbackBase *cb,
