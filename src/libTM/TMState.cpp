@@ -9,7 +9,7 @@
 using namespace std;
 
 TMStateEngine::TMStateEngine(Pid_t pid): myPid(pid) {
-    state       = TM_INVALID;
+    myState       = TM_INVALID;
 }
 const char* TMStateEngine::getStateStr(State_e st) {
     const char* str = "??????";
@@ -23,51 +23,51 @@ const char* TMStateEngine::getStateStr(State_e st) {
     return str;
 }
 void TMStateEngine::print() const {
-    std::cout << myPid << " " << getStateStr(state) << " \n";
+    std::cout << myPid << " " << getStateStr(myState) << " \n";
 }
-void TMStateEngine::triggerFail(State_e next) {
+void TMStateEngine::triggerFail(State_e nextState) {
     fail("[%d] Invalid state transition(%s->%s)\n",
-        myPid, getStateStr(state), getStateStr(next));
+        myPid, getStateStr(), getStateStr(nextState));
 }
 void TMStateEngine::begin() {
-    State_e next = TM_RUNNING;
-    switch(state) {
+    State_e nextState = TM_RUNNING;
+    switch(myState) {
         case TM_INVALID:
-            state = next;
+            myState = nextState;
             break;
         default:
-            triggerFail(next);
+            triggerFail(nextState);
     }
 }
 void TMStateEngine::markAbort() {
-    State_e next = TM_MARKABORT;
-    switch(state) {
+    State_e nextState = TM_MARKABORT;
+    switch(myState) {
         case TM_RUNNING:
-            state = next;
+            myState = nextState;
             break;
         default:
-            triggerFail(next);
+            triggerFail(nextState);
     }
 }
 void TMStateEngine::startAborting() {
-    State_e next = TM_ABORTING;
-    switch(state) {
+    State_e nextState = TM_ABORTING;
+    switch(myState) {
         case TM_MARKABORT:
-            state = next;
+            myState = nextState;
             break;
         default:
-            triggerFail(next);
+            triggerFail(nextState);
     }
 }
 void TMStateEngine::clear() {
-    State_e next = TM_INVALID;
-    switch(state) {
+    State_e nextState = TM_INVALID;
+    switch(myState) {
         case TM_RUNNING:
         case TM_ABORTING:
-            state = next;
+            myState = nextState;
             break;
         default:
-            triggerFail(next);
+            triggerFail(nextState);
     }
 }
 

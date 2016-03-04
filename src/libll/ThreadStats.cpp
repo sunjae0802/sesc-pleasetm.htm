@@ -92,6 +92,7 @@ void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryD
                 } else if(funcData.arg0 == 1) {
                     newAREvent(AR_EVENT_BACKOFF_BEGIN);
                 } else {
+                    fail("Unhandled wait arg! %d\n", funcData.arg0);
                 }
             } else {
                 newAREvent(AR_EVENT_WAIT_END);
@@ -240,6 +241,7 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
                 break;
             }
             default:
+                printEvents(event);
                 fail("Unknown event: %d\n", event.getType());
         }
     }
