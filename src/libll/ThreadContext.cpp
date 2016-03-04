@@ -34,6 +34,7 @@ bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
 std::ofstream ThreadContext::tracefile;
+bool ThreadContext::tracefileOpen = false;
 size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
@@ -60,28 +61,36 @@ void ThreadContext::initialize(bool child) {
 #endif
 
     ThreadContext::numThreads++;
+    if(ThreadContext::numThreads == 1) {
+        ThreadContext::openTraceFile();
+    }
 }
 
 void ThreadContext::cleanup() {
     ThreadContext::numThreads--;
+    if(ThreadContext::tracefileOpen) {
+        ThreadContext::closeTraceFile();
+    }
 }
 
 void ThreadContext::openTraceFile() {
     char filename[256];
     sprintf(filename, "datafile.out");
     tracefile.open(filename);
+    tracefileOpen = true;
 }
 
 void ThreadContext::closeTraceFile() {
     TimeTrackerStats allTimerStats;
 
-    for(ThreadContext* c: ThreadContext::pid2context) {
+    for(ThreadContext* c: pid2context) {
         allTimerStats.sum(c->timeStats);
     }
 
     allTimerStats.print();
-    if(getTracefile().is_open()) {
-        getTracefile().close();
+    if(tracefile.is_open()) {
+        tracefile.close();
+        tracefileOpen = false;
     }
 }
 
@@ -532,7 +541,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext::pointer context=pid2context[nowPid];
+            ThreadContext* context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());
@@ -548,7 +557,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext::pointer context=pid2context[nowPid];
+            ThreadContext* context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());

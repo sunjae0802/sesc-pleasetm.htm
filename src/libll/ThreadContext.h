@@ -648,13 +648,14 @@ public:
     void dumpCallStack(void);
     void clearCallStack(void);
 
-public:
     // Event tracing
     bool spinning;
     static bool inMain;
     static size_t numThreads;
 
     static std::ofstream tracefile;
+public:
+    static bool tracefileOpen;
     static std::ofstream& getTracefile() {
         return tracefile;
     }
