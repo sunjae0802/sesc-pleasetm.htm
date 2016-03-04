@@ -139,6 +139,8 @@ private:
 
 public:
     void markRetire(DInst* dinst);
+    // Indicates whether pthread_spin_lock event has been noted
+    bool      spinning;
 
     // Function call/return hook handling
     void createCall(enum FuncName funcName, uint32_t retA, uint32_t arg0, uint32_t arg1) {
@@ -649,18 +651,17 @@ public:
     void clearCallStack(void);
 
     // Event tracing
-    bool spinning;
     static bool inMain;
     static size_t numThreads;
-
     static std::ofstream tracefile;
-public:
     static bool tracefileOpen;
+
+    static void openTraceFile();
+    static void closeTraceFile();
+public:
     static std::ofstream& getTracefile() {
         return tracefile;
     }
-    static void openTraceFile();
-    static void closeTraceFile();
 };
 
 #endif // THREADCONTEXT_H
