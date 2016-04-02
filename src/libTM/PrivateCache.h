@@ -52,7 +52,6 @@ public:
     void markTransactional() {
         transactional = true;
     }
-    void clearTransactional();
     void clearTransactional(Pid_t p);
     virtual void invalidate();
 };
