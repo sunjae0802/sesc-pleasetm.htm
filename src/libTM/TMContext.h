@@ -26,7 +26,7 @@ public:
     void    saveContext();
     void    restoreContext();
     void    flushMemory() {
-        cache.flush(context);
+        cache2.flush(context);
     }
 
 private:
@@ -38,13 +38,16 @@ private:
     uint64_t    utid;         // Unique transaction identifier
     RegVal      regs[NumOfRegs];      // Int Register Backup
     TMStorage   cache;        // The Memory Cache
+    TMStorage2  cache2;        // The Memory Cache
     TMContext  *parent;      // Parent Transaction
 };
 
 template<class T>
 void TMContext::cacheAccess(VAddr addr, T oval, T* p_val) {
+#if 0
     T val = oval;
     bool found = false;
+    cache.loadLine(context, addr);
 
     if(sizeof(T) == 1) {
         val = (T)cache.load8(addr, &found);
@@ -57,17 +60,27 @@ void TMContext::cacheAccess(VAddr addr, T oval, T* p_val) {
     } else {
         assert(0);
     }
+#endif
+    cache2.loadLine(context, addr);
+    T newval = cache2.load<T>(addr);
 
+#if 0
     if (!found) {
-        *p_val = oval;
+        if(oval != newval) { fail("0x%lx != 0x%lx\n", oval, newval); }
     } else {
-        *p_val = val;
+        if(val != newval) { fail("0x%lx != 0x%lx\n", val, newval); }
     }
+#endif
+    *p_val = newval;
 }
 
 template<class T>
 void TMContext::cacheWrite(VAddr addr, T val) {
-    cache.store(context, addr, val);
+    //cache.loadLine(context, addr);
+    //cache.store(context, addr, val);
+
+    cache2.loadLine(context, addr);
+    cache2.store<T>(context, addr, val);
 }
 
 #endif
