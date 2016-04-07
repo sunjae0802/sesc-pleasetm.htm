@@ -12,7 +12,9 @@ TimeTrackerStats::TimeTrackerStats():
     committed(0),
     aborted(0),
     activeFBWait(0),
-    backoffWait(0) {
+    backoffWait(0),
+    hgWait(0)
+{
 }
 uint64_t TimeTrackerStats::totalAccounted() const {
     return inMutex
@@ -21,6 +23,7 @@ uint64_t TimeTrackerStats::totalAccounted() const {
         + aborted
         + activeFBWait
         + backoffWait
+        + hgWait
     ;
 }
 
@@ -37,6 +40,7 @@ void TimeTrackerStats::print() const {
     std::cout << "Aborted: "        << aborted      << "\n";
     std::cout << "ActiveFBWait: "   << activeFBWait << "\n";
     std::cout << "BackoffWait: "    << backoffWait  << "\n";
+    std::cout << "HGWait: "         << hgWait  << "\n";
     std::cout << "Other: "          << totalOther   << std::endl;
 }
 
@@ -49,6 +53,7 @@ void TimeTrackerStats::sum(const TimeTrackerStats& other) {
     aborted         += other.aborted;
     activeFBWait    += other.activeFBWait;
     backoffWait     += other.backoffWait;
+    hgWait          += other.hgWait;
 }
 
 // Uninitialize stats structure
@@ -91,6 +96,8 @@ void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryD
                     newAREvent(AR_EVENT_ACTIVEFB_WAIT_BEGIN);
                 } else if(funcData.arg0 == 1) {
                     newAREvent(AR_EVENT_BACKOFF_BEGIN);
+                } else if(funcData.arg0 == 2) {
+                    newAREvent(AR_EVENT_HOURGLASS_BEGIN);
                 } else {
                     fail("Unhandled wait arg! %d\n", funcData.arg0);
                 }
@@ -237,6 +244,19 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
                     fail("Unknown event after backoff begin: %d\n", endEvent.getType());
                 }
                 p_stats->backoffWait +=  endEvent.getTimestamp() - event.getTimestamp();
+                eid += 2;
+                break;
+            }
+            case AR_EVENT_HOURGLASS_BEGIN: {
+                // Wait Events
+                if(eid + 1 >= events.size()) {
+                    fail("wait end event is not found\n");
+                }
+                const AtomicRegionEvents& endEvent = events.at(eid + 1);
+                if(endEvent.getType() != AR_EVENT_WAIT_END) {
+                    fail("Unknown event after backoff begin: %d\n", endEvent.getType());
+                }
+                p_stats->hgWait +=  endEvent.getTimestamp() - event.getTimestamp();
                 eid += 2;
                 break;
             }
