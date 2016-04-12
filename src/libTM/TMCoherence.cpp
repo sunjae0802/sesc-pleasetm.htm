@@ -223,6 +223,7 @@ void HTMManager::markUserAbort(InstDesc* inst, const ThreadContext* context, uin
 TMBCStatus HTMManager::completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     p_opStatus->tmBeginSubtype=TM_COMPLETE_ABORT;
+    p_opStatus->tmAbortType = abortStates.at(pid).getAbortType();
 
     myCompleteAbort(pid);
     return TMBC_SUCCESS;

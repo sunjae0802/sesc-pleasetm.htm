@@ -62,6 +62,7 @@ public:
 
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
+    TMAbortType_e  tmAbortType;
 };
 
 // Use this define to debug the simulated application

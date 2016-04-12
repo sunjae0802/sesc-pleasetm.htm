@@ -46,6 +46,7 @@ void InstContext::clear() {
 
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;
+    tmAbortType=TM_ATYPE_INVALID;
 }
 
 void ThreadContext::initialize(bool child) {
