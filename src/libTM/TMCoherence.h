@@ -36,8 +36,8 @@ public:
     TMBCStatus completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Functions about the fallback path for statistics that run across multiple retries
-    virtual void beginFallback(Pid_t pid) {}
-    virtual void completeFallback(Pid_t pid) {}
+    virtual void beginFallback(Pid_t pid, uint32_t arg);
+    virtual void completeFallback(Pid_t pid);
 
     // Query functions
     VAddr addrToCacheLine(VAddr raddr) {
@@ -122,11 +122,13 @@ protected:
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
     GStatsHist      userAbortArgs;
+    GStatsHist      fallbackArgHist;
 
     std::map<Pid_t, std::set<VAddr> >   linesRead;
     std::map<Pid_t, std::set<VAddr> >   linesWritten;
     std::map<VAddr, std::set<Pid_t> >   writers;
     std::map<VAddr, std::set<Pid_t> >   readers;
+    std::map<Pid_t, uint32_t> fallbackArg;
 };
 
 extern HTMManager *htmManager;

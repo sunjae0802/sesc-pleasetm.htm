@@ -204,7 +204,7 @@ public:
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
     uint32_t getAbortRV();
-    void beginFallback(uint32_t pFallbackMutex);
+    void beginFallback(uint32_t pFallbackMutex, uint32_t arg);
     void completeFallback();
 
     // memop NACK handling methods

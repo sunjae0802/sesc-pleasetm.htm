@@ -264,10 +264,10 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
         return 0;
     }
 }
-void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
+void ThreadContext::beginFallback(uint32_t pFallbackMutex, uint32_t arg) {
     VAddr mutexCAddr = htmManager->addrToCacheLine(pFallbackMutex);
     ThreadContext::tmFallbackMutexCAddrs.insert(mutexCAddr);
-    htmManager->beginFallback(pid);
+    htmManager->beginFallback(pid, arg);
 }
 
 void ThreadContext::completeFallback() {

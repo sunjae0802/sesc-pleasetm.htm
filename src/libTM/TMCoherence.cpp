@@ -44,7 +44,8 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
         numCommits("tm:numCommits"),
         numAborts("tm:numAborts"),
         abortTypes("tm:abortTypes"),
-        userAbortArgs("tm:userAbortArgs") {
+        userAbortArgs("tm:userAbortArgs"),
+        fallbackArgHist("tm:fallbackArgHist") {
 
     if(SescConf->checkInt("TransactionalMemory","smtContexts")) {
         nSMTWays = SescConf->getInt("TransactionalMemory","smtContexts");
@@ -226,7 +227,16 @@ TMBCStatus HTMManager::completeAbort(InstDesc* inst, const ThreadContext* contex
     myCompleteAbort(pid);
     return TMBC_SUCCESS;
 }
-
+///
+// Function that tells the TM engine that a fallback path for this transaction has been used,
+// so reset any statistics. Used for statistics that run across multiple retires.
+void HTMManager::beginFallback(Pid_t pid, uint32_t arg) {
+    fallbackArg[pid] = arg;
+    fallbackArgHist.sample(arg);
+}
+void HTMManager::completeFallback(Pid_t pid) {
+    fallbackArg.erase(pid);
+}
 ///
 // Entry point for TM read operation. Checks transaction state and then calls the real read.
 TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
