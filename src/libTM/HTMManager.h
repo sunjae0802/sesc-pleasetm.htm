@@ -1,5 +1,5 @@
-#ifndef TM_COHERENCE
-#define TM_COHERENCE
+#ifndef HTM_MANAGER_H
+#define HTM_MANAGER_H
 
 #include <map>
 #include <set>
