@@ -14,7 +14,7 @@
 #include "ThreadStats.h"
 
 #if (defined TM)
-#include "libTM/TMCoherence.h"
+#include "libTM/HTMManager.h"
 #include "libTM/TMContext.h"
 #include "libTM/TMState.h"
 #endif

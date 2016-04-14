@@ -50,7 +50,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "libcore/OSSim.h"
 
 #if (defined TM)
-#include "libTM/TMCoherence.h"
+#include "libTM/HTMManager.h"
 #endif
 
 template<size_t siz>

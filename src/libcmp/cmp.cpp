@@ -44,7 +44,7 @@ unsigned long long lastFin = 0;
 #endif
 
 #if (defined TM)
-#include "libTM/TMCoherence.h"
+#include "libTM/HTMManager.h"
 #endif
 
 #if (defined SIGDEBUG)

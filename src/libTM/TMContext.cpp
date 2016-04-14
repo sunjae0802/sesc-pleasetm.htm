@@ -2,7 +2,6 @@
 #include "libll/ThreadContext.h"
 #include "libll/Instruction.h"
 #include "TMContext.h"
-#include "TMCoherence.h"
 #include "SescConf.h"
 
 using namespace std;

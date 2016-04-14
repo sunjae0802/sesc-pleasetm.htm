@@ -2,9 +2,9 @@
 #include <algorithm>
 #include <iostream>
 #include "libsuc/nanassert.h"
+#include "libemul/EmulInit.h"
 #include "SescConf.h"
 #include "TMState.h"
-#include "TMCoherence.h"
 
 using namespace std;
 

@@ -1,7 +1,6 @@
 #ifndef TM_CONTEXT
 #define TM_CONTEXT
 
-#include "TMCoherence.h"
 #include "TMStorage.h"
 
 class TMContext

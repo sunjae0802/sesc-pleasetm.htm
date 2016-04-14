@@ -4,7 +4,7 @@
 #include "libsuc/nanassert.h"
 #include "SescConf.h"
 #include "libll/Instruction.h"
-#include "TMCoherence.h"
+#include "HTMManager.h"
 #include "TSXManager.h"
 #include "IdealTSXManager.h"
 

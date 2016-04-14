@@ -44,7 +44,7 @@ unsigned long long lastFin = 0;
 #endif
 
 #if (defined TM)
-#include "libTM/TMCoherence.h"
+#include "libTM/HTMManager.h"
 #endif
 
 int32_t main(int32_t argc, char**argv, char **envp)

@@ -4,7 +4,7 @@
 #include <set>
 #include <map>
 #include <vector>
-#include "TMCoherence.h"
+#include "HTMManager.h"
 #include "PrivateCache.h"
 
 class TSXManager: public HTMManager {

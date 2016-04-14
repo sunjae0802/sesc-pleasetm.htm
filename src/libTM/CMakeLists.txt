@@ -2,7 +2,7 @@ PROJECT(TM)
 
 SET(TM_SOURCES
     PrivateCache.cpp
-    TMCoherence.cpp
+    HTMManager.cpp
     TMContext.cpp
     TMState.cpp
     TMStorage.cpp
@@ -11,7 +11,7 @@ SET(TM_SOURCES
 )
 SET(TM_HEADERS
     PrivateCache.h
-    TMCoherence.h
+    HTMManager.h
     TMContext.h
     TMState.h
     TMStorage.h

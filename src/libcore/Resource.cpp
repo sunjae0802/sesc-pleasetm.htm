@@ -37,11 +37,6 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "Port.h"
 #include "Resource.h"
 
-#if (defined TM)
-#include "libTM/TMCoherence.h"
-#include "libTM/TMContext.h"
-#endif
-
 Resource::Resource(Cluster *cls, PortGeneric *aGen)
     : cluster(cls)
     ,gen(aGen)
