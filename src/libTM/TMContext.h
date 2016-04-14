@@ -1,8 +1,6 @@
 #ifndef TM_CONTEXT
 #define TM_CONTEXT
 
-#include <assert.h>
-
 #include "TMCoherence.h"
 #include "TMStorage.h"
 
