@@ -29,5 +29,5 @@ SET(cmp_HEADERS
     SMPSystemBus.h
 )
 
-ADD_EXECUTABLE(sesc.cmp ${cmp_SOURCES} ${cmp_HEADERS})
-TARGET_LINK_LIBRARIES(sesc.cmp ll TM booksim core emul suc mem)
+ADD_EXECUTABLE(sesc ${cmp_SOURCES} ${cmp_HEADERS})
+TARGET_LINK_LIBRARIES(sesc ll TM booksim core emul suc mem)

@@ -20,5 +20,5 @@ SET(smp_HEADERS
     SMPSystemBus.h
 )
 
-ADD_EXECUTABLE(sesc.smp ${smp_SOURCES} ${smp_HEADERS})
-TARGET_LINK_LIBRARIES(sesc.smp ll TM core emul suc mem)
+ADD_EXECUTABLE(sesc ${smp_SOURCES} ${smp_HEADERS})
+TARGET_LINK_LIBRARIES(sesc ll TM core emul suc mem)
