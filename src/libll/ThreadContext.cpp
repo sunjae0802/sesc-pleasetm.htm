@@ -138,7 +138,6 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
 
     // Save UTID before committing
     uint64_t utid = htmManager->getUtid(pid);
-    size_t numWrites = htmManager->getNumWrites(pid);
 
     TMBCStatus status = htmManager->commit(inst, this, &instContext);
     if(instContext.tmCommitSubtype == TM_COMMIT_INVALID) {

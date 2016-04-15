@@ -3,6 +3,7 @@ PROJECT(TM)
 SET(TM_SOURCES
     PrivateCache.cpp
     HTMManager.cpp
+    RWSetManager.cpp
     TMContext.cpp
     TMState.cpp
     TMStorage.cpp
@@ -12,6 +13,7 @@ SET(TM_SOURCES
 SET(TM_HEADERS
     PrivateCache.h
     HTMManager.h
+    RWSetManager.h
     TMContext.h
     TMState.h
     TMStorage.h

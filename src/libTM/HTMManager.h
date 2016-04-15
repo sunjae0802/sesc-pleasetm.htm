@@ -10,6 +10,7 @@
 #include "GStats.h"
 #include "libemul/InstDesc.h"
 #include "TMState.h"
+#include "RWSetManager.h"
 
 #define MAX_CPU_COUNT 512
 
@@ -51,33 +52,6 @@ public:
     uint64_t getUtid(Pid_t pid)     const { return utids.at(pid); }
 
     virtual uint32_t getNackRetryStallCycles() const { return 0; }
-    size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
-    size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
-
-    bool hadWrote(Pid_t pid, VAddr caddr) const {
-        return linesWritten.at(pid).find(caddr) != linesWritten.at(pid).end();
-    }
-
-    bool hadRead(Pid_t pid, VAddr caddr) const {
-        return linesRead.at(pid).find(caddr) != linesRead.at(pid).end();
-    }
-
-    size_t numWriters(VAddr caddr) const {
-        auto i_line = writers.find(caddr);
-        if(i_line == writers.end()) {
-            return 0;
-        } else {
-            return i_line->second.size();
-        }
-    }
-    size_t numReaders(VAddr caddr) const {
-        auto i_line = readers.find(caddr);
-        if(i_line == readers.end()) {
-            return 0;
-        } else {
-            return i_line->second.size();
-        }
-    }
 
 protected:
     HTMManager(const char* tmStyle, int procs, int line);
@@ -110,12 +84,14 @@ protected:
     size_t          nThreads;
     int             lineSize;
 
+    RWSetManager    rwSetManager;
     std::vector<struct TMStateEngine> tmStates;
     std::vector<TMAbortState>       abortStates;
     // The unique identifier for each tnx instance
     std::vector<uint64_t>           utids;
     // Mono-increasing UTID
     static uint64_t nextUtid;
+    std::map<Pid_t, uint32_t> fallbackArg;
 
     // Statistics
     GStatsCntr      numCommits;
@@ -123,12 +99,6 @@ protected:
     GStatsHist      abortTypes;
     GStatsHist      userAbortArgs;
     GStatsHist      fallbackArgHist;
-
-    std::map<Pid_t, std::set<VAddr> >   linesRead;
-    std::map<Pid_t, std::set<VAddr> >   linesWritten;
-    std::map<VAddr, std::set<Pid_t> >   writers;
-    std::map<VAddr, std::set<Pid_t> >   readers;
-    std::map<Pid_t, uint32_t> fallbackArg;
 };
 
 extern HTMManager *htmManager;

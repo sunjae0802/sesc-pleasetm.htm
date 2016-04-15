@@ -61,10 +61,8 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
         tmStates.push_back(TMStateEngine(pid));
         abortStates.push_back(TMAbortState(pid));
         utids.push_back(INVALID_UTID);
-        // Initialize maps to enable at() use
-        linesRead[pid].clear();
-        linesWritten[pid].clear();
     }
+    rwSetManager.initialize(nThreads);
 }
 
 void HTMManager::beginTrans(Pid_t pid, InstDesc* inst) {
@@ -124,51 +122,18 @@ void HTMManager::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
         fail("%d in invalid state to do tm.load: %d", pid, getTMState(pid));
     }
-    readers[caddr].insert(pid);
-    linesRead[pid].insert(caddr);
+    rwSetManager.read(pid, caddr);
 }
 void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
         fail("%d in invalid state to do tm.store: %d", pid, getTMState(pid));
     }
-    writers[caddr].insert(pid);
-    linesWritten[pid].insert(caddr);
+    rwSetManager.write(pid, caddr);
 }
 void HTMManager::removeTrans(Pid_t pid) {
     tmStates.at(pid).clear();
     utids.at(pid) = INVALID_UTID;
-
-    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
-    for(VAddr caddr:  linesWritten[pid]) {
-        i_line = writers.find(caddr);
-        if(i_line == writers.end()) {
-            fail("writers and linesWritten mismatch");
-        }
-        set<Pid_t>& myWriters = i_line->second;
-        if(myWriters.find(pid) == myWriters.end()) {
-            fail("writers does not contain pid");
-        }
-        myWriters.erase(pid);
-        if(myWriters.empty()) {
-            writers.erase(i_line);
-        }
-    }
-    for(VAddr caddr:  linesRead[pid]) {
-        i_line = readers.find(caddr);
-        if(i_line == readers.end()) {
-            fail("readers and linesRead mismatch");
-        }
-        set<Pid_t>& myReaders = i_line->second;
-        if(myReaders.find(pid) == myReaders.end()) {
-            fail("readers does not contain pid");
-        }
-        myReaders.erase(pid);
-        if(myReaders.empty()) {
-            readers.erase(i_line);
-        }
-    }
-    linesRead[pid].clear();
-    linesWritten[pid].clear();
+    rwSetManager.clear(pid);
 }
 
 ///
@@ -291,7 +256,7 @@ TMBCStatus HTMManager::myAbort(InstDesc* inst, const ThreadContext* context, Ins
 TMBCStatus HTMManager::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 
-    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmLat           = 4 + rwSetManager.getNumWrites(pid);
     p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     commitTrans(pid);
