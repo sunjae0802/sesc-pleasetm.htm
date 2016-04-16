@@ -1977,8 +1977,7 @@ int32_t SMPCache::getHomeNodeID(PAddr addr) {
         case HDT_DYNAMIC:
             return getL2NodeID_dynamic (blockIndex);
         default: 
-            printf ("[SMPCache::%s] ERROR! Unknown homeDirType: %d\n @%llu", symbolicName, homeDirType, globalClock);
-            assert (0);
+            fail("[SMPCache::%s] ERROR! Unknown homeDirType: %d\n @%llu\n", symbolicName, homeDirType, globalClock);
     }
 }
 
@@ -2013,11 +2012,11 @@ int32_t SMPCache::getL2NodeID_random(int32_t blockIndex) {
 }
 
 int32_t SMPCache::getL2NodeID_profile(int32_t blockIndex) {
-    assert (0);
+    fail("Not implemented yet\n");
 }
 
 int32_t SMPCache::getL2NodeID_dynamic(int32_t blockIndex) {
-    assert (0);
+    fail("Not implemented yet\n");
 }
 
 #ifdef SESC_SMP_DEBUG

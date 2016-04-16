@@ -185,7 +185,7 @@ PageTable::IntlPTEntry *StdMemoryOS::getReplPTEntry()
     do {
         p = PT->getReplPhPageL2Entry();
         tmp = GMemorySystem::calcFullPage(p->virtualPage);
-        if((TLBTranslate(tmp) != -1 || ITLBTranslate(tmp)) != -1) {
+        if((TLBTranslate(tmp) != -1) || (ITLBTranslate(tmp) != -1)) {
             // if the chosen page was in our TLB we update it in memory
             // so as not to replace it and we repeat the process.
             // Otherwise we could even be replacing a page that has already
