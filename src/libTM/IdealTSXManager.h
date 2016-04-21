@@ -22,12 +22,13 @@ protected:
     virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Helper functions
-    Cache* getCache(Pid_t pid) { return caches.at(pid/nSMTWays); }
-    Line* replaceLine(Pid_t pid, VAddr raddr);
-    void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
-    void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
-    void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
-    void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except);
+    Cache* getCache(Pid_t pid) const { return caches.at(pid/nSMTWays); }
+    Line* replaceLine(Cache* cache, VAddr raddr);
+    void clearTransactional(VAddr caddr, const PidSet& toClear);
+    void cleanDirtyLines(VAddr caddr, Pid_t pid);
+    void invalidateLines(VAddr caddr, Pid_t pid);
+    void abortTMWriters(Pid_t pid, VAddr caddr, bool isTM);
+    void abortTMSharers(Pid_t pid, VAddr caddr, bool isTM);
 
     // Configurable member variables
     int             totalSize;

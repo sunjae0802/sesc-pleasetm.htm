@@ -30,9 +30,7 @@ IdealTSXManager::~IdealTSXManager() {
 
 ///
 // Helper function that replaces a line in the Cache
-IdealTSXManager::Line* IdealTSXManager::replaceLine(Pid_t pid, VAddr raddr) {
-    Cache* cache= getCache(pid);
-
+IdealTSXManager::Line* IdealTSXManager::replaceLine(Cache* cache, VAddr raddr) {
     Line* replaced = cache->findLine2Replace(raddr);
     if(replaced == nullptr) {
         fail("Replacement policy failed");
@@ -46,10 +44,54 @@ IdealTSXManager::Line* IdealTSXManager::replaceLine(Pid_t pid, VAddr raddr) {
 
     return replaced;
 }
+///
+// Helper function that aborts all transactional readers
+void IdealTSXManager::clearTransactional(VAddr caddr, const PidSet& toClear) {
+    PidSet::const_iterator iPid;
+    for(iPid = toClear.begin(); iPid != toClear.end(); ++iPid) {
+        Cache* cache = getCache(*iPid);
+        Line* line = cache->findLine(caddr);
+        if(line) {
+            line->clearTransactional(*iPid);
+        }
+    }
+}
+
+///
+// Helper function that cleans dirty lines in each cache except pid's.
+void IdealTSXManager::cleanDirtyLines(VAddr caddr, Pid_t pid) {
+    Cache* myCache = getCache(pid);
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
+        Line* line = cache->findLine(caddr);
+        if(line && line->isValid() && line->isDirty()) {
+            if(cache != myCache) {
+                line->makeClean();
+            }
+            // Requester's cache should be left alone
+        }
+    }
+}
+
+///
+// Helper function that invalidates lines except pid's.
+void IdealTSXManager::invalidateLines(VAddr caddr, Pid_t pid) {
+    Cache* myCache = getCache(pid);
+    for(size_t cid = 0; cid < caches.size(); cid++) {
+        Cache* cache = caches.at(cid);
+        Line* line = cache->findLine(caddr);
+        if(line && line->isValid()) {
+            if(cache != myCache) {
+                line->invalidate();
+            }
+            // Requester's cache should be left alone
+        }
+    }
+}
 
 ///
 // Helper function that aborts all transactional readers
-void IdealTSXManager::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
+void IdealTSXManager::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM) {
     // Collect writers
     set<Pid_t> aborted;
     rwSetManager.getWriters(caddr, aborted);
@@ -59,22 +101,14 @@ void IdealTSXManager::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set
 
     if(aborted.size() > 0) {
         // Do the abort
-        for(Pid_t a: aborted) {
-            Cache* cache = getCache(a);
-            Line* line = cache->findLine(caddr);
-            if(line) {
-                line->clearTransactional(a);
-            } else if(getTMState(a) == TMStateEngine::TM_RUNNING) {
-                fail("[%d] Aborting non-writer %d?: 0x%lx", pid, a, caddr);
-            }
-        }
+        clearTransactional(caddr, aborted);
         markTransAborted(aborted, pid, caddr, abortType);
     }
 }
 
 ///
 // Helper function that aborts all transactional readers and writers
-void IdealTSXManager::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
+void IdealTSXManager::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM) {
     // Collect sharers
     set<Pid_t> aborted;
     rwSetManager.getWriters(caddr, aborted);
@@ -85,52 +119,8 @@ void IdealTSXManager::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set
 
     if(aborted.size() > 0) {
         // Do the abort
+        clearTransactional(caddr, aborted);
         markTransAborted(aborted, pid, caddr, abortType);
-        for(Pid_t a: aborted) {
-            Cache* cache = getCache(a);
-            Line* line = cache->findLine(caddr);
-            if(line) {
-                line->clearTransactional(a);
-            }
-        }
-    }
-}
-
-///
-// Helper function that cleans dirty lines in each cache except pid's.
-void IdealTSXManager::cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
-    Cache* myCache = getCache(pid);
-    for(size_t cid = 0; cid < caches.size(); cid++) {
-        Cache* cache = caches.at(cid);
-        Line* line = cache->findLine(caddr);
-        if(line && line->isValid() && line->isDirty()) {
-            if(cache == myCache) {
-                // Requester's cache should be left alone
-            } else if(except.find(cache) == except.end()) {
-                line->makeClean();
-            } else {
-                // In except set so don't do anything
-            }
-        }
-    }
-}
-
-///
-// Helper function that invalidates lines except pid's.
-void IdealTSXManager::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
-    Cache* myCache = getCache(pid);
-    for(size_t cid = 0; cid < caches.size(); cid++) {
-        Cache* cache = caches.at(cid);
-        Line* line = cache->findLine(caddr);
-        if(line && line->isValid()) {
-            if(cache == myCache) {
-                // Requester's cache should be left alone
-            } else if(except.find(cache) == except.end()) {
-                line->invalidate();
-            } else {
-                // In except set so don't do anything
-            }
-        }
     }
 }
 
@@ -141,15 +131,14 @@ TMRWStatus IdealTSXManager::TMRead(InstDesc* inst, const ThreadContext* context,
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    std::set<Cache*> except;
-    abortTMWriters(pid, caddr, true, except);
+    abortTMWriters(pid, caddr, true);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        cleanDirtyLines(pid, caddr, except);
-        line  = replaceLine(pid, raddr);
+        cleanDirtyLines(caddr, pid);
+        line  = replaceLine(cache, raddr);
     } else {
         p_opStatus->wasHit = true;
         if(line->isTransactional() == false && line->isDirty()) {
@@ -183,18 +172,17 @@ TMRWStatus IdealTSXManager::TMWrite(InstDesc* inst, const ThreadContext* context
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    std::set<Cache*> except;
-    abortTMSharers(pid, caddr, true, except);
+    abortTMSharers(pid, caddr, true);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        invalidateLines(pid, caddr, except);
-        line  = replaceLine(pid, raddr);
+        invalidateLines(caddr, pid);
+        line  = replaceLine(cache, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        invalidateLines(pid, caddr, except);
+        invalidateLines(caddr, pid);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -222,15 +210,14 @@ void IdealTSXManager::nonTMRead(InstDesc* inst, const ThreadContext* context, VA
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    std::set<Cache*> except;
-    abortTMWriters(pid, caddr, false, except);
+    abortTMWriters(pid, caddr, false);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        cleanDirtyLines(pid, caddr, except);
-        line  = replaceLine(pid, raddr);
+        cleanDirtyLines(caddr, pid);
+        line  = replaceLine(cache, raddr);
     } else {
         p_opStatus->wasHit = true;
     }
@@ -246,18 +233,17 @@ void IdealTSXManager::nonTMWrite(InstDesc* inst, const ThreadContext* context, V
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
 
-    std::set<Cache*> except;
-    abortTMSharers(pid, caddr, false, except);
+    abortTMSharers(pid, caddr, false);
 
     // Do cache hit/miss stats
     Line*   line  = cache->lookupLine(raddr);
     if(line == nullptr) {
         p_opStatus->wasHit = false;
-        invalidateLines(pid, caddr, except);
-        line  = replaceLine(pid, raddr);
+        invalidateLines(caddr, pid);
+        line  = replaceLine(cache, raddr);
     } else if(line->isDirty() == false) {
         p_opStatus->wasHit = false;
-        invalidateLines(pid, caddr, except);
+        invalidateLines(caddr, pid);
     } else {
         p_opStatus->wasHit = true;
     }

@@ -12,11 +12,6 @@
 #include "TMState.h"
 #include "RWSetManager.h"
 
-#define MAX_CPU_COUNT 512
-
-typedef unsigned long long ID; 
-typedef unsigned long long INSTCOUNT;
-
 enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT };
 enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
 
@@ -102,5 +97,6 @@ protected:
 };
 
 extern HTMManager *htmManager;
+typedef std::set<Pid_t> PidSet;
 
 #endif
