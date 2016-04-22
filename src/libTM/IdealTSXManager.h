@@ -3,7 +3,7 @@
 
 #include <set>
 #include <vector>
-#include "TMCoherence.h"
+#include "HTMManager.h"
 #include "PrivateCache.h"
 
 class IdealTSXManager: public HTMManager {

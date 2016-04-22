@@ -82,9 +82,7 @@ FasTMAbort::Line* FasTMAbort::replaceLine(Pid_t pid, VAddr raddr) {
 // Helper function that aborts all transactional readers and writers
 TMRWStatus FasTMAbort::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
     set<Pid_t> conflicting;
-    for(Pid_t writer: writers[caddr]) {
-        conflicting.insert(writer);
-    }
+    rwSetManager.getWriters(caddr, conflicting);
     conflicting.erase(pid);
 
     // If any winners are around, we do conflict resolution
@@ -107,12 +105,8 @@ TMRWStatus FasTMAbort::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::se
 // Helper function that aborts all transactional readers and writers
 TMRWStatus FasTMAbort::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
     set<Pid_t> conflicting;
-    for(Pid_t writer: writers[caddr]) {
-        conflicting.insert(writer);
-    }
-    for(Pid_t reader: readers[caddr]) {
-        conflicting.insert(reader);
-    }
+    rwSetManager.getWriters(caddr, conflicting);
+    rwSetManager.getReaders(caddr, conflicting);
     conflicting.erase(pid);
 
     // If any winners are around, we do conflict resolution
@@ -333,7 +327,7 @@ TMBCStatus FasTMAbort::myCommit(InstDesc* inst, const ThreadContext* context, In
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
 
-    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmLat           = 4 + rwSetManager.getNumWrites(pid);
     p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     LineTMComparator tmCmp;
@@ -341,7 +335,7 @@ TMBCStatus FasTMAbort::myCommit(InstDesc* inst, const ThreadContext* context, In
     cache->collectLines(lines, tmCmp);
 
     for(Line* line: lines) {
-        line->clearTransactional();
+        line->clearTransactional(pid);
     }
 
     commitTrans(pid);
@@ -361,7 +355,7 @@ TMBCStatus FasTMAbort::myAbort(InstDesc* inst, const ThreadContext* context, Ins
         if(line->isDirty()) {
             line->invalidate();
         } else {
-            line->clearTransactional();
+            line->clearTransactional(pid);
         }
     }
 
@@ -378,7 +372,7 @@ FasTMAbortMoreReadsWins::FasTMAbortMoreReadsWins(const char tmStyle[], int32_t n
 ///
 // Return true if pid is higher or equal priority than conflictPid
 bool FasTMAbortMoreReadsWins::isHigherOrEqualPriority(Pid_t pid, Pid_t conflictPid) {
-    return linesRead[conflictPid].size() < linesRead[pid].size();
+    return rwSetManager.getNumReads(conflictPid) < rwSetManager.getNumReads(pid);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

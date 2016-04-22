@@ -45,7 +45,7 @@ void RiskLoadProf::finalize()
     // print out the risk load list
     for (HashType::const_iterator it = riskLoads.begin();
             it != riskLoads.end(); it++ )
-        fprintf(fout, "0x%08lx %d\n", (*it).first, (*it).second);
+        fprintf(fout, "0x%08x %d\n", (*it).first, (*it).second);
 
     fclose(fout);
 }

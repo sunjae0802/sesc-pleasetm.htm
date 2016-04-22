@@ -34,6 +34,7 @@ bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
 std::ofstream ThreadContext::tracefile;
+bool ThreadContext::tracefileOpen = false;
 size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
@@ -47,6 +48,7 @@ void InstContext::clear() {
 
     tmBeginSubtype=TM_BEGIN_INVALID;
     tmCommitSubtype=TM_COMMIT_INVALID;
+    tmAbortType=TM_ATYPE_INVALID;
 }
 
 void ThreadContext::initialize(bool child) {
@@ -64,28 +66,36 @@ void ThreadContext::initialize(bool child) {
 #endif
 
     ThreadContext::numThreads++;
+    if(ThreadContext::numThreads == 1) {
+        ThreadContext::openTraceFile();
+    }
 }
 
 void ThreadContext::cleanup() {
     ThreadContext::numThreads--;
+    if(ThreadContext::tracefileOpen) {
+        ThreadContext::closeTraceFile();
+    }
 }
 
 void ThreadContext::openTraceFile() {
     char filename[256];
     sprintf(filename, "datafile.out");
     tracefile.open(filename);
+    tracefileOpen = true;
 }
 
 void ThreadContext::closeTraceFile() {
     TimeTrackerStats allTimerStats;
 
-    for(ThreadContext* c: ThreadContext::pid2context) {
+    for(ThreadContext* c: pid2context) {
         allTimerStats.sum(c->timeStats);
     }
 
     allTimerStats.print();
-    if(getTracefile().is_open()) {
-        getTracefile().close();
+    if(tracefile.is_open()) {
+        tracefile.close();
+        tracefileOpen = false;
     }
 }
 
@@ -132,7 +142,6 @@ TMBCStatus ThreadContext::commitTransaction(InstDesc* inst) {
 
     // Save UTID before committing
     uint64_t utid = htmManager->getUtid(pid);
-    size_t numWrites = htmManager->getNumWrites(pid);
 
     TMBCStatus status = htmManager->commit(inst, this, &instContext);
     if(instContext.tmCommitSubtype == TM_COMMIT_INVALID) {
@@ -259,10 +268,10 @@ uint32_t ThreadContext::getBeginRV(TMBCStatus status) {
         return 0;
     }
 }
-void ThreadContext::beginFallback(uint32_t pFallbackMutex) {
+void ThreadContext::beginFallback(uint32_t pFallbackMutex, uint32_t arg) {
     VAddr mutexCAddr = htmManager->addrToCacheLine(pFallbackMutex);
     ThreadContext::tmFallbackMutexCAddrs.insert(mutexCAddr);
-    htmManager->beginFallback(pid);
+    htmManager->beginFallback(pid, arg);
 }
 
 void ThreadContext::completeFallback() {
@@ -536,7 +545,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext::pointer context=pid2context[nowPid];
+            ThreadContext* context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());
@@ -552,7 +561,7 @@ int64_t ThreadContext::skipInsts(int64_t skipCount) {
             nowPid=nextReady(nowPid);
             if(nowPid==-1)
                 return skipped;
-            ThreadContext::pointer context=pid2context[nowPid];
+            ThreadContext* context=pid2context[nowPid];
             I(context);
             I(!context->isSuspended());
             I(!context->isExited());

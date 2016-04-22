@@ -1,7 +1,8 @@
 Import('*')
 
+Source('HTMManager.cpp', lib='TM')
+Source('RWSetManager.cpp', lib='TM')
 Source('TMStorage.cpp', lib='TM')
-Source('TMCoherence.cpp', lib='TM')
 Source('TMContext.cpp', lib='TM')
 Source('TMState.cpp', lib='TM')
 Source('TSXManager.cpp', lib='TM')

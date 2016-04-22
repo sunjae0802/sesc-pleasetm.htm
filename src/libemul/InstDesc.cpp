@@ -50,7 +50,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "libcore/OSSim.h"
 
 #if (defined TM)
-#include "libTM/TMCoherence.h"
+#include "libTM/HTMManager.h"
 #endif
 
 template<size_t siz>
@@ -2295,8 +2295,9 @@ void handleTMBeginCall(InstDesc *inst, ThreadContext *context) {
 void handleTMBeginFallbackCall(InstDesc *inst, ThreadContext *context) {
     if(ThreadContext::inMain) {
         funcDataInitCall(context, FUNC_TM_BEGIN_FALLBACK, &handleTMBeginFallbackRet);
-        uint32_t arg = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
-        context->beginFallback(arg);
+        uint32_t arg0 = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA0);
+        uint32_t arg1 = ArchDefs<ExecModeMips32>::getReg<uint32_t,RegTypeGpr>(context,ArchDefs<ExecModeMips32>::RegA1);
+        context->beginFallback(arg0, arg1);
     }
 }
 void handleTMBeginFallbackRet(InstDesc *inst, ThreadContext *context) {

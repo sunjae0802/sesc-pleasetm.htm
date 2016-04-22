@@ -1,5 +1,5 @@
-#ifndef TM_COHERENCE
-#define TM_COHERENCE
+#ifndef HTM_MANAGER_H
+#define HTM_MANAGER_H
 
 #include <map>
 #include <set>
@@ -10,6 +10,7 @@
 #include "GStats.h"
 #include "libemul/InstDesc.h"
 #include "TMState.h"
+#include "RWSetManager.h"
 
 #define MAX_CPU_COUNT 512
 
@@ -36,8 +37,8 @@ public:
     TMBCStatus completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
     // Functions about the fallback path for statistics that run across multiple retries
-    virtual void beginFallback(Pid_t pid);
-    virtual void completeFallback(Pid_t pid) {}
+    virtual void beginFallback(Pid_t pid, uint32_t arg);
+    virtual void completeFallback(Pid_t pid);
 
     // Query functions
     VAddr addrToCacheLine(VAddr raddr) {
@@ -51,33 +52,6 @@ public:
     uint64_t getUtid(Pid_t pid)     const { return utids.at(pid); }
 
     virtual uint32_t getNackRetryStallCycles(ThreadContext* context) { return 0; }
-    size_t getNumReads(Pid_t pid)   const { return linesRead.at(pid).size(); }
-    size_t getNumWrites(Pid_t pid)  const { return linesWritten.at(pid).size(); }
-
-    bool hadWrote(Pid_t pid, VAddr caddr) const {
-        return linesWritten.at(pid).find(caddr) != linesWritten.at(pid).end();
-    }
-
-    bool hadRead(Pid_t pid, VAddr caddr) const {
-        return linesRead.at(pid).find(caddr) != linesRead.at(pid).end();
-    }
-
-    size_t numWriters(VAddr caddr) const {
-        auto i_line = writers.find(caddr);
-        if(i_line == writers.end()) {
-            return 0;
-        } else {
-            return i_line->second.size();
-        }
-    }
-    size_t numReaders(VAddr caddr) const {
-        auto i_line = readers.find(caddr);
-        if(i_line == readers.end()) {
-            return 0;
-        } else {
-            return i_line->second.size();
-        }
-    }
 
 protected:
     HTMManager(const char* tmStyle, int procs, int line);
@@ -110,27 +84,26 @@ protected:
     size_t          nThreads;
     int             lineSize;
 
+    RWSetManager    rwSetManager;
     std::vector<struct TMStateEngine> tmStates;
     std::vector<TMAbortState>       abortStates;
     // The unique identifier for each tnx instance
     std::vector<uint64_t>           utids;
     // Mono-increasing UTID
     static uint64_t nextUtid;
+    std::map<Pid_t, uint32_t> fallbackArg;
 
     // Statistics
     GStatsCntr      numCommits;
     GStatsCntr      numAborts;
     GStatsHist      abortTypes;
     GStatsHist      userAbortArgs;
+    GStatsHist      fallbackArgHist;
     GStatsCntr      numFutileAborts;
     GStatsHist      numAbortsBeforeCommit;
+
     std::map<Pid_t, size_t>   abortsSoFar;
     std::map<Pid_t, size_t>   abortsCaused;
-
-    std::map<Pid_t, std::set<VAddr> >   linesRead;
-    std::map<Pid_t, std::set<VAddr> >   linesWritten;
-    std::map<VAddr, std::set<Pid_t> >   writers;
-    std::map<VAddr, std::set<Pid_t> >   readers;
 };
 
 extern HTMManager *htmManager;

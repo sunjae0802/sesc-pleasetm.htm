@@ -47,14 +47,6 @@ void TMLine::makeClean() {
     tmWriter = INVALID_PID;
     dirty = false;
 }
-void TMLine::clearTransactional() {
-    tmReaders.clear();
-    if(tmWriter != INVALID_PID) {
-        tmWriter = INVALID_PID;
-        dirty = false;
-    }
-    transactional = false;
-}
 void TMLine::clearTransactional(Pid_t p) {
     tmReaders.erase(p);
     if(isWriter(p)) {

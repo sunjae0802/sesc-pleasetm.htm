@@ -82,16 +82,17 @@ public:
     void print() const;
 
     // Getters
-    State_e   getState()      const { return state; }
-    static const char* getStateStr(State_e);
+    State_e   getState()      const { return myState; }
+    const char* getStateStr() { return getStateStr(myState); }
+    static const char* getStateStr(State_e state);
 
 private:
-    void triggerFail(State_e next);
+    void triggerFail(State_e nextState);
 
     // The PID of the owner
     Pid_t           myPid;
     // Current state of the transaction
-    State_e       state;
+    State_e         myState;
 };
 
 #endif

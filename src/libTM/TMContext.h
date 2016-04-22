@@ -1,9 +1,6 @@
 #ifndef TM_CONTEXT
 #define TM_CONTEXT
 
-#include <assert.h>
-
-#include "TMCoherence.h"
 #include "TMStorage.h"
 
 class TMContext
@@ -26,7 +23,7 @@ public:
     void    saveContext();
     void    restoreContext();
     void    flushMemory() {
-        cache.flush(context);
+        cache2.flush(context);
     }
 
 private:
@@ -37,37 +34,22 @@ private:
     Pid_t       pid;          // Copy of PID of owner thread
     uint64_t    utid;         // Unique transaction identifier
     RegVal      regs[NumOfRegs];      // Int Register Backup
-    TMStorage   cache;        // The Memory Cache
+    TMStorage2  cache2;        // The Memory Cache
     TMContext  *parent;      // Parent Transaction
 };
 
 template<class T>
 void TMContext::cacheAccess(VAddr addr, T oval, T* p_val) {
-    T val = oval;
-    bool found = false;
+    cache2.loadLine(context, addr);
+    T newval = cache2.load<T>(addr);
 
-    if(sizeof(T) == 1) {
-        val = (T)cache.load8(addr, &found);
-    } else if(sizeof(T) == 2) {
-        val = (T)cache.load16(addr, &found);
-    } else if(sizeof(T) == 4) {
-        val = (T)cache.load32(addr, &found);
-    } else if(sizeof(T) == 8) {
-        val = (T)cache.load64(addr, &found);
-    } else {
-        assert(0);
-    }
-
-    if (!found) {
-        *p_val = oval;
-    } else {
-        *p_val = val;
-    }
+    *p_val = newval;
 }
 
 template<class T>
 void TMContext::cacheWrite(VAddr addr, T val) {
-    cache.store(context, addr, val);
+    cache2.loadLine(context, addr);
+    cache2.store<T>(context, addr, val);
 }
 
 #endif

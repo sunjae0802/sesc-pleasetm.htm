@@ -83,9 +83,7 @@ void IdealPleaseTM::handleConflicts(Pid_t pid, VAddr caddr, bool isTM, set<Pid_t
 // Helper function that aborts all transactional readers and writers
 void IdealPleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
     set<Pid_t> conflicting;
-    for(Pid_t writer: writers[caddr]) {
-        conflicting.insert(writer);
-    }
+    rwSetManager.getWriters(caddr, conflicting);
     conflicting.erase(pid);
 
     handleConflicts(pid, caddr, isTM, conflicting);
@@ -102,12 +100,8 @@ void IdealPleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<C
 // Helper function that aborts all transactional readers and writers
 void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
     set<Pid_t> conflicting;
-    for(Pid_t writer: writers[caddr]) {
-        conflicting.insert(writer);
-    }
-    for(Pid_t reader: readers[caddr]) {
-        conflicting.insert(reader);
-    }
+    rwSetManager.getWriters(caddr, conflicting);
+    rwSetManager.getReaders(caddr, conflicting);
     conflicting.erase(pid);
 
     handleConflicts(pid, caddr, isTM, conflicting);
@@ -312,7 +306,7 @@ TMBCStatus IdealPleaseTM::myCommit(InstDesc* inst, const ThreadContext* context,
     // On commit, we clear all transactional bits, but otherwise leave lines alone
     Pid_t pid   = context->getPid();
 
-    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmLat           = 4 + rwSetManager.getNumWrites(pid);
     p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     // On commit, we clear all transactional bits, but otherwise leave lines alone
@@ -370,7 +364,7 @@ TMIdealMoreReadsWins::TMIdealMoreReadsWins(const char tmStyle[], int32_t nCores,
 }
 
 bool TMIdealMoreReadsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    return linesRead[other].size() < linesRead[pid].size();
+    return rwSetManager.getNumReads(other) < rwSetManager.getNumReads(pid);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -381,8 +375,8 @@ TMLog2MoreCoherence::TMLog2MoreCoherence(const char tmStyle[], int32_t nCores, i
 }
 
 bool TMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    uint32_t log2Num = log2(linesRead[pid].size());
-    uint32_t log2OtherNum = log2(linesRead[other].size());
+    uint32_t log2Num = log2(rwSetManager.getNumReads(pid));
+    uint32_t log2OtherNum = log2(rwSetManager.getNumReads(other));
     return log2OtherNum < log2Num;
 }
 
@@ -395,8 +389,8 @@ TMCappedMoreCoherence::TMCappedMoreCoherence(const char tmStyle[], int32_t nCore
 }
 
 bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    uint32_t cappedMyNum = linesRead[pid].size();
-    uint32_t cappedOtherNum = linesRead[other].size();
+    uint32_t cappedMyNum = rwSetManager.getNumReads(pid);
+    uint32_t cappedOtherNum = rwSetManager.getNumReads(other);
     if(cappedMyNum > m_cap) {
         cappedMyNum = m_cap;
     }

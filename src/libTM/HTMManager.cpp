@@ -4,7 +4,7 @@
 #include "libsuc/nanassert.h"
 #include "SescConf.h"
 #include "libll/Instruction.h"
-#include "TMCoherence.h"
+#include "HTMManager.h"
 #include "TSXManager.h"
 #include "IdealTSXManager.h"
 #include "LogTMManager.h"
@@ -68,6 +68,7 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
         numAborts("tm:numAborts"),
         abortTypes("tm:abortTypes"),
         userAbortArgs("tm:userAbortArgs"),
+        fallbackArgHist("tm:fallbackArgHist"),
         numFutileAborts("tm:numFutileAborts"),
         numAbortsBeforeCommit("tm:numAbortsBeforeCommit") {
 
@@ -85,10 +86,8 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
         tmStates.push_back(TMStateEngine(pid));
         abortStates.push_back(TMAbortState(pid));
         utids.push_back(INVALID_UTID);
-        // Initialize maps to enable at() use
-        linesRead[pid].clear();
-        linesWritten[pid].clear();
     }
+    rwSetManager.initialize(nThreads);
 }
 
 void HTMManager::beginTrans(Pid_t pid, InstDesc* inst) {
@@ -135,9 +134,6 @@ void HTMManager::completeAbortTrans(Pid_t pid) {
     // Do the completeAbort
     removeTransaction(pid);
 }
-void HTMManager::beginFallback(Pid_t pid) {
-    abortsSoFar[pid] = 0;
-}
 void HTMManager::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 
@@ -161,51 +157,18 @@ void HTMManager::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
         fail("%d in invalid state to do tm.load: %d", pid, getTMState(pid));
     }
-    readers[caddr].insert(pid);
-    linesRead[pid].insert(caddr);
+    rwSetManager.read(pid, caddr);
 }
 void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
         fail("%d in invalid state to do tm.store: %d", pid, getTMState(pid));
     }
-    writers[caddr].insert(pid);
-    linesWritten[pid].insert(caddr);
+    rwSetManager.write(pid, caddr);
 }
 void HTMManager::removeTrans(Pid_t pid) {
     tmStates.at(pid).clear();
     utids.at(pid) = INVALID_UTID;
-
-    std::map<VAddr, std::set<Pid_t> >::iterator i_line;
-    for(VAddr caddr:  linesWritten[pid]) {
-        i_line = writers.find(caddr);
-        if(i_line == writers.end()) {
-            fail("writers and linesWritten mismatch");
-        }
-        set<Pid_t>& myWriters = i_line->second;
-        if(myWriters.find(pid) == myWriters.end()) {
-            fail("writers does not contain pid");
-        }
-        myWriters.erase(pid);
-        if(myWriters.empty()) {
-            writers.erase(i_line);
-        }
-    }
-    for(VAddr caddr:  linesRead[pid]) {
-        i_line = readers.find(caddr);
-        if(i_line == readers.end()) {
-            fail("readers and linesRead mismatch");
-        }
-        set<Pid_t>& myReaders = i_line->second;
-        if(myReaders.find(pid) == myReaders.end()) {
-            fail("readers does not contain pid");
-        }
-        myReaders.erase(pid);
-        if(myReaders.empty()) {
-            readers.erase(i_line);
-        }
-    }
-    linesRead[pid].clear();
-    linesWritten[pid].clear();
+    rwSetManager.clear(pid);
 }
 
 ///
@@ -260,11 +223,22 @@ void HTMManager::markUserAbort(InstDesc* inst, const ThreadContext* context, uin
 TMBCStatus HTMManager::completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     p_opStatus->tmBeginSubtype=TM_COMPLETE_ABORT;
+    p_opStatus->tmAbortType = abortStates.at(pid).getAbortType();
 
     myCompleteAbort(pid);
     return TMBC_SUCCESS;
 }
-
+///
+// Function that tells the TM engine that a fallback path for this transaction has been used,
+// so reset any statistics. Used for statistics that run across multiple retires.
+void HTMManager::beginFallback(Pid_t pid, uint32_t arg) {
+    fallbackArg[pid] = arg;
+    fallbackArgHist.sample(arg);
+    abortsSoFar[pid] = 0;
+}
+void HTMManager::completeFallback(Pid_t pid) {
+    fallbackArg.erase(pid);
+}
 ///
 // Entry point for TM read operation. Checks transaction state and then calls the real read.
 TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
@@ -318,7 +292,7 @@ TMBCStatus HTMManager::myAbort(InstDesc* inst, const ThreadContext* context, Ins
 TMBCStatus HTMManager::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 
-    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmLat           = 4 + rwSetManager.getNumWrites(pid);
     p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     commitTrans(pid);

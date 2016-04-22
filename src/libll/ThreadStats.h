@@ -21,6 +21,7 @@ struct TimeTrackerStats {
     uint64_t nackStalled;
     uint64_t activeFBWait;
     uint64_t backoffWait;
+    uint64_t hgWait;
 };
 
 // Enum of various atomic region events
@@ -39,7 +40,8 @@ enum AREventType {
 
     AR_EVENT_ACTIVEFB_WAIT_BEGIN= 90, // Wait for active lock (calling wait(0))
     AR_EVENT_BACKOFF_BEGIN      = 91, // Random backoff       (calling wait(1))
-    AR_EVENT_WAIT_END           = 92, // Wait end             (returning from wait)
+    AR_EVENT_HOURGLASS_BEGIN    = 92, // Wait for hourglass   (calling wait(2))
+    AR_EVENT_WAIT_END           = 99, // Wait end             (returning from wait)
 
     AR_EVENT_NUM_TYPES
 };

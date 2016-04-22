@@ -59,9 +59,7 @@ IdealTSXManager::Line* IdealTSXManager::replaceLine(Pid_t pid, VAddr raddr) {
 void IdealTSXManager::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
     // Collect writers
     set<Pid_t> aborted;
-    if(numWriters(caddr) != 0) {
-        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-    }
+    rwSetManager.getWriters(caddr, aborted);
     aborted.erase(pid);
 
     TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
@@ -86,12 +84,8 @@ void IdealTSXManager::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set
 void IdealTSXManager::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except) {
     // Collect sharers
     set<Pid_t> aborted;
-    if(numWriters(caddr) != 0) {
-        aborted.insert(writers.at(caddr).begin(), writers.at(caddr).end());
-    }
-    if(numReaders(caddr) != 0) {
-        aborted.insert(readers.at(caddr).begin(), readers.at(caddr).end());
-    }
+    rwSetManager.getWriters(caddr, aborted);
+    rwSetManager.getReaders(caddr, aborted);
     aborted.erase(pid);
 
     TMAbortType_e abortType = isTM ? TM_ATYPE_DEFAULT : TM_ATYPE_NONTM;
@@ -302,7 +296,7 @@ TMBCStatus IdealTSXManager::myCommit(InstDesc* inst, const ThreadContext* contex
     // On commit, we clear all transactional bits, but otherwise leave lines alone
     Pid_t pid   = context->getPid();
 
-    p_opStatus->tmLat           = 4 + getNumWrites(pid);
+    p_opStatus->tmLat           = 4 + rwSetManager.getNumWrites(pid);
     p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
     // On commit, we clear all transactional bits, but otherwise leave lines alone

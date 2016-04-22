@@ -44,13 +44,12 @@ unsigned long long lastFin = 0;
 #endif
 
 #if (defined TM)
-#include "libTM/TMCoherence.h"
+#include "libTM/HTMManager.h"
 #endif
 
 int32_t main(int32_t argc, char**argv, char **envp)
 {
     srand(1);
-    ThreadContext::openTraceFile();
     osSim = new OSSim(argc, argv, envp);
 
     int32_t nProcs = SescConf->getRecordSize("","cpucore");
@@ -82,8 +81,6 @@ int32_t main(int32_t argc, char**argv, char **envp)
     GLOG(SMPDBG_CONSTR, "I am booting now");
     osSim->boot();
     GLOG(SMPDBG_CONSTR, "Terminating simulation");
-
-    ThreadContext::closeTraceFile();
 
     for(int32_t i = 0; i < nProcs; i++) {
         delete pr[i];

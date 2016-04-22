@@ -132,7 +132,7 @@ void ThermTrace::read_floorplan_mapping() {
     // Floor plan parameters
     for(size_t id=min; id<=max; id++) {
         if (!SescConf->checkCharPtr(flpSec,"blockDescr", id)) {
-            MSG("There is a WHOLE on the floorplan. This can create problems blockDescr[%d]", id);
+            MSG("There is a HOLE on the floorplan. This can create problems blockDescr[%lu]", id);
             exit(-1);
             continue;
         }
@@ -188,7 +188,7 @@ void ThermTrace::read_floorplan_mapping() {
     for(size_t j=0; j<mapping.size(); j++) {
         I(mapping[j].map.size() == mapping[j].ratio.size());
         if (mapping[j].map.empty()) {
-            MSG("Error: sesc variable %s [%d] does not update any block", mapping[j].name, j);
+            MSG("Error: sesc variable %s [%lu] does not update any block", mapping[j].name, j);
             exit(3);
         }
     }

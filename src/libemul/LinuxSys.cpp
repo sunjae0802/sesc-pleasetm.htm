@@ -14,6 +14,7 @@
 // Get definition of endian conversions
 #include "EndianDefs.h"
 
+#include <assert.h>
 #include <map>
 
 // Get definitions of native file operations and flags

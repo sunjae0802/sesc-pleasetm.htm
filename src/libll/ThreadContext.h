@@ -14,7 +14,7 @@
 #include "ThreadStats.h"
 
 #if (defined TM)
-#include "libTM/TMCoherence.h"
+#include "libTM/HTMManager.h"
 #include "libTM/TMContext.h"
 #include "libTM/TMState.h"
 #endif
@@ -64,6 +64,7 @@ public:
 
     TMBeginSubtype tmBeginSubtype;
     TMCommitSubtype tmCommitSubtype;
+    TMAbortType_e  tmAbortType;
 };
 
 // Use this define to debug the simulated application
@@ -145,6 +146,8 @@ private:
 
 public:
     void markRetire(DInst* dinst);
+    // Indicates whether pthread_spin_lock event has been noted
+    bool      spinning;
 
     // Function call/return hook handling
     void createCall(enum FuncName funcName, uint32_t retA, uint32_t arg0, uint32_t arg1) {
@@ -211,7 +214,7 @@ public:
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
     uint32_t getAbortRV();
-    void beginFallback(uint32_t pFallbackMutex);
+    void beginFallback(uint32_t pFallbackMutex, uint32_t arg);
     void completeFallback();
 
     // memop NACK handling methods
@@ -669,18 +672,18 @@ public:
     void dumpCallStack(void);
     void clearCallStack(void);
 
-public:
     // Event tracing
-    bool spinning;
     static bool inMain;
     static size_t numThreads;
-
     static std::ofstream tracefile;
+    static bool tracefileOpen;
+
+    static void openTraceFile();
+    static void closeTraceFile();
+public:
     static std::ofstream& getTracefile() {
         return tracefile;
     }
-    static void openTraceFile();
-    static void closeTraceFile();
 };
 
 #endif // THREADCONTEXT_H
