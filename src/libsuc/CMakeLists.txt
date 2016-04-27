@@ -11,6 +11,7 @@ SET(suc_SOURCES
     callback.cpp
     Config.cpp
     GStats.cpp
+    EventTrace.cpp
     MSHR.cpp
     nanassert.cpp
     Port.cpp
@@ -31,6 +32,7 @@ set(suc_HEADERS
     Config.h
     DbgObject.h
     estl.h
+    EventTrace.h
     FastQueue.h
     fpu_control.h
     GCObject.h

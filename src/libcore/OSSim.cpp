@@ -40,6 +40,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "GMemorySystem.h"
 #include "GProcessor.h"
 #include "FetchEngine.h"
+#include "EventTrace.h"
 
 #if (defined SESC_CMP)
 #include "libcmp/SMPCache.h"
@@ -434,6 +435,8 @@ void OSSim::processParams(int32_t argc, char **argv, char **envp)
         Report::openFile(traceFile);
         strcpy(p, traceFile + ((p - finalReportFile) +6));
     }
+
+    EventTrace::openFile("datafile.out");
 
     free(finalReportFile);
 
@@ -865,6 +868,8 @@ void OSSim::simFinish()
 #if (defined DRAMSIM2)
 	DRAM::PrintStat();
 #endif
+
+    EventTrace::close();
 
     // hein? what is this? merge problems?
     //  if(trace())

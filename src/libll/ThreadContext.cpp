@@ -19,8 +19,6 @@ SESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-// For ostringstream
-#include <sstream>
 #include "ThreadContext.h"
 #include "libemul/FileSys.h"
 #include "libcore/ProcessId.h"
@@ -33,8 +31,6 @@ std::set<uint32_t> ThreadContext::tmFallbackMutexCAddrs;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
-std::ofstream ThreadContext::tracefile;
-bool ThreadContext::tracefileOpen = false;
 size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
@@ -62,36 +58,19 @@ void ThreadContext::initialize(bool child) {
 #endif
 
     ThreadContext::numThreads++;
-    if(ThreadContext::numThreads == 1) {
-        ThreadContext::openTraceFile();
-    }
 }
 
 void ThreadContext::cleanup() {
     ThreadContext::numThreads--;
-    if(ThreadContext::tracefileOpen) {
-        ThreadContext::closeTraceFile();
-    }
-}
 
-void ThreadContext::openTraceFile() {
-    char filename[256];
-    sprintf(filename, "datafile.out");
-    tracefile.open(filename);
-    tracefileOpen = true;
-}
+    if(ThreadContext::numThreads == 1) {
+        TimeTrackerStats allTimerStats;
 
-void ThreadContext::closeTraceFile() {
-    TimeTrackerStats allTimerStats;
+        for(ThreadContext* c: pid2context) {
+            allTimerStats.sum(c->timeStats);
+        }
 
-    for(ThreadContext* c: pid2context) {
-        allTimerStats.sum(c->timeStats);
-    }
-
-    allTimerStats.print();
-    if(tracefile.is_open()) {
-        tracefile.close();
-        tracefileOpen = false;
+        allTimerStats.print();
     }
 }
 
@@ -767,6 +746,7 @@ void ThreadContext::clearCallStack(void) {
     printf("Clearing call stack for %d\n",pid);
     callStack.clear();
 }
+
 
 /// Keep track of statistics for each retired DInst.
 void ThreadContext::markRetire(DInst* dinst) {

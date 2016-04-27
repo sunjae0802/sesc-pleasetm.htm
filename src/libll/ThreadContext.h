@@ -654,15 +654,6 @@ public:
     // Event tracing
     static bool inMain;
     static size_t numThreads;
-    static std::ofstream tracefile;
-    static bool tracefileOpen;
-
-    static void openTraceFile();
-    static void closeTraceFile();
-public:
-    static std::ofstream& getTracefile() {
-        return tracefile;
-    }
 };
 
 #endif // THREADCONTEXT_H
