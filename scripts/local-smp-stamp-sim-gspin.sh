@@ -19,7 +19,7 @@ NCORES="16"
 l1conf=`get_l1conf $CACHE_ID`
 CONF="smp${NCORES}-${l1conf}.conf"
 
-BENCHCONFIG="htm-spin-lin"
+BENCHCONFIG="gspin"
 INPUTSIZE="sim"
 
 tmp_name=`mktemp -d`
