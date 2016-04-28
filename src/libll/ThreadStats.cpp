@@ -4,6 +4,62 @@
 #include "ThreadStats.h"
 
 using namespace std;
+std::vector<ThreadStats> ThreadStats::threadStats;
+
+/// Initialize the threadStats for pid.
+void ThreadStats::initialize(Pid_t pid) {
+    if((size_t)pid >= threadStats.size()) {
+        // Calls the default constructor of ThreadStats
+        threadStats.resize((size_t)pid + 1);
+    }
+}
+
+/// Print stats of all threads.
+void ThreadStats::print() {
+    TimeTrackerStats allTimerStats;
+
+    for(const ThreadStats& myStats: threadStats) {
+        allTimerStats.sum(myStats.timeStats);
+    }
+
+    allTimerStats.print();
+}
+
+/// Keep track of statistics for each retired DInst.
+void ThreadStats::markRetire(DInst* dinst) {
+    const Instruction* inst = dinst->getInst();
+    Pid_t pid               = dinst->context->getPid();
+    ThreadStats& myStats    = getThread(pid);
+
+    // Everything below is working on myStats as `this'
+    myStats.nRetiredInsts++;
+
+    if(inst->isTM()) {
+        myStats.currentRegion.markRetireTM(dinst);
+    }
+
+    // Track function boundaries, by for example initializing and ending atomic regions.
+    for(std::vector<FuncBoundaryData>::const_iterator i_funcData = dinst->getInstContext().funcData.begin();
+            i_funcData != dinst->getInstContext().funcData.end(); ++i_funcData) {
+        switch(i_funcData->funcName) {
+            case FUNC_TM_BEGIN:
+                myStats.currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
+                break;
+            case FUNC_TM_END: {
+                TimeTrackerStats currentTimeStats;
+                myStats.currentRegion.markEnd(globalClock);
+                myStats.currentRegion.calculate(&currentTimeStats);
+                myStats.currentRegion.clear();
+
+                myStats.timeStats.sum(currentTimeStats);
+                break;
+            }
+            default:
+                myStats.currentRegion.markRetireFuncBoundary(dinst, *i_funcData);
+                break;
+        } // end switch(funcName)
+    } // end foreach funcBoundaryData
+}
 
 TimeTrackerStats::TimeTrackerStats():
     duration(0),

@@ -82,6 +82,7 @@ int32_t main(int32_t argc, char**argv, char **envp)
     osSim->boot();
     GLOG(SMPDBG_CONSTR, "Terminating simulation");
 
+    ThreadStats::print();
     for(int32_t i = 0; i < nProcs; i++) {
         delete pr[i];
         delete ms[i];

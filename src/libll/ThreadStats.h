@@ -3,6 +3,7 @@
 
 #include <vector>
 
+// Forward decls to avoid circular includes
 class DInst;
 struct FuncBoundaryData;
 
@@ -73,6 +74,38 @@ struct AtomicRegionStats {
     Time_t              startAt;
     Time_t              endAt;
     std::vector<AtomicRegionEvents> events;
+};
+
+class ThreadStats {
+public:
+    ThreadStats(): nRetiredInsts(0), nExedInsts(0) {}
+    static void initialize(Pid_t pid);
+    static void markRetire(DInst* dinst);
+    static void incNExedInsts(Pid_t pid) {
+        getThread(pid).nExedInsts++;
+    }
+
+    static void print();
+    static ThreadStats& getThread(Pid_t pid) {
+        return threadStats.at(pid);
+    }
+    size_t getNRetiredInsts(void) const {
+        return nRetiredInsts;
+    }
+    size_t getNExedInsts(void) const {
+        return nExedInsts;
+    }
+private:
+    // Global stats vector, one for each pid
+    static std::vector<ThreadStats> threadStats;
+    // Holds the events for the current pid's atomic region
+    AtomicRegionStats       currentRegion;
+    // Holds the current pid's time stats
+    TimeTrackerStats        timeStats;
+    // Number of retired DInsts during this thread's lifetime
+    size_t    nRetiredInsts;
+    // Number of executed DInsts during this thread's lifetime
+    size_t    nExedInsts;
 };
 
 #endif

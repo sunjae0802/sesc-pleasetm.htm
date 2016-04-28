@@ -36,6 +36,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "MemRequest.h"
 #include "Port.h"
 #include "Resource.h"
+#include "libll/ThreadStats.h"
 
 Resource::Resource(Cluster *cls, PortGeneric *aGen)
     : cluster(cls)
@@ -62,7 +63,7 @@ void Resource::executed(DInst *dinst)
 
 RetOutcome Resource::retire(DInst *dinst)
 {
-    dinst->context->markRetire(dinst);
+    ThreadStats::markRetire(dinst);
     cluster->retire(dinst);
     dinst->destroy();
     return Retired;
@@ -156,7 +157,7 @@ RetOutcome FUMemory::retire(DInst *dinst)
             return WaitForFence;
         }
 
-        dinst->context->markRetire(dinst);
+        ThreadStats::markRetire(dinst);
         dinst->destroy();
     } else if(inst->isFence()) {
         if( inst->getSubCode() == iFetchOp ) {
@@ -171,19 +172,19 @@ RetOutcome FUMemory::retire(DInst *dinst)
                 return WaitForFence;
             else
                 r->storeSent();
-            dinst->context->markRetire(dinst);
+            ThreadStats::markRetire(dinst);
             DMemRequest::create(dinst, memorySystem, MemWrite);
         } else if( inst->getSubCode() == iMemFence ) {
             ((FUStore*)(getCluster()->getResource(iStore)))->doFence();
-            dinst->context->markRetire(dinst);
+            ThreadStats::markRetire(dinst);
             dinst->destroy();
         } else if( inst->getSubCode() == iAcquire ) {
-            dinst->context->markRetire(dinst);
+            ThreadStats::markRetire(dinst);
             // TODO: Consistency in LDST
             dinst->destroy();
         } else {
             I( inst->getSubCode() == iRelease );
-            dinst->context->markRetire(dinst);
+            ThreadStats::markRetire(dinst);
             // TODO: Consistency in LDST
             dinst->destroy();
         }
@@ -307,7 +308,7 @@ RetOutcome FULoad::retire(DInst *dinst)
     if (!dinst->isFake() && !dinst->isEarlyRecycled())
         freeLoads++;
 
-    dinst->context->markRetire(dinst);
+    ThreadStats::markRetire(dinst);
     dinst->destroy();
 
     // ldqRdWrEnergy->inc(); // Loads do not update fields at retire, just update pointers
@@ -439,7 +440,7 @@ RetOutcome FUStore::retire(DInst *dinst)
     else
         storeSent();
 
-    dinst->context->markRetire(dinst);
+    ThreadStats::markRetire(dinst);
     DMemRequest::create(dinst, memorySystem, MemWrite);
 
     doRetire(dinst);
@@ -560,7 +561,7 @@ RetOutcome FUBranch::retire(DInst *dinst)
 #endif
     }
 
-    dinst->context->markRetire(dinst);
+    ThreadStats::markRetire(dinst);
     cluster->retire(dinst);
     dinst->destroy();
 

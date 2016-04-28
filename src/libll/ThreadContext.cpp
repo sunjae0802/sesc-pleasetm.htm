@@ -46,8 +46,6 @@ void InstContext::clear() {
 }
 
 void ThreadContext::initialize(bool child) {
-    nRetiredInsts = 0;
-    nExedInsts = 0;
     spinning    = false;
 
 #if (defined TM)
@@ -58,20 +56,11 @@ void ThreadContext::initialize(bool child) {
 #endif
 
     ThreadContext::numThreads++;
+    ThreadStats::initialize(pid);
 }
 
 void ThreadContext::cleanup() {
     ThreadContext::numThreads--;
-
-    if(ThreadContext::numThreads == 1) {
-        TimeTrackerStats allTimerStats;
-
-        for(ThreadContext* c: pid2context) {
-            allTimerStats.sum(c->timeStats);
-        }
-
-        allTimerStats.print();
-    }
 }
 
 #if defined(TM)
@@ -265,7 +254,8 @@ ThreadContext *ThreadContext::getContext(Pid_t pid)
 void ThreadContext::printPCs(void)
 {
     for(ThreadContext* c: ThreadContext::pid2context) {
-        printf("[%d]: 0x%lx (%ld/%ld)\n", c->getPid(), c->getIAddr(), c->getNExedInsts(), c->getNRetiredInsts());
+        ThreadStats& s = ThreadStats::getThread(c->getPid());
+        printf("[%d]: 0x%lx (%ld/%ld)\n", c->getPid(), c->getIAddr(), s.getNExedInsts(), s.getNRetiredInsts());
     }
 }
 
@@ -748,35 +738,3 @@ void ThreadContext::clearCallStack(void) {
 }
 
 
-/// Keep track of statistics for each retired DInst.
-void ThreadContext::markRetire(DInst* dinst) {
-    nRetiredInsts++;
-
-    const Instruction* inst = dinst->getInst();
-
-    if(inst->isTM()) {
-        currentRegion.markRetireTM(dinst);
-    }
-
-    // Track function boundaries, by for example initializing and ending atomic regions.
-    for(std::vector<FuncBoundaryData>::const_iterator i_funcData = dinst->getInstContext().funcData.begin();
-            i_funcData != dinst->getInstContext().funcData.end(); ++i_funcData) {
-        switch(i_funcData->funcName) {
-            case FUNC_TM_BEGIN:
-                currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
-                break;
-            case FUNC_TM_END: {
-                TimeTrackerStats myTimeStats;
-                currentRegion.markEnd(globalClock);
-                currentRegion.calculate(&myTimeStats);
-                currentRegion.clear();
-
-                timeStats.sum(myTimeStats);
-                break;
-            }
-            default:
-                currentRegion.markRetireFuncBoundary(dinst, *i_funcData);
-                break;
-        } // end switch(funcName)
-    } // end foreach funcBoundaryData
-}
