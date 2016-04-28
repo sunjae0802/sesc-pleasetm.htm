@@ -2,6 +2,7 @@
 #define THREAD_STATS_H
 
 #include <vector>
+#include "estl.h"
 
 // Forward decls to avoid circular includes
 class DInst;
@@ -96,8 +97,8 @@ public:
         return nExedInsts;
     }
 private:
-    // Global stats vector, one for each pid
-    static std::vector<ThreadStats> threadStats;
+    // Global stats map, one for each pid
+    static HASH_MAP<Pid_t, ThreadStats> threadStats;
     // Holds the events for the current pid's atomic region
     AtomicRegionStats       currentRegion;
     // Holds the current pid's time stats

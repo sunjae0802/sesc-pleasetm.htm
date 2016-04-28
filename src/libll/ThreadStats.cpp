@@ -4,14 +4,11 @@
 #include "ThreadStats.h"
 
 using namespace std;
-std::vector<ThreadStats> ThreadStats::threadStats;
+HASH_MAP<Pid_t, ThreadStats> ThreadStats::threadStats;
 
 /// Initialize the threadStats for pid.
 void ThreadStats::initialize(Pid_t pid) {
-    if((size_t)pid >= threadStats.size()) {
-        // Calls the default constructor of ThreadStats
-        threadStats.resize((size_t)pid + 1);
-    }
+    threadStats.insert(make_pair(pid, ThreadStats()));
 }
 
 /// Print stats of all threads.
@@ -19,8 +16,9 @@ void ThreadStats::report(const char* str) {
     Report::field("BEGIN ThreadStats::report %s", str);
     TimeTrackerStats allTimerStats;
 
-    for(const ThreadStats& myStats: threadStats) {
-        allTimerStats.sum(myStats.timeStats);
+    HASH_MAP<Pid_t, ThreadStats>::const_iterator iStats;
+    for(iStats = threadStats.begin(); iStats != threadStats.end(); ++iStats) {
+        allTimerStats.sum(iStats->second.timeStats);
     }
 
     allTimerStats.reportValues();
