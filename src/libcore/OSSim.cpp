@@ -54,6 +54,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "ReportTherm.h"
 #endif
 
+#include "libll/ThreadStats.h"
 #include "libll/ThreadContext.h"
 #include "OSSim.h"
 
@@ -880,6 +881,7 @@ void OSSim::report(const char *str)
 {
 
     ProcessId::report(str);
+    ThreadStats::report(str);
 
     for(size_t i=0; i<cpus.size(); i++) {
         GProcessor *gproc = cpus.getProcessor(i);

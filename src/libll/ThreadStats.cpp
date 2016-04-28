@@ -1,6 +1,6 @@
-#include <iostream>
 #include "libcore/DInst.h"
 #include "ThreadContext.h"
+#include "ReportGen.h"
 #include "ThreadStats.h"
 
 using namespace std;
@@ -15,14 +15,16 @@ void ThreadStats::initialize(Pid_t pid) {
 }
 
 /// Print stats of all threads.
-void ThreadStats::print() {
+void ThreadStats::report(const char* str) {
+    Report::field("BEGIN ThreadStats::report %s", str);
     TimeTrackerStats allTimerStats;
 
     for(const ThreadStats& myStats: threadStats) {
         allTimerStats.sum(myStats.timeStats);
     }
 
-    allTimerStats.print();
+    allTimerStats.reportValues();
+    Report::field("END ThreadStats::report %s", str);
 }
 
 /// Keep track of statistics for each retired DInst.
@@ -83,21 +85,21 @@ uint64_t TimeTrackerStats::totalAccounted() const {
     ;
 }
 
-void TimeTrackerStats::print() const {
+void TimeTrackerStats::reportValues() const {
     if(totalAccounted() > duration) {
         fail("Accounted cycles is too high");
     }
 
     uint64_t totalOther = duration - totalAccounted();
 
-    std::cout << "InMutex: "        << inMutex      << "\n";
-    std::cout << "MutexQueue: "     << mutexQueue   << "\n";
-    std::cout << "Committed: "      << committed    << "\n";
-    std::cout << "Aborted: "        << aborted      << "\n";
-    std::cout << "ActiveFBWait: "   << activeFBWait << "\n";
-    std::cout << "BackoffWait: "    << backoffWait  << "\n";
-    std::cout << "HGWait: "         << hgWait  << "\n";
-    std::cout << "Other: "          << totalOther   << std::endl;
+    Report::field("tt_inMutex=%d",      inMutex);
+    Report::field("tt_mutexQueue=%d",   mutexQueue);
+    Report::field("tt_committed=%d",    committed);
+    Report::field("tt_aborted=%d",      aborted);
+    Report::field("tt_activeFBWait=%d", activeFBWait);
+    Report::field("tt_backoffWait=%d",  backoffWait);
+    Report::field("tt_hgWait=%d",       hgWait);
+    Report::field("tt_other=%d",        totalOther);
 }
 
 /// Add other to this statistics structure

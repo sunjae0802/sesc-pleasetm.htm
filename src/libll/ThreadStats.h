@@ -11,7 +11,7 @@ struct FuncBoundaryData;
 struct TimeTrackerStats {
     TimeTrackerStats();
     uint64_t totalAccounted() const;
-    void print() const;
+    void reportValues() const;
     void sum(const TimeTrackerStats& other);
 
     uint64_t duration;
@@ -85,7 +85,7 @@ public:
         getThread(pid).nExedInsts++;
     }
 
-    static void print();
+    static void report(const char *str);
     static ThreadStats& getThread(Pid_t pid) {
         return threadStats.at(pid);
     }
