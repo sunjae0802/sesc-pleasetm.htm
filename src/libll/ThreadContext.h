@@ -77,8 +77,7 @@ public:
 	static int64_t finalSkip;
     static Time_t resetTS;
 private:
-    void initialize(bool child);
-	void cleanup();
+    void initialize();
     typedef std::vector<pointer> ContextVector;
     // Static variables
     static ContextVector pid2context;
@@ -88,8 +87,6 @@ private:
     // Debug flag for making sure we have consistent view of SW tid and HW tid
     uint32_t tmlibUserTid;
 #define INVALID_USER_TID (0xDEADDEAD)
-    // Unique transaction identifier
-    uint64_t tmUtid;
     // Saved thread context
     TMContext *tmContext;
     // Depth of nested transactions
@@ -125,16 +122,12 @@ private:
     InstContext instContext;
     size_t    nDInsts;
 
-    // HACK to balance calls/returns
+    // BEGIN HACK to balance calls/returns
     typedef void (*retHandler_t)(InstDesc *, ThreadContext *);
     std::vector<std::pair<VAddr, retHandler_t> > retHandlers;
     std::vector<std::pair<VAddr, retHandler_t> > retHandlersSaved;
 
 public:
-    // Indicates whether pthread_spin_lock event has been noted
-    bool      spinning;
-
-    // Function call/return hook handling
     void createCall(enum FuncName funcName, uint32_t retA, uint32_t arg0, uint32_t arg1) {
         instContext.funcData.push_back(FuncBoundaryData::createCall(funcName, retA, arg0, arg1));
     }
@@ -162,9 +155,10 @@ public:
         }
     }
     bool retsEmpty() const { return retHandlers.empty(); }
+    // END HACK to balance calls/returns
 
 #if (defined TM)
-    // Transactional Helper Methods
+    // BEGIN Transactional Methods
     size_t getTMdepth()     const { return tmDepth; }
     bool isInTM()           const { return getTMdepth() > 0; }
     TMStateEngine::State_e getTMState() const { return htmManager ? htmManager->getTMState(pid) : TMStateEngine::TM_INVALID; }
@@ -172,9 +166,8 @@ public:
 
     TMContext* getTMContext() const { return tmContext; }
     void setTMContext(TMContext* newTMContext) { tmContext = newTMContext; }
-
-    // Transactional Methods
     void setTMlibUserTid(uint32_t arg);
+
     TMBCStatus beginTransaction(InstDesc* inst);
     TMBCStatus commitTransaction(InstDesc* inst);
     TMBCStatus abortTransaction(InstDesc* inst, TMAbortType_e abortType);
@@ -196,18 +189,15 @@ public:
     void completeAbort(InstDesc* inst);
     uint32_t getBeginRV(TMBCStatus status);
     uint32_t getAbortRV();
+
     void beginFallback(uint32_t pFallbackMutex, uint32_t arg);
     void completeFallback();
-
-    // memop NACK handling methods
-    void startRetryTimer() {
-        startStalling(htmManager->getNackRetryStallCycles());
-    }
     static bool isFallbackMutexAddr(VAddr cAddr) {
         return tmFallbackMutexCAddrs.find(cAddr) != tmFallbackMutexCAddrs.end();
     }
+    // END Transactional Methods
 #endif
-    // Thread stalling methods
+    // BEGIN Thread stalling methods
 private:
     Time_t  stallUntil;
 public:
@@ -219,6 +209,10 @@ public:
     bool checkStall() const {
         return stallUntil != 0 && stallUntil >= globalClock;
     }
+    void startRetryTimer() {
+        startStalling(htmManager->getNackRetryStallCycles());
+    }
+    // END Thread stalling methods
 
     static inline int32_t getPidUb(void) {
         return pid2context.size();
@@ -635,7 +629,7 @@ public:
 
     // Event tracing
     static bool inMain;
-    static size_t numThreads;
+    bool      spinning;
 };
 
 #endif // THREADCONTEXT_H

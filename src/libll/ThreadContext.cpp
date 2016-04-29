@@ -31,7 +31,6 @@ std::set<uint32_t> ThreadContext::tmFallbackMutexCAddrs;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
-size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
     wasHit      = false;
@@ -45,7 +44,7 @@ void InstContext::clear() {
     tmAbortType=TM_ATYPE_INVALID;
 }
 
-void ThreadContext::initialize(bool child) {
+void ThreadContext::initialize() {
     spinning    = false;
 
 #if (defined TM)
@@ -55,12 +54,7 @@ void ThreadContext::initialize(bool child) {
     tmlibUserTid= INVALID_USER_TID;
 #endif
 
-    ThreadContext::numThreads++;
     ThreadStats::initialize(pid);
-}
-
-void ThreadContext::cleanup() {
-    ThreadContext::numThreads--;
 }
 
 #if defined(TM)
@@ -306,7 +300,7 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
 
     memset(regs,0,sizeof(regs));
     setAddressSpace(new AddressSpace());
-    initialize(false);
+    initialize();
 }
 
 ThreadContext::ThreadContext(ThreadContext &parent,
@@ -372,7 +366,7 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     // This must be after setAddressSpace (it resets clear_child_tid)
     clear_child_tid=clearChildTid;
 
-    initialize(true);
+    initialize();
 }
 
 ThreadContext::~ThreadContext(void) {
@@ -438,7 +432,6 @@ bool ThreadContext::exit(int32_t code) {
     if(!retsEmpty()) {
         fail("TM lib call not balanced");
     }
-	cleanup();
     I(!isExited());
     I(!isKilled());
     I(!isSuspended());
