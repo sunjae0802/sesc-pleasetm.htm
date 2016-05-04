@@ -205,17 +205,12 @@ setup_stamp() {
     fi
 
     # Copy source and objects
-    objdir="${benchdir}/${benchconfig}/${benchname}"
-    #echo "Copying objects: ${objdir} to _src"
-    cp -rf ${objdir} _src
-    mkdir _src/src
+    cp -rf "${benchdir}/${benchconfig}/${benchname}/${PROG}" .
+    mkdir src
 
-    srcdir="${benchdir}/trunk/${benchname}"
-    #echo "Copying source: ${srcdir} to src/"
-    cp -rf ${srcdir} _src/src/
-    cp -rf ${srcdir}/../lib _src/src/
-
-    cp _src/${PROG} .
+    cp -rf ${benchdir}/trunk/${benchname} src/
+    cp -rf ${benchdir}/trunk/lib src/
+    cp -rf ${benchdir}/trunk/common/${benchconfig}/ src/
 }
 
 get_benchname() {

@@ -72,8 +72,8 @@ run_sesc() {
     #rm datafile.out
 
     ${COMPRESS_CMD} sesc_*
-    tar -cf src.tar _src
+    tar -cf src.tar src
     ${COMPRESS_CMD} src.tar
-    rm -rf _src
+    rm -rf src
     rm -rf inputs
 }
