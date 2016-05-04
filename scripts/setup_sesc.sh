@@ -53,12 +53,12 @@ enter_benchrundir() {
 
 run_sesc() {
     sesccmd=$1
-    conf=$2
-    bbbin=$3
-    bbopt=$4
-    out="output.txt"
+    sescconf=$2
+    mipsbinary=$3
+    binaryopt=$4
+    outfile="output.txt"
 
-    cmd="${sesccmd} -c${conf} -w0 ${bbbin} ${bbopt} | tee ${out}"
+    cmd="${sesccmd} -c${sescconf} -w0 ${mipsbinary} ${binaryopt} | tee ${outfile}"
     echo "Command: $cmd" | tee command.txt
     echo ""
 
@@ -68,6 +68,7 @@ run_sesc() {
     #cat datafile.out | ${COMPRESS_CMD} -c > datafile.out.${COMPRESS_EXT}
 
     # Cleanup
+    echo "Cleaning up"
     ${COMPRESS_CMD} datafile.out
     #rm datafile.out
 
@@ -76,4 +77,5 @@ run_sesc() {
     ${COMPRESS_CMD} src.tar
     rm -rf src
     rm -rf inputs
+    rm -f ${mipsbinary}
 }
