@@ -1,8 +1,6 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
-#include "libsuc/nanassert.h"
-#include "HTMManager.h"
 #include "RWSetManager.h"
 
 using namespace std;

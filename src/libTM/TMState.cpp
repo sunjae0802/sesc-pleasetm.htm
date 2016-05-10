@@ -1,9 +1,5 @@
-#include <cmath>
-#include <algorithm>
 #include <iostream>
-#include "libsuc/nanassert.h"
 #include "libemul/EmulInit.h"
-#include "SescConf.h"
 #include "TMState.h"
 
 using namespace std;

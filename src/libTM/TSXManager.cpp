@@ -1,4 +1,5 @@
 #include "libll/ThreadContext.h"
+#include "SescConf.h"
 #include "TSXManager.h"
 
 using namespace std;
