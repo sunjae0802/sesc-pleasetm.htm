@@ -429,15 +429,8 @@ void OSSim::processParams(int32_t argc, char **argv, char **envp)
 #endif
 
     if (trace_flag) {
-        traceFile = (char*)malloc(strlen(finalReportFile) + 7);
-        char *p = strrchr(finalReportFile,'.');
-        *p = 0;
-        sprintf(traceFile, "%s.trace.%s",finalReportFile, p + 1);
-        Report::openFile(traceFile);
-        strcpy(p, traceFile + ((p - finalReportFile) +6));
+        EventTrace::openFile("datafile.out");
     }
-
-    EventTrace::openFile("datafile.out");
 
     free(finalReportFile);
 
