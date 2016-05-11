@@ -1,11 +1,12 @@
-#include <iostream>
 #include "libcore/DInst.h"
 #include "ThreadContext.h"
+#include "ReportGen.h"
 #include "ThreadStats.h"
 
 using namespace std;
+HASH_MAP<Pid_t, ThreadStats> ThreadStats::threadStats;
 
-TimeTrackerStats::TimeTrackerStats():
+AtomicRegionStats::AtomicRegionStats():
     duration(0),
     inMutex(0),
     mutexQueue(0),
@@ -17,7 +18,7 @@ TimeTrackerStats::TimeTrackerStats():
     hgWait(0)
 {
 }
-uint64_t TimeTrackerStats::totalAccounted() const {
+uint64_t AtomicRegionStats::totalAccounted() const {
     return inMutex
         + mutexQueue
         + committed
@@ -29,26 +30,26 @@ uint64_t TimeTrackerStats::totalAccounted() const {
     ;
 }
 
-void TimeTrackerStats::print() const {
+void AtomicRegionStats::reportValues() const {
     if(totalAccounted() > duration) {
         fail("Accounted cycles is too high");
     }
 
     uint64_t totalOther = duration - totalAccounted();
 
-    std::cout << "InMutex: "        << inMutex      << "\n";
-    std::cout << "MutexQueue: "     << mutexQueue   << "\n";
-    std::cout << "Committed: "      << committed    << "\n";
-    std::cout << "Aborted: "        << aborted      << "\n";
-    std::cout << "NackStalled: "    << nackStalled  << "\n";
-    std::cout << "ActiveFBWait: "   << activeFBWait << "\n";
-    std::cout << "BackoffWait: "    << backoffWait  << "\n";
-    std::cout << "HGWait: "         << hgWait  << "\n";
-    std::cout << "Other: "          << totalOther   << std::endl;
+    Report::field("tt_inMutex=%d",      inMutex);
+    Report::field("tt_mutexQueue=%d",   mutexQueue);
+    Report::field("tt_committed=%d",    committed);
+    Report::field("tt_aborted=%d",      aborted);
+    Report::field("tt_activeFBWait=%d", activeFBWait);
+    Report::field("tt_backoffWait=%d",  backoffWait);
+    Report::field("tt_hgWait=%d",       hgWait);
+    Report::field("tt_nackStalled=%d",  nackStalled);
+    Report::field("tt_other=%d",        totalOther);
 }
 
 /// Add other to this statistics structure
-void TimeTrackerStats::sum(const TimeTrackerStats& other) {
+void AtomicRegionStats::sum(const AtomicRegionStats& other) {
     duration        += other.duration;
     inMutex         += other.inMutex;
     mutexQueue      += other.mutexQueue;
@@ -60,32 +61,32 @@ void TimeTrackerStats::sum(const TimeTrackerStats& other) {
     hgWait          += other.hgWait;
 }
 
-// Uninitialize stats structure
-void AtomicRegionStats::clear() {
+// Uninitialize context structure
+void AtomicRegionContext::clear() {
     pid = INVALID_PID;
     startPC = startAt = endAt = 0;
     events.clear();
 }
-// Initalize status structure
-void AtomicRegionStats::init(Pid_t p, VAddr pc, Time_t at) {
+// Initalize context structure
+void AtomicRegionContext::init(Pid_t p, VAddr pc, Time_t at) {
     clear();
     pid     = p;
     startPC = pc;
     startAt = at;
 }
 // Create new AtomicRegion event
-void AtomicRegionStats::newAREvent(enum AREventType type) {
+void AtomicRegionContext::newAREvent(enum AREventType type) {
     AtomicRegionEvents newEvent(type, globalClock);
     events.push_back(newEvent);
 }
 // Create new AtomicRegion event at a given time
-void AtomicRegionStats::newAREvent(enum AREventType type, Time_t at) {
+void AtomicRegionContext::newAREvent(enum AREventType type, Time_t at) {
     AtomicRegionEvents newEvent(type, at);
     events.push_back(newEvent);
 }
 
 /// If the DInst is at a function boundary, update statistics
-void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData) {
+void AtomicRegionContext::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData) {
     switch(funcData.funcName) {
         case FUNC_TM_BEGIN_FALLBACK:
             if(funcData.isCall) {
@@ -121,7 +122,7 @@ void AtomicRegionStats::markRetireFuncBoundary(DInst* dinst, const FuncBoundaryD
 }
 
 /// If the DInst is a TM instruction, update statistics
-void AtomicRegionStats::markRetireTM(DInst* dinst) {
+void AtomicRegionContext::markRetireTM(DInst* dinst) {
     Pid_t pid = dinst->context->getPid();
 
     if(dinst->tmAbortCompleteOp()) {
@@ -149,7 +150,7 @@ void AtomicRegionStats::markRetireTM(DInst* dinst) {
 }
 
 // Print all the events stored in an AtomicRegion, with ``current'' marked
-void AtomicRegionStats::printEvents(const AtomicRegionEvents& current) const {
+void AtomicRegionContext::printEvents(const AtomicRegionEvents& current) const {
     std::cout << pid << ": [B 0], ";
     for(size_t eid = 0; eid < events.size(); eid++) {
         const AtomicRegionEvents& event = events.at(eid);
@@ -164,7 +165,7 @@ void AtomicRegionStats::printEvents(const AtomicRegionEvents& current) const {
 }
 
 /// Add this region's statistics to p_stats.
-void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
+void AtomicRegionContext::calculate(AtomicRegionStats* p_stats) {
     // Make sure the stats are valid
     if(startPC == 0) {
         fail("Un-initialized region\n");
@@ -304,4 +305,65 @@ void AtomicRegionStats::calculate(TimeTrackerStats* p_stats) {
         printEvents(events.at(0));
         fail("[%d] Accounted cycles is too high", pid);
     }
+}
+
+/// Initialize the threadStats for pid.
+void ThreadStats::initialize(Pid_t pid) {
+    threadStats.insert(make_pair(pid, ThreadStats()));
+}
+
+/// Print stats of all threads.
+void ThreadStats::report(const char* str) {
+    Report::field("BEGIN ThreadStats::report %s", str);
+    AtomicRegionStats allStats;
+
+    HASH_MAP<Pid_t, ThreadStats>::const_iterator iStats;
+    for(iStats = threadStats.begin(); iStats != threadStats.end(); ++iStats) {
+        allStats.sum(iStats->second.regionStats);
+    }
+
+    allStats.reportValues();
+    Report::field("END ThreadStats::report %s", str);
+}
+
+/// Keep track of statistics for each retired DInst.
+void ThreadStats::markRetire(DInst* dinst) {
+    const Instruction* inst = dinst->getInst();
+    Pid_t pid               = dinst->context->getPid();
+    ThreadStats& myStats    = getThread(pid);
+
+    // Everything below is working on myStats as `this'
+    myStats.nRetiredInsts++;
+
+    if(inst->isTM()) {
+        myStats.currentRegion.markRetireTM(dinst);
+    }
+    if(dinst->getTMMemopHadStalled()) {
+        myStats.currentRegion.newAREvent(AR_EVENT_MEMNACK_START, myStats.prevDInstRetired);
+        myStats.currentRegion.newAREvent(AR_EVENT_MEMNACK_END);
+    }
+
+    // Track function boundaries, by for example initializing and ending atomic regions.
+    for(std::vector<FuncBoundaryData>::const_iterator i_funcData = dinst->getInstContext().funcData.begin();
+            i_funcData != dinst->getInstContext().funcData.end(); ++i_funcData) {
+        switch(i_funcData->funcName) {
+            case FUNC_TM_BEGIN:
+                myStats.currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
+                break;
+            case FUNC_TM_END: {
+                AtomicRegionStats currentStats;
+                myStats.currentRegion.markEnd(globalClock);
+                myStats.currentRegion.calculate(&currentStats);
+                myStats.currentRegion.clear();
+
+                myStats.regionStats.sum(currentStats);
+                break;
+            }
+            default:
+                myStats.currentRegion.markRetireFuncBoundary(dinst, *i_funcData);
+                break;
+        } // end switch(funcName)
+    } // end foreach funcBoundaryData
+
+    myStats.prevDInstRetired = globalClock;
 }

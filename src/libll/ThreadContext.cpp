@@ -19,8 +19,6 @@ SESC; see the file COPYING.  If not, write to the  Free Software Foundation, 59
 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 */
 
-// For ostringstream
-#include <sstream>
 #include "ThreadContext.h"
 #include "libemul/FileSys.h"
 #include "libcore/ProcessId.h"
@@ -33,9 +31,6 @@ std::set<uint32_t> ThreadContext::tmFallbackMutexCAddrs;
 bool ThreadContext::simDone = false;
 int64_t ThreadContext::finalSkip = 0;
 bool ThreadContext::inMain = false;
-std::ofstream ThreadContext::tracefile;
-bool ThreadContext::tracefileOpen = false;
-size_t ThreadContext::numThreads = 0;
 
 void InstContext::clear() {
     wasHit      = false;
@@ -51,10 +46,7 @@ void InstContext::clear() {
     tmAbortType=TM_ATYPE_INVALID;
 }
 
-void ThreadContext::initialize(bool child) {
-    prevDInstRetired = 0;
-    nRetiredInsts = 0;
-    nExedInsts = 0;
+void ThreadContext::initialize() {
     spinning    = false;
 
 #if (defined TM)
@@ -65,38 +57,7 @@ void ThreadContext::initialize(bool child) {
     tmMemopHadStalled = false;
 #endif
 
-    ThreadContext::numThreads++;
-    if(ThreadContext::numThreads == 1) {
-        ThreadContext::openTraceFile();
-    }
-}
-
-void ThreadContext::cleanup() {
-    ThreadContext::numThreads--;
-    if(ThreadContext::tracefileOpen) {
-        ThreadContext::closeTraceFile();
-    }
-}
-
-void ThreadContext::openTraceFile() {
-    char filename[256];
-    sprintf(filename, "datafile.out");
-    tracefile.open(filename);
-    tracefileOpen = true;
-}
-
-void ThreadContext::closeTraceFile() {
-    TimeTrackerStats allTimerStats;
-
-    for(ThreadContext* c: pid2context) {
-        allTimerStats.sum(c->timeStats);
-    }
-
-    allTimerStats.print();
-    if(tracefile.is_open()) {
-        tracefile.close();
-        tracefileOpen = false;
-    }
+    ThreadStats::initialize(pid);
 }
 
 #if defined(TM)
@@ -290,7 +251,8 @@ ThreadContext *ThreadContext::getContext(Pid_t pid)
 void ThreadContext::printPCs(void)
 {
     for(ThreadContext* c: ThreadContext::pid2context) {
-        printf("[%d]: 0x%lx (%ld/%ld)\n", c->getPid(), c->getIAddr(), c->getNExedInsts(), c->getNRetiredInsts());
+        ThreadStats& s = ThreadStats::getThread(c->getPid());
+        printf("[%d]: 0x%lx (%ld/%ld)\n", c->getPid(), c->getIAddr(), s.getNExedInsts(), s.getNRetiredInsts());
     }
 }
 
@@ -341,7 +303,7 @@ ThreadContext::ThreadContext(FileSys::FileSys *fileSys)
 
     memset(regs,0,sizeof(regs));
     setAddressSpace(new AddressSpace());
-    initialize(false);
+    initialize();
 }
 
 ThreadContext::ThreadContext(ThreadContext &parent,
@@ -407,7 +369,7 @@ ThreadContext::ThreadContext(ThreadContext &parent,
     // This must be after setAddressSpace (it resets clear_child_tid)
     clear_child_tid=clearChildTid;
 
-    initialize(true);
+    initialize();
 }
 
 ThreadContext::~ThreadContext(void) {
@@ -473,7 +435,6 @@ bool ThreadContext::exit(int32_t code) {
     if(!retsEmpty()) {
         fail("TM lib call not balanced");
     }
-	cleanup();
     I(!isExited());
     I(!isKilled());
     I(!isSuspended());
@@ -772,43 +733,4 @@ void ThreadContext::clearCallStack(void) {
     callStack.clear();
 }
 
-/// Keep track of statistics for each retired DInst.
-void ThreadContext::markRetire(DInst* dinst) {
-    nRetiredInsts++;
-
-    const Instruction* inst = dinst->getInst();
-
-    if(inst->isTM()) {
-        currentRegion.markRetireTM(dinst);
-    }
-
-    if(dinst->getTMMemopHadStalled()) {
-        currentRegion.newAREvent(AR_EVENT_MEMNACK_START, prevDInstRetired);
-        currentRegion.newAREvent(AR_EVENT_MEMNACK_END);
-    }
-
-    // Track function boundaries, by for example initializing and ending atomic regions.
-    for(std::vector<FuncBoundaryData>::const_iterator i_funcData = dinst->getInstContext().funcData.begin();
-            i_funcData != dinst->getInstContext().funcData.end(); ++i_funcData) {
-        switch(i_funcData->funcName) {
-            case FUNC_TM_BEGIN:
-                currentRegion.init(pid, dinst->getInst()->getAddr(), globalClock);
-                break;
-            case FUNC_TM_END: {
-                TimeTrackerStats myTimeStats;
-                currentRegion.markEnd(globalClock);
-                currentRegion.calculate(&myTimeStats);
-                currentRegion.clear();
-
-                timeStats.sum(myTimeStats);
-                break;
-            }
-            default:
-                currentRegion.markRetireFuncBoundary(dinst, *i_funcData);
-                break;
-        } // end switch(funcName)
-    } // end foreach funcBoundaryData
-
-    prevDInstRetired = globalClock;
-}
 

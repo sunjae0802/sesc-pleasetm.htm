@@ -29,6 +29,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "TraceGen.h"
 #include "libcore/GMemorySystem.h"
 #include "libcore/MemRequest.h"
+#include "ThreadStats.h"
 
 ExecutionFlow::ExecutionFlow(int32_t cId, int32_t i, GMemorySystem *gmem)
     : GFlow(i, cId, gmem)
@@ -99,9 +100,10 @@ DInst *ExecutionFlow::executePC()
     iDesc=(*iDesc)(thread);
     if(!iDesc)
         return 0;
+
+    ThreadStats::incNExedInsts(thread->getPid());
     VAddr vaddr=thread->getDAddr();
     thread->setDAddr(0);
-    thread->incNExedInsts();
     return DInst::createDInst(iDesc->getSescInst(),vaddr,fid,thread);
 }
 

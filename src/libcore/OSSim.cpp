@@ -40,6 +40,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "GMemorySystem.h"
 #include "GProcessor.h"
 #include "FetchEngine.h"
+#include "EventTrace.h"
 
 #if (defined SESC_CMP)
 #include "libcmp/SMPCache.h"
@@ -53,6 +54,7 @@ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 #include "ReportTherm.h"
 #endif
 
+#include "libll/ThreadStats.h"
 #include "libll/ThreadContext.h"
 #include "OSSim.h"
 
@@ -434,6 +436,8 @@ void OSSim::processParams(int32_t argc, char **argv, char **envp)
         Report::openFile(traceFile);
         strcpy(p, traceFile + ((p - finalReportFile) +6));
     }
+
+    EventTrace::openFile("datafile.out");
 
     free(finalReportFile);
 
@@ -866,6 +870,8 @@ void OSSim::simFinish()
 	DRAM::PrintStat();
 #endif
 
+    EventTrace::close();
+
     // hein? what is this? merge problems?
     //  if(trace())
     //  Report::close();
@@ -875,6 +881,7 @@ void OSSim::report(const char *str)
 {
 
     ProcessId::report(str);
+    ThreadStats::report(str);
 
     for(size_t i=0; i<cpus.size(); i++) {
         GProcessor *gproc = cpus.getProcessor(i);

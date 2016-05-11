@@ -2,16 +2,19 @@
 #define THREAD_STATS_H
 
 #include <vector>
+#include "estl.h"
 
+// Forward decls to avoid circular includes
 class DInst;
 struct FuncBoundaryData;
 
 // Struct that contains overall statistics about subsections within an atomic region.
-struct TimeTrackerStats {
-    TimeTrackerStats();
+struct AtomicRegionStats {
+public:
+    AtomicRegionStats();
     uint64_t totalAccounted() const;
-    void print() const;
-    void sum(const TimeTrackerStats& other);
+    void reportValues() const;
+    void sum(const AtomicRegionStats& other);
 
     uint64_t duration;
     uint64_t inMutex;
@@ -42,12 +45,10 @@ enum AREventType {
     AR_EVENT_BACKOFF_BEGIN      = 91, // Random backoff       (calling wait(1))
     AR_EVENT_HOURGLASS_BEGIN    = 92, // Wait for hourglass   (calling wait(2))
     AR_EVENT_WAIT_END           = 99, // Wait end             (returning from wait)
-
-    AR_EVENT_NUM_TYPES
 };
 
 // Pair of values that indicate an event within an atomic region
-class AtomicRegionEvents {
+struct AtomicRegionEvents {
 public:
     AtomicRegionEvents(enum AREventType t, Time_t at): type(t), timestamp(at) {}
     enum AREventType getType() const { return type; }
@@ -59,8 +60,9 @@ private:
 
 // Used to track timing statistics of atomic regions (between tm_begin and tm_end).
 // All timing is done at retire-time of DInsts.
-struct AtomicRegionStats {
-    AtomicRegionStats() { clear(); }
+class AtomicRegionContext {
+public:
+    AtomicRegionContext() { clear(); }
     void clear();
     void init(Pid_t p, VAddr pc, Time_t at);
     void markEnd(Time_t at) {
@@ -69,15 +71,55 @@ struct AtomicRegionStats {
     void printEvents(const AtomicRegionEvents& current) const;
     void markRetireFuncBoundary(DInst* dinst, const FuncBoundaryData& funcData);
     void markRetireTM(DInst* dinst);
-    void calculate(TimeTrackerStats* p_stats);
+    void calculate(AtomicRegionStats* p_stats);
     void newAREvent(enum AREventType type);
     void newAREvent(enum AREventType type, Time_t at);
 
+private:
+    // Pid of the owner thread
     Pid_t               pid;
+    // The start PC value
     VAddr               startPC;
+    // The globalClock entry
     Time_t              startAt;
+    // The globalClock exit
     Time_t              endAt;
+    // List of events in this atomic region
     std::vector<AtomicRegionEvents> events;
+};
+
+class ThreadStats {
+public:
+    ThreadStats(): nRetiredInsts(0), nExedInsts(0), prevDInstRetired(0) {}
+    static void initialize(Pid_t pid);
+    static void markRetire(DInst* dinst);
+    static void incNExedInsts(Pid_t pid) {
+        getThread(pid).nExedInsts++;
+    }
+
+    static void report(const char *str);
+    static ThreadStats& getThread(Pid_t pid) {
+        return threadStats.at(pid);
+    }
+    size_t getNRetiredInsts(void) const {
+        return nRetiredInsts;
+    }
+    size_t getNExedInsts(void) const {
+        return nExedInsts;
+    }
+private:
+    // Global stats map, one for each pid
+    static HASH_MAP<Pid_t, ThreadStats> threadStats;
+    // Holds the events for the current pid's atomic region
+    AtomicRegionContext       currentRegion;
+    // Holds the current pid's atomic region stats
+    AtomicRegionStats         regionStats;
+    // Number of retired DInsts during this thread's lifetime
+    size_t    nRetiredInsts;
+    // Number of executed DInsts during this thread's lifetime
+    size_t    nExedInsts;
+    // Time when the previous DInst for this thread had retired
+    Time_t    prevDInstRetired;
 };
 
 #endif

@@ -2,7 +2,7 @@
 #define PRIVATE_CACHE
 
 #include "libemul/InstDesc.h"
-#include "libsuc/CacheCore.h"
+#include "CacheCore.h"
 
 enum EvictCause {
     NoEvict = 0,

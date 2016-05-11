@@ -1,7 +1,6 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
-#include "libsuc/nanassert.h"
 #include "SescConf.h"
 #include "libll/Instruction.h"
 #include "HTMManager.h"

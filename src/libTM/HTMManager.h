@@ -8,6 +8,7 @@
 
 #include "Snippets.h"
 #include "GStats.h"
+#include "libll/ThreadContext.h"
 #include "libemul/InstDesc.h"
 #include "TMState.h"
 #include "RWSetManager.h"
