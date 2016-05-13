@@ -8,10 +8,13 @@
 
 #include "Snippets.h"
 #include "GStats.h"
-#include "libll/ThreadContext.h"
 #include "libemul/InstDesc.h"
 #include "TMState.h"
 #include "RWSetManager.h"
+
+// Forward defs instead of ThreadContext.h
+class ThreadContext;
+class InstContext;
 
 enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT };
 enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };

@@ -1,7 +1,10 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include "nanassert.h"
+#include "libemul/EmulInit.h"
 #include "SescConf.h"
+#include "libll/ThreadContext.h"
 #include "libll/Instruction.h"
 #include "HTMManager.h"
 #include "TSXManager.h"
