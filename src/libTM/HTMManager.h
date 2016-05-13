@@ -16,9 +16,6 @@
 class ThreadContext;
 class InstContext;
 
-enum TMBCStatus { TMBC_INVALID, TMBC_SUCCESS, TMBC_NACK, TMBC_ABORT };
-enum TMRWStatus { TMRW_INVALID, TMRW_NONTM, TMRW_SUCCESS, TMRW_NACKED, TMRW_ABORT };
-
 class HTMManager {
 public:
     virtual ~HTMManager() { }
