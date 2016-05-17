@@ -350,7 +350,7 @@ TMBCStatus TSXManager::myCommit(InstDesc* inst, const ThreadContext* context, In
     return TMBC_SUCCESS;
 }
 
-TMBCStatus TSXManager::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void TSXManager::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -367,7 +367,5 @@ TMBCStatus TSXManager::myAbort(InstDesc* inst, const ThreadContext* context, Ins
         }
     }
     overflow[pid].clear();
-
-    return TMBC_SUCCESS;
 }
 

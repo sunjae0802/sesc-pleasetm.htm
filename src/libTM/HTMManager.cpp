@@ -138,18 +138,16 @@ TMBCStatus HTMManager::commit(InstDesc* inst, const ThreadContext* context, Inst
     return status;
 }
 
-TMBCStatus HTMManager::abort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void HTMManager::startAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     if(getTMState(pid) != TMStateEngine::TM_MARKABORT) {
         fail("%d should be marked abort before starting abort: %d", pid, getTMState(pid));
     }
 
-    TMBCStatus status = myAbort(inst, context, p_opStatus);
-    if(status == TMBC_SUCCESS) {
-        abortStates.at(pid).setAbortIAddr(context->getIAddr());
-        tmStates[pid].startAborting();
-    }
-    return status;
+    myStartAborting(inst, context, p_opStatus);
+
+    abortStates.at(pid).setAbortIAddr(context->getIAddr());
+    tmStates[pid].startAborting();
 }
 
 ///
@@ -248,9 +246,7 @@ TMBCStatus HTMManager::myBegin(InstDesc* inst, const ThreadContext* context, Ins
 
 ///
 // A basic type of TM abort if child does not override
-TMBCStatus HTMManager::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
-    Pid_t pid   = context->getPid();
-	return TMBC_SUCCESS;
+void HTMManager::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
 }
 
 ///

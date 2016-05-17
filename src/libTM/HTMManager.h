@@ -24,7 +24,7 @@ public:
     // Entry point functions for TM operations
     TMRWStatus read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
     TMRWStatus write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus);
-    TMBCStatus abort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    void startAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     TMBCStatus commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     TMBCStatus begin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
 
@@ -63,7 +63,7 @@ protected:
     virtual TMRWStatus TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
     virtual void       nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
     virtual void       nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) = 0;
-    virtual TMBCStatus myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
+    virtual void myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual void       myCompleteAbort(Pid_t pid);

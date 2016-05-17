@@ -144,7 +144,7 @@ void ThreadContext::syscallAbortTM(InstDesc* inst) {
     abortTransaction(inst);
 }
 
-TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
+void ThreadContext::abortTransaction(InstDesc* inst) {
     if(tmContext == NULL) {
         fail("Abort fail: tmContext is NULL\n");
     }
@@ -152,36 +152,28 @@ TMBCStatus ThreadContext::abortTransaction(InstDesc* inst) {
     // Save UTID before aborting
     uint64_t utid = htmManager->getUtid(pid);
 
-    TMBCStatus status = htmManager->abort(inst, this, &instContext);
-    switch(status) {
-        case TMBC_SUCCESS: {
-            // Since we jump to the outer-most context, find it first
-            TMContext* rootTMContext = tmContext;
-            while(rootTMContext->getParentContext()) {
-                TMContext* oldTMContext = rootTMContext;
-                rootTMContext = rootTMContext->getParentContext();
-                delete oldTMContext;
-            }
-            rootTMContext->restoreContext();
+    htmManager->startAborting(inst, this, &instContext);
 
-            VAddr beginIAddr = rootTMContext->getBeginIAddr();
-
-            tmContext = NULL;
-            delete rootTMContext;
-
-            tmDepth = 0;
-
-            restoreCallRetStack();
-
-            // Move instruction pointer to BEGIN
-            setIAddr(beginIAddr);
-
-            break;
-        }
-        default:
-            fail("Unhanded TM abort");
+    // Since we jump to the outer-most context, find it first
+    TMContext* rootTMContext = tmContext;
+    while(rootTMContext->getParentContext()) {
+        TMContext* oldTMContext = rootTMContext;
+        rootTMContext = rootTMContext->getParentContext();
+        delete oldTMContext;
     }
-    return status;
+    rootTMContext->restoreContext();
+
+    VAddr beginIAddr = rootTMContext->getBeginIAddr();
+
+    tmContext = NULL;
+    delete rootTMContext;
+
+    tmDepth = 0;
+
+    restoreCallRetStack();
+
+    // Move instruction pointer to BEGIN
+    setIAddr(beginIAddr);
 }
 
 void ThreadContext::completeAbort(InstDesc* inst) {
