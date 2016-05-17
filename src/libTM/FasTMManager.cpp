@@ -338,11 +338,10 @@ TMBCStatus FasTMAbort::myCommit(InstDesc* inst, const ThreadContext* context, In
         line->clearTransactional(pid);
     }
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
-TMBCStatus FasTMAbort::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void FasTMAbort::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -358,9 +357,6 @@ TMBCStatus FasTMAbort::myAbort(InstDesc* inst, const ThreadContext* context, Ins
             line->clearTransactional(pid);
         }
     }
-
-    abortTrans(pid);
-    return TMBC_SUCCESS;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // FasTMAbort with more reads wins
@@ -399,7 +395,6 @@ TMBCStatus FasTMAbortOlderWins::myBegin(InstDesc* inst, const ThreadContext* con
         startTime[pid] = globalClock;
     }
     p_opStatus->tmBeginSubtype=TM_BEGIN_REGULAR;
-    beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
 

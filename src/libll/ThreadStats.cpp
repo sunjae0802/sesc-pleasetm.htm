@@ -37,15 +37,15 @@ void AtomicRegionStats::reportValues() const {
 
     uint64_t totalOther = duration - totalAccounted();
 
-    Report::field("tt_inMutex=%d",      inMutex);
-    Report::field("tt_mutexQueue=%d",   mutexQueue);
-    Report::field("tt_committed=%d",    committed);
-    Report::field("tt_aborted=%d",      aborted);
-    Report::field("tt_activeFBWait=%d", activeFBWait);
-    Report::field("tt_backoffWait=%d",  backoffWait);
-    Report::field("tt_hgWait=%d",       hgWait);
-    Report::field("tt_nackStalled=%d",  nackStalled);
-    Report::field("tt_other=%d",        totalOther);
+    Report::field("tt_inMutex=%llu",      inMutex);
+    Report::field("tt_mutexQueue=%llu",   mutexQueue);
+    Report::field("tt_committed=%llu",    committed);
+    Report::field("tt_aborted=%llu",      aborted);
+    Report::field("tt_activeFBWait=%llu", activeFBWait);
+    Report::field("tt_backoffWait=%llu",  backoffWait);
+    Report::field("tt_hgWait=%llu",       hgWait);
+    Report::field("tt_nackStalled=%llu",  nackStalled);
+    Report::field("tt_other=%llu",        totalOther);
 }
 
 /// Add other to this statistics structure

@@ -1,7 +1,10 @@
 #ifndef PRIVATE_CACHE
 #define PRIVATE_CACHE
 
+#include <set>
+#include "Snippets.h"
 #include "libemul/InstDesc.h"
+#include "libemul/Addressing.h"
 #include "CacheCore.h"
 
 enum EvictCause {

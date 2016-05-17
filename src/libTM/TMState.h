@@ -5,6 +5,24 @@
 #include "libemul/Addressing.h"
 
 static const uint64_t INVALID_UTID = -1;
+
+/// Enum of return status values that are returned from begin/commit
+enum TMBCStatus {
+    TMBC_INVALID,       // Invalid. Getting this value indicates a bug
+    TMBC_SUCCESS,       // Success
+    TMBC_NACK,          // Operation was NACKED. Should retry later
+    TMBC_ABORT          // Operation was ABORTED. Should call abort
+};
+
+/// Enum of return status values that are returned from read/write
+enum TMRWStatus {
+    TMRW_INVALID,       // Invalid. Getting this value indicates a bug
+    TMRW_NONTM,         // Operation was non-transactional
+    TMRW_SUCCESS,       // Success
+    TMRW_NACKED,        // Operation was NACKED. Should retry later
+    TMRW_ABORT          // Operation was ABORTED. Should call abort
+};
+
 enum TMAbortType_e {
     TM_ATYPE_DEFAULT            = 0,    // Aborts due to data conflict
     TM_ATYPE_USER               = 1,    // Aborts by the user (external abort)
@@ -16,7 +34,7 @@ enum TMAbortType_e {
 
 // The states in which a TMBegin instruction can be in after being executed
 enum TMBeginSubtype {
-    TM_BEGIN_INVALID            = 0, // Unitialized
+    TM_BEGIN_INVALID            = 0, // Uninitialized
     TM_BEGIN_REGULAR            = 1, // If the transaction started without problems
 
     TM_COMPLETE_ABORT           = 9, // Aborted transaction 're-executes' TMBegin with this state

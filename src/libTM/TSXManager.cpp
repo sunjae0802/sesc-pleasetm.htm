@@ -1,5 +1,7 @@
-#include "libll/ThreadContext.h"
+#include "nanassert.h"
 #include "SescConf.h"
+#include "libemul/EmulInit.h"
+#include "libll/ThreadContext.h"
 #include "TSXManager.h"
 
 using namespace std;
@@ -371,11 +373,10 @@ TMBCStatus TSXManager::myCommit(InstDesc* inst, const ThreadContext* context, In
     }
     overflow[pid].clear();
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
-TMBCStatus TSXManager::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void TSXManager::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -392,8 +393,5 @@ TMBCStatus TSXManager::myAbort(InstDesc* inst, const ThreadContext* context, Ins
         }
     }
     overflow[pid].clear();
-
-    abortTrans(pid);
-    return TMBC_SUCCESS;
 }
 

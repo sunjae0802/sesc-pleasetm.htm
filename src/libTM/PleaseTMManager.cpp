@@ -1,5 +1,6 @@
 #include "libll/ThreadContext.h"
 #include "PleaseTMManager.h"
+#include "Snippets.h"
 
 using namespace std;
 
@@ -320,11 +321,10 @@ TMBCStatus IdealPleaseTM::myCommit(InstDesc* inst, const ThreadContext* context,
         line->clearTransactional(pid);
     }
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
-TMBCStatus IdealPleaseTM::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void IdealPleaseTM::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -340,9 +340,6 @@ TMBCStatus IdealPleaseTM::myAbort(InstDesc* inst, const ThreadContext* context, 
             line->clearTransactional(pid);
         }
     }
-
-    abortTrans(pid);
-    return TMBC_SUCCESS;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -375,8 +372,8 @@ TMLog2MoreCoherence::TMLog2MoreCoherence(const char tmStyle[], int32_t nCores, i
 }
 
 bool TMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
-    uint32_t log2Num = log2(rwSetManager.getNumReads(pid));
-    uint32_t log2OtherNum = log2(rwSetManager.getNumReads(other));
+    uint32_t log2Num = log2i(rwSetManager.getNumReads(pid));
+    uint32_t log2OtherNum = log2i(rwSetManager.getNumReads(other));
     return log2OtherNum < log2Num;
 }
 

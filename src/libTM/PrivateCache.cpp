@@ -1,6 +1,7 @@
 #include <cmath>
 #include <algorithm>
 #include "libsuc/nanassert.h"
+#include "libemul/EmulInit.h"
 #include "SescConf.h"
 #include "libll/Instruction.h"
 #include "PrivateCache.h"

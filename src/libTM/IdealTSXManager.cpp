@@ -1,5 +1,7 @@
-#include "libll/ThreadContext.h"
+#include "nanassert.h"
 #include "SescConf.h"
+#include "libemul/EmulInit.h"
+#include "libll/ThreadContext.h"
 #include "IdealTSXManager.h"
 
 using namespace std;
@@ -311,11 +313,10 @@ TMBCStatus IdealTSXManager::myCommit(InstDesc* inst, const ThreadContext* contex
         line->clearTransactional(pid);
     }
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
-TMBCStatus IdealTSXManager::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void IdealTSXManager::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -331,8 +332,5 @@ TMBCStatus IdealTSXManager::myAbort(InstDesc* inst, const ThreadContext* context
             line->clearTransactional(pid);
         }
     }
-
-    abortTrans(pid);
-    return TMBC_SUCCESS;
 }
 

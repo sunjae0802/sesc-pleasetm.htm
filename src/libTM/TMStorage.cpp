@@ -13,7 +13,7 @@ void TMStorage2::loadLine(ThreadContext* context, VAddr addr) {
         VAddr cAddr = computeCAddr(addr);
         for(uint32_t offset = 0; offset < CACHE_SIZE; offset += sizeof(uint32_t)) {
             uint32_t word  = context->readMemRaw<uint32_t>(cAddr + offset);
-            *(uint32_t*)(line.data + offset) = word;
+            *(reinterpret_cast<uint32_t*>(line.data + offset)) = word;
         }
         tnxStorage.insert(make_pair(cAddr, line));
     }

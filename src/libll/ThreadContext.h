@@ -181,8 +181,7 @@ public:
 
     TMBCStatus beginTransaction(InstDesc* inst);
     TMBCStatus commitTransaction(InstDesc* inst);
-    TMBCStatus abortTransaction(InstDesc* inst, TMAbortType_e abortType);
-    TMBCStatus abortTransaction(InstDesc* inst);
+    void abortTransaction(InstDesc* inst);
 
     TMBCStatus userBeginTM(InstDesc* inst, uint32_t arg) {
         instContext.tmArg = arg;

@@ -14,7 +14,6 @@ const char* TMStateEngine::getStateStr(State_e st) {
         case TM_RUNNING:    str = "RUNNING";    break;
         case TM_ABORTING:   str = "ABORING";    break;
         case TM_MARKABORT:  str = "MARK_ABORT"; break;
-        default:                                break;
     };
     return str;
 }

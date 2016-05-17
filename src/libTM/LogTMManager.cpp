@@ -351,7 +351,6 @@ TMBCStatus IdealLogTM::myBegin(InstDesc* inst, const ThreadContext* context, Ins
         startTime[pid] = globalClock;
     }
     p_opStatus->tmBeginSubtype=TM_BEGIN_REGULAR;
-    beginTrans(pid, inst);
     return TMBC_SUCCESS;
 }
 ///
@@ -372,9 +371,11 @@ TMBCStatus IdealLogTM::myCommit(InstDesc* inst, const ThreadContext* context, In
         line->clearTransactional(pid);
     }
 
+	cycleFlags[pid] = false;
+    nackCount[pid] = 0;
+    nackedBy.erase(pid);
     startTime.erase(pid);
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 ///
@@ -383,7 +384,7 @@ void IdealLogTM::completeFallback(Pid_t pid) {
     startTime.erase(pid);
 }
 
-TMBCStatus IdealLogTM::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void IdealLogTM::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -399,16 +400,8 @@ TMBCStatus IdealLogTM::myAbort(InstDesc* inst, const ThreadContext* context, Ins
             line->clearTransactional(pid);
         }
     }
-
-    abortTrans(pid);
-    return TMBC_SUCCESS;
-}
-
-void IdealLogTM::removeTransaction(Pid_t pid) {
 	cycleFlags[pid] = false;
     nackCount[pid] = 0;
     nackedBy.erase(pid);
-
-    removeTrans(pid);
 }
 

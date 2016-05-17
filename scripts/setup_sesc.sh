@@ -69,7 +69,9 @@ run_sesc() {
 
     # Cleanup
     echo "Cleaning up"
-    ${COMPRESS_CMD} datafile.out
+    if [ -f datafile.out ]; then
+        ${COMPRESS_CMD} datafile.out
+    fi
     #rm datafile.out
 
     ${COMPRESS_CMD} sesc_*
