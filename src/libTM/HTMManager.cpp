@@ -67,41 +67,6 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
     rwSetManager.initialize(nThreads);
 }
 
-void HTMManager::beginTrans(Pid_t pid, InstDesc* inst) {
-    // Do the begin
-    utids.at(pid) = HTMManager::nextUtid;
-    HTMManager::nextUtid += 1;
-
-	tmStates[pid].begin();
-    abortStates.at(pid).clear();
-}
-
-void HTMManager::commitTrans(Pid_t pid) {
-    // Update Statistics
-    numCommits.inc();
-
-    // Do the commit
-    removeTransaction(pid);
-}
-void HTMManager::abortTrans(Pid_t pid) {
-    if(getTMState(pid) != TMStateEngine::TM_MARKABORT) {
-        fail("%d should be marked abort before starting abort: %d", pid, getTMState(pid));
-    }
-	tmStates[pid].startAborting();
-}
-void HTMManager::completeAbortTrans(Pid_t pid) {
-    if(getTMState(pid) != TMStateEngine::TM_ABORTING) {
-        fail("%d should be doing aborting before completing it: %d", pid, getTMState(pid));
-    }
-
-    const TMAbortState& abortState = abortStates.at(pid);
-    // Update Statistics
-    numAborts.inc();
-    abortTypes.sample(abortState.getAbortType());
-
-    // Do the completeAbort
-    removeTransaction(pid);
-}
 void HTMManager::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 
@@ -132,35 +97,59 @@ void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
     }
     rwSetManager.write(pid, caddr);
 }
-void HTMManager::removeTrans(Pid_t pid) {
-    tmStates.at(pid).clear();
-    utids.at(pid) = INVALID_UTID;
-    rwSetManager.clear(pid);
-}
-
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus HTMManager::begin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-    return myBegin(inst, context, p_opStatus);
+    TMBCStatus status = myBegin(inst, context, p_opStatus);
+
+    if(status == TMBC_SUCCESS) {
+        // Do the begin
+        utids.at(pid) = HTMManager::nextUtid;
+        HTMManager::nextUtid += 1;
+
+        tmStates[pid].begin();
+        abortStates.at(pid).clear();
+    }
+    return status;
 }
 
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus HTMManager::commit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
+    TMBCStatus status = TMBC_INVALID;
+
 	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
         p_opStatus->tmCommitSubtype=TM_COMMIT_ABORTED;
-		return TMBC_ABORT;
+		status = TMBC_ABORT;
 	} else {
-		return myCommit(inst, context, p_opStatus);
+		status = myCommit(inst, context, p_opStatus);
 	}
+
+    if(status == TMBC_SUCCESS) {
+        // Do the commit
+        numCommits.inc();
+
+        tmStates.at(pid).clear();
+        utids.at(pid) = INVALID_UTID;
+        rwSetManager.clear(pid);
+    }
+    return status;
 }
 
 TMBCStatus HTMManager::abort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-    abortStates.at(pid).setAbortIAddr(context->getIAddr());
-    return myAbort(inst, context, p_opStatus);
+    if(getTMState(pid) != TMStateEngine::TM_MARKABORT) {
+        fail("%d should be marked abort before starting abort: %d", pid, getTMState(pid));
+    }
+
+    TMBCStatus status = myAbort(inst, context, p_opStatus);
+    if(status == TMBC_SUCCESS) {
+        abortStates.at(pid).setAbortIAddr(context->getIAddr());
+        tmStates[pid].startAborting();
+    }
+    return status;
 }
 
 ///
@@ -189,10 +178,23 @@ void HTMManager::markUserAbort(InstDesc* inst, const ThreadContext* context, uin
 // tm.begin).
 TMBCStatus HTMManager::completeAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-    p_opStatus->tmBeginSubtype=TM_COMPLETE_ABORT;
-    p_opStatus->tmAbortType = abortStates.at(pid).getAbortType();
+    if(getTMState(pid) != TMStateEngine::TM_ABORTING) {
+        fail("%d should be doing aborting before completing it: %d", pid, getTMState(pid));
+    }
+    const TMAbortState& abortState = abortStates.at(pid);
 
     myCompleteAbort(pid);
+
+    // Update Statistics
+    numAborts.inc();
+    abortTypes.sample(abortState.getAbortType());
+
+    p_opStatus->tmBeginSubtype=TM_COMPLETE_ABORT;
+    p_opStatus->tmAbortType = abortStates.at(pid).getAbortType();
+    tmStates.at(pid).clear();
+    utids.at(pid) = INVALID_UTID;
+    rwSetManager.clear(pid);
+
     return TMBC_SUCCESS;
 }
 ///
@@ -240,7 +242,6 @@ TMRWStatus HTMManager::write(InstDesc* inst, const ThreadContext* context, VAddr
 TMBCStatus HTMManager::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     p_opStatus->tmBeginSubtype=TM_BEGIN_REGULAR;
-    beginTrans(pid, inst);
 
     return TMBC_SUCCESS;
 }
@@ -249,7 +250,6 @@ TMBCStatus HTMManager::myBegin(InstDesc* inst, const ThreadContext* context, Ins
 // A basic type of TM abort if child does not override
 TMBCStatus HTMManager::myAbort(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
-	abortTrans(pid);
 	return TMBC_SUCCESS;
 }
 
@@ -261,15 +261,10 @@ TMBCStatus HTMManager::myCommit(InstDesc* inst, const ThreadContext* context, In
     p_opStatus->tmLat           = 4 + rwSetManager.getNumWrites(pid);
     p_opStatus->tmCommitSubtype =TM_COMMIT_REGULAR;
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
 ///
 // A basic type of TM complete abort if child does not override
 void HTMManager::myCompleteAbort(Pid_t pid) {
-    completeAbortTrans(pid);
-}
-void HTMManager::removeTransaction(Pid_t pid) {
-    removeTrans(pid);
 }

@@ -347,7 +347,6 @@ TMBCStatus TSXManager::myCommit(InstDesc* inst, const ThreadContext* context, In
     }
     overflow[pid].clear();
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
@@ -369,7 +368,6 @@ TMBCStatus TSXManager::myAbort(InstDesc* inst, const ThreadContext* context, Ins
     }
     overflow[pid].clear();
 
-    abortTrans(pid);
     return TMBC_SUCCESS;
 }
 

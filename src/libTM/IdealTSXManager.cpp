@@ -276,7 +276,6 @@ TMBCStatus IdealTSXManager::myCommit(InstDesc* inst, const ThreadContext* contex
         line->clearTransactional(pid);
     }
 
-    commitTrans(pid);
     return TMBC_SUCCESS;
 }
 
@@ -297,7 +296,6 @@ TMBCStatus IdealTSXManager::myAbort(InstDesc* inst, const ThreadContext* context
         }
     }
 
-    abortTrans(pid);
     return TMBC_SUCCESS;
 }
 
