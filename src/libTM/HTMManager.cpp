@@ -66,37 +66,6 @@ HTMManager::HTMManager(const char tmStyle[], int32_t procs, int32_t line):
     }
     rwSetManager.initialize(nThreads);
 }
-
-void HTMManager::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
-    uint64_t aborterUtid = getUtid(aborterPid);
-
-    if(getTMState(victimPid) != TMStateEngine::TM_ABORTING && getTMState(victimPid) != TMStateEngine::TM_MARKABORT) {
-        tmStates.at(victimPid).markAbort();
-        abortStates.at(victimPid).markAbort(aborterPid, aborterUtid, caddr, abortType);
-    } // Else victim is already aborting, so leave it alone
-}
-
-void HTMManager::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
-	set<Pid_t>::iterator i_aborted;
-    for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
-		if(*i_aborted == INVALID_PID) {
-            fail("Trying to abort invalid Pid?");
-        }
-        markTransAborted(*i_aborted, aborterPid, caddr, abortType);
-	}
-}
-void HTMManager::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
-        fail("%d in invalid state to do tm.load: %d", pid, getTMState(pid));
-    }
-    rwSetManager.read(pid, caddr);
-}
-void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
-        fail("%d in invalid state to do tm.store: %d", pid, getTMState(pid));
-    }
-    rwSetManager.write(pid, caddr);
-}
 ///
 // Entry point for TM begin operation. Check for nesting and then call the real begin.
 TMBCStatus HTMManager::begin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
@@ -136,6 +105,35 @@ TMBCStatus HTMManager::commit(InstDesc* inst, const ThreadContext* context, Inst
         rwSetManager.clear(pid);
     }
     return status;
+}
+///
+// Entry point for TM read operation. Checks transaction state and then calls the real read.
+TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
+		return TMRW_ABORT;
+	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
+        nonTMRead(inst, context, raddr, p_opStatus);
+        return TMRW_NONTM;
+	} else {
+        return TMRead(inst, context, raddr, p_opStatus);
+    }
+}
+
+///
+// Entry point for TM write operation. Checks transaction state and then calls the real write.
+TMRWStatus HTMManager::write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
+    Pid_t pid   = context->getPid();
+	VAddr caddr = addrToCacheLine(raddr);
+	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
+		return TMRW_ABORT;
+	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
+        nonTMWrite(inst, context, raddr, p_opStatus);
+        return TMRW_NONTM;
+	} else {
+        return TMWrite(inst, context, raddr, p_opStatus);
+    }
 }
 
 void HTMManager::startAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
@@ -205,34 +203,36 @@ void HTMManager::beginFallback(Pid_t pid, uint32_t arg) {
 void HTMManager::completeFallback(Pid_t pid) {
     fallbackArg.erase(pid);
 }
-///
-// Entry point for TM read operation. Checks transaction state and then calls the real read.
-TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
-    Pid_t pid   = context->getPid();
-	VAddr caddr = addrToCacheLine(raddr);
-	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
-		return TMRW_ABORT;
-	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
-        nonTMRead(inst, context, raddr, p_opStatus);
-        return TMRW_NONTM;
-	} else {
-        return TMRead(inst, context, raddr, p_opStatus);
+
+void HTMManager::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
+    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
+        fail("%d in invalid state to do tm.load: %d", pid, getTMState(pid));
     }
+    rwSetManager.read(pid, caddr);
+}
+void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
+    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
+        fail("%d in invalid state to do tm.store: %d", pid, getTMState(pid));
+    }
+    rwSetManager.write(pid, caddr);
+}
+void HTMManager::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
+    uint64_t aborterUtid = getUtid(aborterPid);
+
+    if(getTMState(victimPid) != TMStateEngine::TM_ABORTING && getTMState(victimPid) != TMStateEngine::TM_MARKABORT) {
+        tmStates.at(victimPid).markAbort();
+        abortStates.at(victimPid).markAbort(aborterPid, aborterUtid, caddr, abortType);
+    } // Else victim is already aborting, so leave it alone
 }
 
-///
-// Entry point for TM write operation. Checks transaction state and then calls the real write.
-TMRWStatus HTMManager::write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
-    Pid_t pid   = context->getPid();
-	VAddr caddr = addrToCacheLine(raddr);
-	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
-		return TMRW_ABORT;
-	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
-        nonTMWrite(inst, context, raddr, p_opStatus);
-        return TMRW_NONTM;
-	} else {
-        return TMWrite(inst, context, raddr, p_opStatus);
-    }
+void HTMManager::markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
+	set<Pid_t>::iterator i_aborted;
+    for(i_aborted = aborted.begin(); i_aborted != aborted.end(); ++i_aborted) {
+		if(*i_aborted == INVALID_PID) {
+            fail("Trying to abort invalid Pid?");
+        }
+        markTransAborted(*i_aborted, aborterPid, caddr, abortType);
+	}
 }
 
 ///
