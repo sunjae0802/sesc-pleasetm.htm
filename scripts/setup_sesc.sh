@@ -51,6 +51,59 @@ enter_benchrundir() {
     cd $BENCHRUNDIR
 }
 
+get_smp_config() {
+    config_id=$1
+
+    THREADS=( 1 2 4 8 16 )
+    nthread=${THREADS[$T_ID]}
+    case "$config_id" in
+        0)
+            NCORES="16"
+            L1CONF="l1_64k_16"
+            SESCCONF="smp${NCORES}-${L1CONF}.conf"
+            BENCHCONFIG="gspin"
+            HTMCONF="tsx-trans.conf"
+            ;;
+        1)
+            NCORES="16"
+            L1CONF="l1_64k_16"
+            SESCCONF="smp${NCORES}-${L1CONF}.conf"
+            BENCHCONFIG="htm-spin-lin"
+            HTMCONF="tsx-trans.conf"
+            ;;
+        *)
+            echo "ERROR: Config ${config_id} not found"
+            exit 2
+            ;;
+    esac
+}
+
+get_cmp_config() {
+    config_id=$1
+    case "$config_id" in
+        0)
+            NCORES="64"
+            L1CONF="l1_64k_16"
+            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
+            HTMCONF="tsx-trans.conf"
+            BENCHCONFIG="gspin"
+            BOOKSIMCONF="mesh88.booksim"
+            ;;
+        1)
+            NCORES="64"
+            L1CONF="l1_64k_16"
+            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
+            BENCHCONFIG="htm-spin"
+            HTMCONF="tsx-trans.conf"
+            BOOKSIMCONF="mesh88.booksim"
+            ;;
+        *)
+            echo "ERROR: Config ${config_id} not found"
+            exit 2
+            ;;
+    esac
+}
+
 run_sesc() {
     sesccmd=$1
     sescconf=$2
