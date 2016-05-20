@@ -1,0 +1,19 @@
+This branch of SESC has been modified to support Hardware Transactional Memory and a multicore system with a
+Network-on-Chip simualated by booksim. It MIPS binaries built against Linux 2.6.16.
+
+When building SESC, you can create either the ``SMP'' version, which is a bus-based multicore system, or the ``CMP''
+version, which connects the cores by an NOC (i.e. 2D mesh).
+
+For the SMP version,
+$ mkdir build.smp
+$ cd build.smp
+$ cmake -DCMAKE_BUILD_TYPE=Release ../src
+$ make
+
+For the CMP version,
+$ mkdir build.cmp
+$ cd build.cmp
+$ cmake -DCMP=ON -DCMAKE_BUILD_TYPE=Release ../src
+$ make
+
+To run either version, you can use the scripts/local-?mp-stamp-sim.sh scripts to run STAMP benchmarks.
