@@ -161,9 +161,6 @@ TMRWStatus IdealTSXManager::TMRead(InstDesc* inst, const ThreadContext* context,
     line->markTransactional();
     line->addReader(pid);
 
-    // Do the read
-    readTrans(pid, raddr, caddr);
-
     return TMRW_SUCCESS;
 }
 
@@ -199,9 +196,6 @@ TMRWStatus IdealTSXManager::TMWrite(InstDesc* inst, const ThreadContext* context
     // Update line
     line->markTransactional();
     line->makeTransactionalDirty(pid);
-
-    // Do the write
-    writeTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
 }

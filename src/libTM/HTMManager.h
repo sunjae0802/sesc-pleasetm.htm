@@ -55,9 +55,7 @@ public:
 protected:
     HTMManager(const char* tmStyle, int procs, int line);
 
-    // Common functionality that all HTMManager styles would use
-    void readTrans(Pid_t pid, VAddr raddr, VAddr caddr);
-    void writeTrans(Pid_t pid, VAddr raddr, VAddr caddr);
+    // Mark a transaction (or set of transactions) as aborted.
     void markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
     void markTransAborted(std::set<Pid_t>& aborted, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType);
 

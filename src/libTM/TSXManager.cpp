@@ -224,9 +224,6 @@ TMRWStatus TSXManager::TMRead(InstDesc* inst, const ThreadContext* context, VAdd
     line->addReader(pid);
     updateOverflow(pid, caddr);
 
-    // Do the read
-    readTrans(pid, raddr, caddr);
-
     return TMRW_SUCCESS;
 }
 
@@ -264,9 +261,6 @@ TMRWStatus TSXManager::TMWrite(InstDesc* inst, const ThreadContext* context, VAd
     line->markTransactional();
     line->makeTransactionalDirty(pid);
     updateOverflow(pid, caddr);
-
-    // Do the write
-    writeTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
 }
