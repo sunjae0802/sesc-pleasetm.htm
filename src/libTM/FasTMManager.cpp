@@ -227,9 +227,6 @@ TMRWStatus FasTMAbort::TMRead(InstDesc* inst, const ThreadContext* context, VAdd
     line->markTransactional();
     line->addReader(pid);
 
-    // Do the read
-    readTrans(pid, raddr, caddr);
-
     return TMRW_SUCCESS;
 }
 
@@ -265,9 +262,6 @@ TMRWStatus FasTMAbort::TMWrite(InstDesc* inst, const ThreadContext* context, VAd
     // Update line
     line->markTransactional();
     line->makeTransactionalDirty(pid);
-
-    // Do the write
-    writeTrans(pid, raddr, caddr);
 
     return TMRW_SUCCESS;
 }

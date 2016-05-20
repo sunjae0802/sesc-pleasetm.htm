@@ -31,20 +31,20 @@ HTMManager *HTMManager::create(int32_t nCores) {
         newCohManager = new TSXManager("TSX", nCores, lineSize);
     } else if(method == "Ideal-TSX") {
         newCohManager = new IdealTSXManager("Ideal-TSX", nCores, lineSize);
-    } else if(method == "IdealRequesterLoses") {
-        newCohManager = new TMIdealRequesterLoses("Ideal Requester Loses", nCores, lineSize);
-    } else if(method == "IdealMoreReadsWins") {
-        newCohManager = new TMIdealMoreReadsWins("Ideal More Reads Wins", nCores, lineSize);
-    } else if(method == "IdealOlderWins") {
-        newCohManager = new TMIdealOlderWins("Ideal Older Wins", nCores, lineSize);
-    } else if(method == "IdealOlderAllWins") {
-        newCohManager = new TMIdealOlderAllWins("Ideal Older All Wins", nCores, lineSize);
-    } else if(method == "IdealMoreAbortsWins") {
-        newCohManager = new TMIdealMoreAbortsWins("Ideal MoreAborts Wins", nCores, lineSize);
-    } else if(method == "Log2MoreReadsWins") {
-        newCohManager = new TMLog2MoreCoherence("Ideal MoreReads Wins (log2)", nCores, lineSize);
-    } else if(method == "CappedMoreReadsWins") {
-        newCohManager = new TMCappedMoreCoherence("Ideal MoreReads Wins (capped)", nCores, lineSize);
+    } else if(method == "PTM-RequesterLoses") {
+        newCohManager = new PTMRequesterLoses("PleaseTM Requester Loses", nCores, lineSize);
+    } else if(method == "PTM-MoreReadsWins") {
+        newCohManager = new PTMMoreReadsWins("PleaseTM More Reads Wins", nCores, lineSize);
+    } else if(method == "PTM-OlderWins") {
+        newCohManager = new PTMOlderWins("PleaseTM Older Wins", nCores, lineSize);
+    } else if(method == "PTM-OlderAllWins") {
+        newCohManager = new PTMOlderAllWins("PleaseTM Older All Wins", nCores, lineSize);
+    } else if(method == "PTM-MoreAbortsWins") {
+        newCohManager = new PTMMoreAbortsWins("PleaseTM MoreAborts Wins", nCores, lineSize);
+    } else if(method == "PTM-Log2MoreReadsWins") {
+        newCohManager = new PTMLog2MoreCoherence("PleaseTM MoreReads Wins (log2)", nCores, lineSize);
+    } else if(method == "PTM-CappedMoreReadsWins") {
+        newCohManager = new PTMCappedMoreCoherence("PleaseTM MoreReads Wins (capped)", nCores, lineSize);
     } else if(method == "IdealLogTM") {
         newCohManager = new IdealLogTM("Ideal LogTM", nCores, lineSize);
     } else if(method == "FasTM-Abort-Reads") {

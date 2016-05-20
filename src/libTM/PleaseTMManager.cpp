@@ -5,9 +5,9 @@
 using namespace std;
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// PleaseTM with conflict resolution done with plea bits, using ideal cache
+// PleaseTM with conflict resolution done with plea bits
 /////////////////////////////////////////////////////////////////////////////////////////
-IdealPleaseTM::IdealPleaseTM(const char tmStyle[], int32_t nCores, int32_t line):
+PleaseTM::PleaseTM(const char tmStyle[], int32_t nCores, int32_t line):
         HTMManager(tmStyle, nCores, line),
         getSMsg("tm:getSMsg"),
         fwdGetSMsg("tm:fwdGetSMsg"),
@@ -21,6 +21,12 @@ IdealPleaseTM::IdealPleaseTM(const char tmStyle[], int32_t nCores, int32_t line)
 
     int totalSize = SescConf->getInt("TransactionalMemory", "totalSize");
     int assoc = SescConf->getInt("TransactionalMemory", "assoc");
+    if(SescConf->checkInt("TransactionalMemory","overflowSize")) {
+        maxOverflowSize = SescConf->getInt("TransactionalMemory","overflowSize");
+    } else {
+        maxOverflowSize = 4;
+        MSG("Using default overflow size of %ld\n", maxOverflowSize);
+    }
 
     for(int coreId = 0; coreId < nCores; coreId++) {
         caches.push_back(new CacheAssocTM(totalSize, assoc, lineSize, 1));
@@ -29,7 +35,7 @@ IdealPleaseTM::IdealPleaseTM(const char tmStyle[], int32_t nCores, int32_t line)
 
 ///
 // Destructor for PrivateCache. Delete all allocated members
-IdealPleaseTM::~IdealPleaseTM() {
+PleaseTM::~PleaseTM() {
     while(caches.size() > 0) {
         Cache* cache = caches.back();
         caches.pop_back();
@@ -37,16 +43,60 @@ IdealPleaseTM::~IdealPleaseTM() {
     }
 }
 
+///
+// If this line had been sent to the overflow set, bring it back.
+void PleaseTM::updateOverflow(Pid_t pid, VAddr newCaddr) {
+    set<Pid_t> peers;
+    getPeers(pid, peers);
+
+    for(Pid_t peer: peers) {
+        if(overflow[peer].find(newCaddr) != overflow[peer].end()) {
+            overflow[peer].erase(newCaddr);
+        }
+    }
+}
+
+///
+// Return the set of co-located Pids for SMT
+void PleaseTM::getPeers(Pid_t pid, std::set<Pid_t>& peers) {
+    peers.insert(pid);
+
+    if(nSMTWays == 2) {
+        Pid_t peer = pid + 1;
+        if(pid % 2 == 1) {
+            peer = pid - 1;
+        }
+        peers.insert(peer);
+    }
+}
+
 
 ///
 // Helper function that replaces a line in the Cache
-IdealPleaseTM::Line* IdealPleaseTM::replaceLine(Pid_t pid, VAddr raddr) {
+PleaseTM::Line* PleaseTM::replaceLine(Pid_t pid, VAddr raddr) {
     Cache* cache= getCache(pid);
 
     Line* replaced = cache->findLine2Replace(raddr);
     if(replaced == nullptr) {
         fail("Replacement policy failed");
     }
+
+    // If replaced is transactional, check for capacity aborts
+    if(replaced->isTransactional()) {
+        if(replaced->isDirty()) {
+            // Dirty transactional lines always trigger set conflict
+            markTransAborted(replaced->getWriter(), pid, replaced->getCaddr(), TM_ATYPE_SETCONFLICT);
+        } else {
+            // Clean lines only do so on overflow set overflows
+            for(Pid_t reader: replaced->getReaders()) {
+                if(overflow[reader].size() < maxOverflowSize) {
+                    overflow[reader].insert(replaced->getCaddr());
+                } else {
+                    markTransAborted(reader, pid, replaced->getCaddr(), TM_ATYPE_SETCONFLICT);
+                }
+            }
+        }
+    } // end if(replaced->isTransactional())
 
     // Replace the line
     VAddr caddr = addrToCacheLine(raddr);
@@ -59,7 +109,7 @@ IdealPleaseTM::Line* IdealPleaseTM::replaceLine(Pid_t pid, VAddr raddr) {
 
 ///
 // Collect transactions that would be aborted and remove from conflicting.
-void IdealPleaseTM::handleConflicts(Pid_t pid, VAddr caddr, bool isTM, set<Pid_t>& conflicting) {
+void PleaseTM::handleConflicts(Pid_t pid, VAddr caddr, bool isTM, set<Pid_t>& conflicting) {
     set<Pid_t> winners, losers;
     for(Pid_t c: conflicting) {
         if(isTM == false || shouldAbort(pid, caddr, c)) {
@@ -82,7 +132,7 @@ void IdealPleaseTM::handleConflicts(Pid_t pid, VAddr caddr, bool isTM, set<Pid_t
 }
 ///
 // Helper function that aborts all transactional readers and writers
-void IdealPleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
+void PleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
     set<Pid_t> conflicting;
     rwSetManager.getWriters(caddr, conflicting);
     conflicting.erase(pid);
@@ -99,7 +149,7 @@ void IdealPleaseTM::abortTMWriters(Pid_t pid, VAddr caddr, bool isTM, std::set<C
 }
 ///
 // Helper function that aborts all transactional readers and writers
-void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
+void PleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<Cache*>& except, InstContext* p_opStatus) {
     set<Pid_t> conflicting;
     rwSetManager.getWriters(caddr, conflicting);
     rwSetManager.getReaders(caddr, conflicting);
@@ -118,7 +168,7 @@ void IdealPleaseTM::abortTMSharers(Pid_t pid, VAddr caddr, bool isTM, std::set<C
 
 ///
 // Helper function that cleans dirty lines in each cache except pid's.
-void IdealPleaseTM::cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
+void PleaseTM::cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
     getSMsg.inc();
 
     Cache* myCache = getCache(pid);
@@ -149,7 +199,7 @@ void IdealPleaseTM::cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& ex
 
 ///
 // Helper function that invalidates lines except pid's.
-void IdealPleaseTM::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
+void PleaseTM::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except) {
     getMMsg.inc();
 
     Cache* myCache = getCache(pid);
@@ -179,7 +229,7 @@ void IdealPleaseTM::invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& ex
 }
 ///
 // Do a transactional read.
-TMRWStatus IdealPleaseTM::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
+TMRWStatus PleaseTM::TMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -211,15 +261,12 @@ TMRWStatus IdealPleaseTM::TMRead(InstDesc* inst, const ThreadContext* context, V
     line->markTransactional();
     line->addReader(pid);
 
-    // Do the read
-    readTrans(pid, raddr, caddr);
-
     return TMRW_SUCCESS;
 }
 
 ///
 // Do a transactional write.
-TMRWStatus IdealPleaseTM::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
+TMRWStatus PleaseTM::TMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -249,15 +296,12 @@ TMRWStatus IdealPleaseTM::TMWrite(InstDesc* inst, const ThreadContext* context, 
     line->markTransactional();
     line->makeTransactionalDirty(pid);
 
-    // Do the write
-    writeTrans(pid, raddr, caddr);
-
     return TMRW_SUCCESS;
 }
 
 ///
 // Do a non-transactional read, i.e. when a thread not inside a transaction.
-void IdealPleaseTM::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
+void PleaseTM::nonTMRead(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -278,7 +322,7 @@ void IdealPleaseTM::nonTMRead(InstDesc* inst, const ThreadContext* context, VAdd
 
 ///
 // Do a non-transactional write, i.e. when a thread not inside a transaction.
-void IdealPleaseTM::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
+void PleaseTM::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
     Cache* cache= getCache(pid);
 	VAddr caddr = addrToCacheLine(raddr);
@@ -303,7 +347,7 @@ void IdealPleaseTM::nonTMWrite(InstDesc* inst, const ThreadContext* context, VAd
     line->makeDirty();
 }
 
-TMBCStatus IdealPleaseTM::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+TMBCStatus PleaseTM::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On commit, we clear all transactional bits, but otherwise leave lines alone
     Pid_t pid   = context->getPid();
 
@@ -320,11 +364,12 @@ TMBCStatus IdealPleaseTM::myCommit(InstDesc* inst, const ThreadContext* context,
     for(Line* line: lines) {
         line->clearTransactional(pid);
     }
+    overflow[pid].clear();
 
     return TMBC_SUCCESS;
 }
 
-void IdealPleaseTM::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+void PleaseTM::myStartAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     // On abort, we need to throw away the work we've done so far, so invalidate them
     Pid_t pid   = context->getPid();
     Cache* cache = getCache(pid);
@@ -340,52 +385,53 @@ void IdealPleaseTM::myStartAborting(InstDesc* inst, const ThreadContext* context
             line->clearTransactional(pid);
         }
     }
+    overflow[pid].clear();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// IdealPleaseTM with requester always losing
+// PleaseTM with requester always losing
 /////////////////////////////////////////////////////////////////////////////////////////
-TMIdealRequesterLoses::TMIdealRequesterLoses(const char tmStyle[], int32_t nCores, int32_t line):
-        IdealPleaseTM(tmStyle, nCores, line) {
+PTMRequesterLoses::PTMRequesterLoses(const char tmStyle[], int32_t nCores, int32_t line):
+        PleaseTM(tmStyle, nCores, line) {
 }
 
-bool TMIdealRequesterLoses::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+bool PTMRequesterLoses::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// IdealPleaseTM with more reads wins
+// PleaseTM with more reads wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMIdealMoreReadsWins::TMIdealMoreReadsWins(const char tmStyle[], int32_t nCores, int32_t line):
-        IdealPleaseTM(tmStyle, nCores, line) {
+PTMMoreReadsWins::PTMMoreReadsWins(const char tmStyle[], int32_t nCores, int32_t line):
+        PleaseTM(tmStyle, nCores, line) {
 }
 
-bool TMIdealMoreReadsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+bool PTMMoreReadsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     return rwSetManager.getNumReads(other) < rwSetManager.getNumReads(pid);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// IdealPleaseTM coherence with more reads wins; reads in log2
+// PleaseTM coherence with more reads wins; reads in log2
 /////////////////////////////////////////////////////////////////////////////////////////
-TMLog2MoreCoherence::TMLog2MoreCoherence(const char tmStyle[], int32_t nCores, int32_t line):
-        IdealPleaseTM(tmStyle, nCores, line) {
+PTMLog2MoreCoherence::PTMLog2MoreCoherence(const char tmStyle[], int32_t nCores, int32_t line):
+        PleaseTM(tmStyle, nCores, line) {
 }
 
-bool TMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+bool PTMLog2MoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     uint32_t log2Num = log2i(rwSetManager.getNumReads(pid));
     uint32_t log2OtherNum = log2i(rwSetManager.getNumReads(other));
     return log2OtherNum < log2Num;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// IdealPleaseTM coherence with more reads wins; reads capped
+// PleaseTM coherence with more reads wins; reads capped
 /////////////////////////////////////////////////////////////////////////////////////////
-TMCappedMoreCoherence::TMCappedMoreCoherence(const char tmStyle[], int32_t nCores, int32_t line):
-        IdealPleaseTM(tmStyle, nCores, line), m_cap(128) {
+PTMCappedMoreCoherence::PTMCappedMoreCoherence(const char tmStyle[], int32_t nCores, int32_t line):
+        PleaseTM(tmStyle, nCores, line), m_cap(128) {
     MSG("Using cap of %lu", m_cap);
 }
 
-bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+bool PTMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     uint32_t cappedMyNum = rwSetManager.getNumReads(pid);
     uint32_t cappedOtherNum = rwSetManager.getNumReads(other);
     if(cappedMyNum > m_cap) {
@@ -397,69 +443,69 @@ bool TMCappedMoreCoherence::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     return cappedOtherNum < cappedMyNum;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
-// IdealPleaseTM with older wins
+// PleaseTM with older wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMIdealOlderWins::TMIdealOlderWins(const char tmStyle[], int32_t nCores, int32_t line):
-        IdealPleaseTM(tmStyle, nCores, line) {
+PTMOlderWins::PTMOlderWins(const char tmStyle[], int32_t nCores, int32_t line):
+        PleaseTM(tmStyle, nCores, line) {
 }
 
-bool TMIdealOlderWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+bool PTMOlderWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     if(startTime.find(pid) == startTime.end()) { fail("%d has not started?\n", pid); }
     if(startTime.find(other) == startTime.end()) { fail("%d has not started?\n", other); }
     return startTime[pid] < startTime[other];
 }
-TMBCStatus TMIdealOlderWins::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+TMBCStatus PTMOlderWins::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid = context->getPid();
     startTime[pid] = globalClock;
-    return IdealPleaseTM::myBegin(inst, context, p_opStatus);
+    return PleaseTM::myBegin(inst, context, p_opStatus);
 }
-TMBCStatus TMIdealOlderWins::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+TMBCStatus PTMOlderWins::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid = context->getPid();
     startTime.erase(pid);
-    return IdealPleaseTM::myCommit(inst, context, p_opStatus);
+    return PleaseTM::myCommit(inst, context, p_opStatus);
 }
-void TMIdealOlderWins::completeFallback(Pid_t pid) {
+void PTMOlderWins::completeFallback(Pid_t pid) {
     startTime.erase(pid);
-    return IdealPleaseTM::completeFallback(pid);
+    return PleaseTM::completeFallback(pid);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// IdealPleaseTM with older all wins
+// PleaseTM with older all wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMIdealOlderAllWins::TMIdealOlderAllWins(const char tmStyle[], int32_t nCores, int32_t line):
-        IdealPleaseTM(tmStyle, nCores, line) {
+PTMOlderAllWins::PTMOlderAllWins(const char tmStyle[], int32_t nCores, int32_t line):
+        PleaseTM(tmStyle, nCores, line) {
 }
 
-bool TMIdealOlderAllWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+bool PTMOlderAllWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     if(startTime.find(pid) == startTime.end()) { fail("%d has not started?\n", pid); }
     if(startTime.find(other) == startTime.end()) { fail("%d has not started?\n", other); }
     return startTime[pid] < startTime[other];
 }
-TMBCStatus TMIdealOlderAllWins::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+TMBCStatus PTMOlderAllWins::myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid = context->getPid();
     if(startTime.find(pid) == startTime.end()) {
         startTime[pid] = globalClock;
     }
-    return IdealPleaseTM::myBegin(inst, context, p_opStatus);
+    return PleaseTM::myBegin(inst, context, p_opStatus);
 }
-TMBCStatus TMIdealOlderAllWins::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
+TMBCStatus PTMOlderAllWins::myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
     Pid_t pid = context->getPid();
     startTime.erase(pid);
-    return IdealPleaseTM::myCommit(inst, context, p_opStatus);
+    return PleaseTM::myCommit(inst, context, p_opStatus);
 }
-void TMIdealOlderAllWins::completeFallback(Pid_t pid) {
+void PTMOlderAllWins::completeFallback(Pid_t pid) {
     startTime.erase(pid);
-    return IdealPleaseTM::completeFallback(pid);
+    return PleaseTM::completeFallback(pid);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// IdealPleaseTM with more aborts wins
+// PleaseTM with more aborts wins
 /////////////////////////////////////////////////////////////////////////////////////////
-TMIdealMoreAbortsWins::TMIdealMoreAbortsWins(const char tmStyle[], int32_t nCores, int32_t line):
-        IdealPleaseTM(tmStyle, nCores, line) {
+PTMMoreAbortsWins::PTMMoreAbortsWins(const char tmStyle[], int32_t nCores, int32_t line):
+        PleaseTM(tmStyle, nCores, line) {
 }
 
-bool TMIdealMoreAbortsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
+bool PTMMoreAbortsWins::shouldAbort(Pid_t pid, VAddr raddr, Pid_t other) {
     return abortsSoFar[other] < abortsSoFar[pid];
 }
 

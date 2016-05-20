@@ -7,10 +7,10 @@
 #include "HTMManager.h"
 #include "PrivateCache.h"
 
-class IdealPleaseTM: public HTMManager {
+class PleaseTM: public HTMManager {
 public:
-    IdealPleaseTM(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~IdealPleaseTM();
+    PleaseTM(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PleaseTM();
 
     typedef CacheAssocTM    Cache;
     typedef TMLine          Line;
@@ -25,6 +25,7 @@ protected:
     // Helper functions
     Cache* getCache(Pid_t pid) { return caches.at(pid/nSMTWays); }
     void getPeers(Pid_t pid, std::set<Pid_t>& peers);
+    void updateOverflow(Pid_t pid, VAddr newCaddr);
     Line* replaceLine(Pid_t pid, VAddr raddr);
     void cleanDirtyLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
     void invalidateLines(Pid_t pid, VAddr caddr, std::set<Cache*>& except);
@@ -36,6 +37,7 @@ protected:
     // Configurable member variables
     int             totalSize;
     int             assoc;
+    size_t          maxOverflowSize;
 
     // Statistics
     GStatsCntr      getSMsg;
@@ -50,28 +52,29 @@ protected:
 
     // State member variables
     std::vector<Cache*>         caches;
+    std::map<Pid_t, std::set<VAddr> >   overflow;
 };
 
-class TMIdealRequesterLoses: public IdealPleaseTM {
+class PTMRequesterLoses: public PleaseTM {
 public:
-    TMIdealRequesterLoses(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMIdealRequesterLoses() { }
+    PTMRequesterLoses(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PTMRequesterLoses() { }
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
-class TMIdealMoreReadsWins: public IdealPleaseTM {
+class PTMMoreReadsWins: public PleaseTM {
 public:
-    TMIdealMoreReadsWins(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMIdealMoreReadsWins() { }
+    PTMMoreReadsWins(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PTMMoreReadsWins() { }
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
-class TMIdealOlderWins: public IdealPleaseTM {
+class PTMOlderWins: public PleaseTM {
 public:
-    TMIdealOlderWins(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMIdealOlderWins() { }
+    PTMOlderWins(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PTMOlderWins() { }
 
     virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
@@ -81,35 +84,35 @@ private:
     std::map<Pid_t, Time_t>             startTime;
 };
 
-class TMIdealMoreAbortsWins: public IdealPleaseTM {
+class PTMMoreAbortsWins: public PleaseTM {
 public:
-    TMIdealMoreAbortsWins(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMIdealMoreAbortsWins() { }
+    PTMMoreAbortsWins(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PTMMoreAbortsWins() { }
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
-class TMLog2MoreCoherence: public IdealPleaseTM {
+class PTMLog2MoreCoherence: public PleaseTM {
 public:
-    TMLog2MoreCoherence(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMLog2MoreCoherence() { }
+    PTMLog2MoreCoherence(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PTMLog2MoreCoherence() { }
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
 };
 
-class TMCappedMoreCoherence: public IdealPleaseTM {
+class PTMCappedMoreCoherence: public PleaseTM {
 public:
-    TMCappedMoreCoherence(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMCappedMoreCoherence() { }
+    PTMCappedMoreCoherence(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PTMCappedMoreCoherence() { }
 private:
     virtual bool shouldAbort(Pid_t pid, VAddr raddr, Pid_t other);
     const size_t m_cap;
 };
 
-class TMIdealOlderAllWins: public IdealPleaseTM {
+class PTMOlderAllWins: public PleaseTM {
 public:
-    TMIdealOlderAllWins(const char tmStyle[], int32_t nCores, int32_t line);
-    virtual ~TMIdealOlderAllWins() { }
+    PTMOlderAllWins(const char tmStyle[], int32_t nCores, int32_t line);
+    virtual ~PTMOlderAllWins() { }
 
     virtual TMBCStatus myBegin(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
     virtual TMBCStatus myCommit(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus);
