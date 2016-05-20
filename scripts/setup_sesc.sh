@@ -71,6 +71,20 @@ get_smp_config() {
             BENCHCONFIG="htm-spin-lin"
             HTMCONF="tsx-trans.conf"
             ;;
+        2)
+            NCORES="16"
+            L1CONF="l1_64k_16"
+            SESCCONF="smp${NCORES}-${L1CONF}.conf"
+            BENCHCONFIG="htm-spin-lin"
+            HTMCONF="morereads-wins-trans.conf"
+            ;;
+        3)
+            NCORES="16"
+            L1CONF="l1_64k_16"
+            SESCCONF="smp${NCORES}-${L1CONF}.conf"
+            BENCHCONFIG="htm-spin-lin"
+            HTMCONF="requester-loses-trans.conf"
+            ;;
         *)
             echo "ERROR: Config ${config_id} not found"
             exit 2
@@ -95,6 +109,22 @@ get_cmp_config() {
             SESCCONF="cmp${NCORES}-${L1CONF}.conf"
             BENCHCONFIG="htm-spin"
             HTMCONF="tsx-trans.conf"
+            BOOKSIMCONF="mesh88.booksim"
+            ;;
+        2)
+            NCORES="64"
+            L1CONF="l1_64k_16"
+            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
+            BENCHCONFIG="htm-spin"
+            HTMCONF="morereads-wins-trans.conf"
+            BOOKSIMCONF="mesh88.booksim"
+            ;;
+        3)
+            NCORES="64"
+            L1CONF="l1_64k_16"
+            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
+            BENCHCONFIG="htm-spin"
+            HTMCONF="requester-loses-trans.conf"
             BOOKSIMCONF="mesh88.booksim"
             ;;
         *)
