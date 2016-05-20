@@ -140,14 +140,24 @@ TMBCStatus HTMManager::commit(InstDesc* inst, const ThreadContext* context, Inst
 TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
+    TMRWStatus status = TMRW_INVALID;
+
 	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
-		return TMRW_ABORT;
+		status = TMRW_ABORT;
 	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
         nonTMRead(inst, context, raddr, p_opStatus);
-        return TMRW_NONTM;
+        status = TMRW_NONTM;
 	} else {
-        return TMRead(inst, context, raddr, p_opStatus);
+        status = TMRead(inst, context, raddr, p_opStatus);
     }
+
+    if(status == TMRW_SUCCESS) {
+        if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
+            fail("%d in invalid state to do tm.load: %d", pid, getTMState(pid));
+        }
+        rwSetManager.read(pid, caddr);
+    }
+    return status;
 }
 
 ///
@@ -155,14 +165,24 @@ TMRWStatus HTMManager::read(InstDesc* inst, const ThreadContext* context, VAddr 
 TMRWStatus HTMManager::write(InstDesc* inst, const ThreadContext* context, VAddr raddr, InstContext* p_opStatus) {
     Pid_t pid   = context->getPid();
 	VAddr caddr = addrToCacheLine(raddr);
+    TMRWStatus status = TMRW_INVALID;
+
 	if(getTMState(pid) == TMStateEngine::TM_MARKABORT) {
-		return TMRW_ABORT;
+		status = TMRW_ABORT;
 	} else if(getTMState(pid) == TMStateEngine::TM_INVALID) {
         nonTMWrite(inst, context, raddr, p_opStatus);
-        return TMRW_NONTM;
+        status = TMRW_NONTM;
 	} else {
-        return TMWrite(inst, context, raddr, p_opStatus);
+        status = TMWrite(inst, context, raddr, p_opStatus);
     }
+
+    if(status == TMRW_SUCCESS) {
+        if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
+            fail("%d in invalid state to do tm.store: %d", pid, getTMState(pid));
+        }
+        rwSetManager.write(pid, caddr);
+    }
+    return status;
 }
 
 void HTMManager::startAborting(InstDesc* inst, const ThreadContext* context, InstContext* p_opStatus) {
@@ -240,18 +260,6 @@ void HTMManager::completeFallback(Pid_t pid) {
     fallbackArg.erase(pid);
 }
 
-void HTMManager::readTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
-        fail("%d in invalid state to do tm.load: %d", pid, getTMState(pid));
-    }
-    rwSetManager.read(pid, caddr);
-}
-void HTMManager::writeTrans(Pid_t pid, VAddr raddr, VAddr caddr) {
-    if(getTMState(pid) != TMStateEngine::TM_RUNNING) {
-        fail("%d in invalid state to do tm.store: %d", pid, getTMState(pid));
-    }
-    rwSetManager.write(pid, caddr);
-}
 void HTMManager::markTransAborted(Pid_t victimPid, Pid_t aborterPid, VAddr caddr, TMAbortType_e abortType) {
     uint64_t aborterUtid = getUtid(aborterPid);
 

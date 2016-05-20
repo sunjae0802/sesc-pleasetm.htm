@@ -6,8 +6,8 @@ setup_stamp() {
     benchconfig=$3
     nthread=$4
     inputsize=$5
-    seed_base=$6
 
+    tmlib_seed_base=0
     echo "Benchmark $benchname (${benchconfig}; Size ${inputsize}) with $nthread threads"
 
     case $benchname in 
@@ -26,7 +26,7 @@ setup_stamp() {
             then
                 INPF="-v32 -r1024 -n2 -p20 -i2 -e2 -s0"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             ;;
         "genome")
             PROG="${benchname}"
@@ -43,7 +43,7 @@ setup_stamp() {
             then
                 INPF="-g256 -s16 -n16384"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             ;;
         "intruder")
             PROG="${benchname}"
@@ -60,7 +60,7 @@ setup_stamp() {
             then
                 INPF="-a10 -l4 -n2048 -s1"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             ;;
         "kmeans")
             PROG="${benchname}"
@@ -77,7 +77,7 @@ setup_stamp() {
             then
                 INPF="-m40 -n40 -T0.05 -i inputs/random-n2048-d16-c16.txt"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             cp -rf ${benchdir}/data/${benchname}/inputs .
             ;;
         "kmeans+")
@@ -96,7 +96,7 @@ setup_stamp() {
             then
                 INPF="-m15 -n15 -T0.05 -i inputs/random-n2048-d16-c16.txt"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             cp -rf ${benchdir}/data/${benchname}/inputs .
             ;;
         "labyrinth")
@@ -114,7 +114,7 @@ setup_stamp() {
             then
                 INPF="-i inputs/random-x32-y32-z3-n96.txt"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             cp -rf ${benchdir}/data/${benchname}/inputs .
             ;;
         "ssca2")
@@ -135,7 +135,7 @@ setup_stamp() {
             then
                 INPF="-s13 -i1.0 -u1.0 -l3 -p3"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             ;;
         "vacation")
             PROG="${benchname}"
@@ -152,7 +152,7 @@ setup_stamp() {
             then
                 INPF="-n2 -q90 -u98 -r16384 -T4096"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             ;;
         "vacation+")
             PROG="vacation"
@@ -170,7 +170,7 @@ setup_stamp() {
             then
                 INPF="-n4 -q60 -u90 -r16384 -T4096"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             ;;
         "yada")
             PROG="${benchname}"
@@ -190,7 +190,7 @@ setup_stamp() {
             then
                 INPF="-a20 -i inputs/633.2"
             fi
-            PROGARGS="${INPF} -t${nthread} -S${seed_base}"
+            PROGARGS="${INPF} -t${nthread} -S${tmlib_seed_base}"
             cp -rf ${benchdir}/data/${benchname}/inputs .
             ;;
         *)
@@ -220,8 +220,3 @@ get_benchname() {
     echo ${BENCHMARKS[$benchid]}
 }
 
-get_l1conf() {
-    l1id=$1
-    L1CONFS=( l1_16k_4 l1_16k_8 l1_16k_16 l1_32k_4 l1_32k_8 l1_32k_16 l1_64k_4 l1_64k_8 l1_64k_16 )
-    echo ${L1CONFS[$l1id]}
-}
