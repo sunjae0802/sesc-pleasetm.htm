@@ -54,34 +54,23 @@ enter_benchrundir() {
 get_smp_config() {
     config_id=$1
 
-    THREADS=( 1 2 4 8 16 )
-    nthread=${THREADS[$T_ID]}
+    NCORES="16"
+    L1CONF="l1_64k_16"
+    SESCCONF="smp${NCORES}-${L1CONF}.conf"
     case "$config_id" in
         0)
-            NCORES="16"
-            L1CONF="l1_64k_16"
-            SESCCONF="smp${NCORES}-${L1CONF}.conf"
             BENCHCONFIG="gspin"
             HTMCONF="tsx-trans.conf"
             ;;
         1)
-            NCORES="16"
-            L1CONF="l1_64k_16"
-            SESCCONF="smp${NCORES}-${L1CONF}.conf"
             BENCHCONFIG="htm-spin-lin"
             HTMCONF="tsx-trans.conf"
             ;;
         2)
-            NCORES="16"
-            L1CONF="l1_64k_16"
-            SESCCONF="smp${NCORES}-${L1CONF}.conf"
             BENCHCONFIG="htm-spin-lin"
             HTMCONF="morereads-wins-trans.conf"
             ;;
         3)
-            NCORES="16"
-            L1CONF="l1_64k_16"
-            SESCCONF="smp${NCORES}-${L1CONF}.conf"
             BENCHCONFIG="htm-spin-lin"
             HTMCONF="requester-loses-trans.conf"
             ;;
@@ -94,38 +83,37 @@ get_smp_config() {
 
 get_cmp_config() {
     config_id=$1
+    NCORES="36"
+    L1CONF="l1_64k_16"
+    SESCCONF="cmp${NCORES}-${L1CONF}.conf"
+
+    # Handle booksim config since it depends on NCORES
+    if [ "$NCORES" -eq 144 ]; then
+        BOOKSIMCONF="meshAA.booksim"
+    elif [ "$NCORES" -eq 64 ]; then
+        BOOKSIMCONF="mesh88.booksim"
+    elif [ "$NCORES" -eq 36 ]; then
+        BOOKSIMCONF="mesh66.booksim"
+    elif [ "$NCORES" -eq 16 ]; then
+        BOOKSIMCONF="mesh44.booksim"
+    fi
+
     case "$config_id" in
         0)
-            NCORES="64"
-            L1CONF="l1_64k_16"
-            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
-            HTMCONF="tsx-trans.conf"
             BENCHCONFIG="gspin"
-            BOOKSIMCONF="mesh88.booksim"
+            HTMCONF="tsx-trans.conf"
             ;;
         1)
-            NCORES="64"
-            L1CONF="l1_64k_16"
-            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
-            BENCHCONFIG="htm-spin"
+            BENCHCONFIG="htm-spin-lin"
             HTMCONF="tsx-trans.conf"
-            BOOKSIMCONF="mesh88.booksim"
             ;;
         2)
-            NCORES="64"
-            L1CONF="l1_64k_16"
-            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
-            BENCHCONFIG="htm-spin"
+            BENCHCONFIG="htm-spin-lin"
             HTMCONF="morereads-wins-trans.conf"
-            BOOKSIMCONF="mesh88.booksim"
             ;;
         3)
-            NCORES="64"
-            L1CONF="l1_64k_16"
-            SESCCONF="cmp${NCORES}-${L1CONF}.conf"
-            BENCHCONFIG="htm-spin"
+            BENCHCONFIG="htm-spin-lin"
             HTMCONF="requester-loses-trans.conf"
-            BOOKSIMCONF="mesh88.booksim"
             ;;
         *)
             echo "ERROR: Config ${config_id} not found"
